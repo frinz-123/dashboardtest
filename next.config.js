@@ -7,8 +7,8 @@ const withPWA = require('next-pwa')({
 
 module.exports = withPWA({
   // Your existing Next.js config options here
-  target: 'serverless',
   images: {
     domains: ['your-domain.com'], // Add any domains you're loading images from
   },
+  // Remove the 'target' property as it's no longer needed
 })
