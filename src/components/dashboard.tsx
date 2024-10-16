@@ -1,8 +1,9 @@
 'use client'
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { ChevronDown, BarChart2, Users, Clock, ChevronRight, Target } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
-import GaugeChart from 'react-gauge-chart'
+import { CircularProgressbar, buildStyles } from 'react-circular-progressbar'
+import 'react-circular-progressbar/dist/styles.css'
 import BlurIn from './ui/blur-in'
 import { getCurrentPeriodInfo, getWeekDates, isDateInPeriod, getCurrentPeriodNumber } from '@/utils/dateUtils'
 import { getSellerGoal } from '@/utils/sellerGoals'
@@ -40,61 +41,10 @@ export default function Dashboard() {
   const [showAllSales, setShowAllSales] = useState(false)
   const [goalProgress, setGoalProgress] = useState<number>(0)
   const [currentPeriodSales, setCurrentPeriodSales] = useState<number>(0)
+  const [gaugeKey, setGaugeKey] = useState(0)
+  const gaugeContainerRef = useRef<HTMLDivElement>(null)
 
   const periods: TimePeriod[] = ['Diario', 'Semanal', 'Mensual']
-
-  useEffect(() => {
-    fetchData()
-  }, [])
-
-  useEffect(() => {
-    if (salesData.length > 0 && selectedEmail) {
-      updateChartData()
-      updateGoalProgress()
-    }
-  }, [selectedPeriod, selectedEmail, salesData, updateChartData, updateGoalProgress])
-
-  const fetchData = async () => {
-    const response = await fetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:AH?key=${googleApiKey}`
-    )
-    const data = await response.json()
-    const rows = data.values.slice(1) // Remove header row
-    const sales: Sale[] = rows.map((row: string[]) => ({
-      clientName: row[0],
-      venta: parseFloat(row[33]),
-      codigo: row[31],
-      fechaSinHora: row[32],
-      email: row[7],
-    }))
-    setSalesData(sales)
-    const uniqueEmails = [...new Set(sales.map((sale) => sale.email))]
-    setEmails(uniqueEmails)
-    if (uniqueEmails.length > 0) setSelectedEmail(uniqueEmails[0])
-  }
-
-  const filterSalesByDate = (sales: Sale[], period: TimePeriod) => {
-    const currentDate = new Date();
-    let startDate: Date, endDate: Date;
-
-    if (period === 'Diario') {
-      startDate = new Date(currentDate.setHours(0, 0, 0, 0));
-      endDate = new Date(currentDate.setHours(23, 59, 59, 999));
-    } else if (period === 'Semanal') {
-      const { weekStart, weekEnd } = getWeekDates(currentDate);
-      startDate = weekStart;
-      endDate = weekEnd;
-    } else if (period === 'Mensual') {
-      const { periodStartDate, periodEndDate } = getCurrentPeriodInfo(currentDate);
-      startDate = periodStartDate;
-      endDate = periodEndDate;
-    }
-
-    return sales.filter((sale) => {
-      const saleDate = new Date(sale.fechaSinHora);
-      return isDateInPeriod(saleDate, startDate, endDate);
-    });
-  };
 
   const updateChartData = React.useCallback(() => {
     const filteredSales = salesData
@@ -169,6 +119,91 @@ export default function Dashboard() {
     setPercentageDifference(difference)
   }, [salesData, selectedEmail, selectedPeriod])
 
+  const updateGoalProgress = React.useCallback(() => {
+    const currentPeriodNumber = getCurrentPeriodNumber()
+    console.log('Current Period Number:', currentPeriodNumber)
+
+    const { periodStartDate, periodEndDate } = getCurrentPeriodInfo()
+    
+    const periodSales = salesData
+      .filter((sale) => sale.email === selectedEmail)
+      .filter((sale) => {
+        const saleDate = new Date(sale.fechaSinHora)
+        return isDateInPeriod(saleDate, periodStartDate, periodEndDate)
+      })
+      .reduce((sum, sale) => sum + sale.venta, 0)
+
+    console.log('Period Sales:', periodSales)
+    setCurrentPeriodSales(periodSales)
+
+    const goal = getSellerGoal(selectedEmail, currentPeriodNumber as 11 | 12 | 13)
+    console.log('Goal:', goal)
+
+    const progress = goal > 0 ? (periodSales / goal) * 100 : 0
+    console.log('Progress:', progress)
+
+    setGoalProgress(isNaN(progress) ? 0 : progress)
+  }, [salesData, selectedEmail])
+
+  useEffect(() => {
+    fetchData()
+  }, [])
+
+  useEffect(() => {
+    if (salesData.length > 0 && selectedEmail) {
+      updateChartData()
+      updateGoalProgress()
+    }
+  }, [selectedPeriod, selectedEmail, salesData, updateChartData, updateGoalProgress])
+
+  useEffect(() => {
+    if (selectedPeriod === 'Mensual' && selectedEmail) {
+      setGaugeKey(prevKey => prevKey + 1)
+    }
+  }, [selectedPeriod, selectedEmail])
+
+  const fetchData = async () => {
+    const response = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:AH?key=${googleApiKey}`
+    )
+    const data = await response.json()
+    const rows = data.values.slice(1) // Remove header row
+    const sales: Sale[] = rows.map((row: string[]) => ({
+      clientName: row[0],
+      venta: parseFloat(row[33]),
+      codigo: row[31],
+      fechaSinHora: row[32],
+      email: row[7],
+    }))
+    setSalesData(sales)
+    const uniqueEmails = [...new Set(sales.map((sale) => sale.email))]
+    setEmails(uniqueEmails)
+    if (uniqueEmails.length > 0) setSelectedEmail(uniqueEmails[0])
+  }
+
+  const filterSalesByDate = (sales: Sale[], period: TimePeriod) => {
+    const currentDate = new Date();
+    let startDate: Date, endDate: Date;
+
+    if (period === 'Diario') {
+      startDate = new Date(currentDate.setHours(0, 0, 0, 0));
+      endDate = new Date(currentDate.setHours(23, 59, 59, 999));
+    } else if (period === 'Semanal') {
+      const { weekStart, weekEnd } = getWeekDates(currentDate);
+      startDate = weekStart;
+      endDate = weekEnd;
+    } else if (period === 'Mensual') {
+      const { periodStartDate, periodEndDate } = getCurrentPeriodInfo(currentDate);
+      startDate = periodStartDate;
+      endDate = periodEndDate;
+    }
+
+    return sales.filter((sale) => {
+      const saleDate = new Date(sale.fechaSinHora);
+      return isDateInPeriod(saleDate, startDate, endDate);
+    });
+  };
+
   const getTimeDifference = (period: TimePeriod) => {
     switch (period) {
       case 'Diario':
@@ -203,34 +238,8 @@ export default function Dashboard() {
 
   const visitStatus = getVisitStatus()
 
-  const updateGoalProgress = React.useCallback(() => {
-    const currentPeriodNumber = getCurrentPeriodNumber()
-    console.log('Current Period Number:', currentPeriodNumber)
-
-    const { periodStartDate, periodEndDate } = getCurrentPeriodInfo()
-    
-    const periodSales = salesData
-      .filter((sale) => sale.email === selectedEmail)
-      .filter((sale) => {
-        const saleDate = new Date(sale.fechaSinHora)
-        return isDateInPeriod(saleDate, periodStartDate, periodEndDate)
-      })
-      .reduce((sum, sale) => sum + sale.venta, 0)
-
-    console.log('Period Sales:', periodSales)
-    setCurrentPeriodSales(periodSales)
-
-    const goal = getSellerGoal(selectedEmail, currentPeriodNumber as 11 | 12 | 13)
-    console.log('Goal:', goal)
-
-    const progress = goal > 0 ? (periodSales / goal) * 100 : 0
-    console.log('Progress:', progress)
-
-    setGoalProgress(isNaN(progress) ? 0 : progress)
-  }, [salesData, selectedEmail])
-
   const currentPeriodNumber = getCurrentPeriodNumber()
-  const currentGoal = getSellerGoal(selectedEmail, currentPeriodNumber as 11 | 12 | 13)
+  const currentGoal = getSellerGoal(selectedEmail, currentPeriodNumber as 11 | 12 | 13); // Añadido punto y coma
 
   return (
     <div className="min-h-screen bg-white px-4 py-3 font-sans w-full" style={{ fontFamily: 'Inter, sans-serif', fontSize: '0.8rem' }}>
@@ -330,51 +339,31 @@ export default function Dashboard() {
             </span>
           </div>
           <motion.div 
-            className="w-full flex flex-col items-center justify-center"
+            className="flex flex-col items-center justify-center w-full"
             initial={{ opacity: 0, scale: 0.5 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.5 }}
           >
-            <div className="w-full max-w-xs mx-auto" style={{ aspectRatio: '2 / 1' }}>
-              {selectedEmail ? (
-                <GaugeChart
-                  id="goal-gauge-chart"
-                  nrOfLevels={3}
-                  colors={["#FF5F6D", "#FFC371", "#2ECC71"]}
-                  percent={goalProgress / 100}
-                  textColor="#333333"
-                  formatTextValue={() => ''}
-                  cornerRadius={0}
-                  arcWidth={0.3}
-                  arcPadding={0.02}
-                  needleColor="#333333"
-                  needleBaseColor="#333333"
-                  animate={true}
-                  animDelay={0}
-                  animateDuration={3000}
-                  marginInPercent={0.05}
-                />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center text-gray-400">
-                  Seleccione un vendedor
-                </div>
-              )}
+            <div style={{ width: 250, height: 250 }}>
+              <CircularProgressbar
+                value={goalProgress}
+                text={`${goalProgress.toFixed(1)}%`}
+                circleRatio={0.75}
+                styles={buildStyles({
+                  rotation: 1 / 2 + 1 / 8,
+                  strokeLinecap: "butt",
+                  trailColor: "#eee",
+                  pathColor: goalProgress >= 100 ? "#2ECC71" : goalProgress >= 66 ? "#FFC371" : "#FF5F6D",
+                  textColor: "#333333",
+                  textSize: '16px',
+                })}
+              />
             </div>
-            <motion.div 
-              className="text-lg font-bold text-gray-500 -mt-4"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.5, duration: 0.5 }}
-            >
-              {goalProgress ? goalProgress.toFixed(1) : '0.0'}%
-            </motion.div>
           </motion.div>
           <p className="text-xs text-gray-500 text-center mt-2">
-            {selectedEmail ? (
-              goalProgress < 100
-                ? `Faltan $${(currentGoal - currentPeriodSales).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} para alcanzar la meta`
-                : 'Meta alcanzada!'
-            ) : 'Seleccione un vendedor para ver la meta'}
+            {goalProgress < 100
+              ? `Faltan $${(currentGoal - currentPeriodSales).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} para alcanzar la meta`
+              : 'Meta alcanzada!'}
           </p>
         </div>
       )}
