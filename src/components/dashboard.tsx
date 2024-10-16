@@ -5,7 +5,7 @@ import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'rec
 import GaugeChart from 'react-gauge-chart'
 import BlurIn from './ui/blur-in'
 import { getCurrentPeriodInfo, getWeekDates, isDateInPeriod, getCurrentPeriodNumber } from '@/utils/dateUtils'
-import { calculateGoalProgress, getSellerGoal } from '@/utils/sellerGoals'
+import { getSellerGoal } from '@/utils/sellerGoals'
 import { motion } from 'framer-motion'
 
 const googleApiKey = 'AIzaSyDFYvzbw3A1xUj8iFJCE6dnZBTKGCitYKo'
@@ -52,7 +52,7 @@ export default function Dashboard() {
       updateChartData()
       updateGoalProgress()
     }
-  }, [selectedPeriod, selectedEmail, salesData])
+  }, [selectedPeriod, selectedEmail, salesData, updateChartData, updateGoalProgress])
 
   const fetchData = async () => {
     const response = await fetch(
@@ -96,7 +96,7 @@ export default function Dashboard() {
     });
   };
 
-  const updateChartData = () => {
+  const updateChartData = React.useCallback(() => {
     const filteredSales = salesData
       .filter((sale) => sale.email === selectedEmail)
       .filter((sale) => filterSalesByDate([sale], selectedPeriod).length > 0)
@@ -167,7 +167,7 @@ export default function Dashboard() {
       ? ((currentPeriodTotal - previousPeriodTotal) / previousPeriodTotal) * 100 
       : 0
     setPercentageDifference(difference)
-  }
+  }, [salesData, selectedEmail, selectedPeriod])
 
   const getTimeDifference = (period: TimePeriod) => {
     switch (period) {
@@ -203,7 +203,7 @@ export default function Dashboard() {
 
   const visitStatus = getVisitStatus()
 
-  const updateGoalProgress = () => {
+  const updateGoalProgress = React.useCallback(() => {
     const currentPeriodNumber = getCurrentPeriodNumber()
     console.log('Current Period Number:', currentPeriodNumber)
 
@@ -227,7 +227,7 @@ export default function Dashboard() {
     console.log('Progress:', progress)
 
     setGoalProgress(isNaN(progress) ? 0 : progress)
-  }
+  }, [salesData, selectedEmail])
 
   const currentPeriodNumber = getCurrentPeriodNumber()
   const currentGoal = getSellerGoal(selectedEmail, currentPeriodNumber as 11 | 12 | 13)
