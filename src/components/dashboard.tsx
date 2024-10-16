@@ -41,8 +41,6 @@ export default function Dashboard() {
   const [showAllSales, setShowAllSales] = useState(false)
   const [goalProgress, setGoalProgress] = useState<number>(0)
   const [currentPeriodSales, setCurrentPeriodSales] = useState<number>(0)
-  const [gaugeKey, setGaugeKey] = useState(0)
-  const gaugeContainerRef = useRef<HTMLDivElement>(null)
 
   const periods: TimePeriod[] = ['Diario', 'Semanal', 'Mensual']
 
@@ -155,12 +153,6 @@ export default function Dashboard() {
       updateGoalProgress()
     }
   }, [selectedPeriod, selectedEmail, salesData, updateChartData, updateGoalProgress])
-
-  useEffect(() => {
-    if (selectedPeriod === 'Mensual' && selectedEmail) {
-      setGaugeKey(prevKey => prevKey + 1)
-    }
-  }, [selectedPeriod, selectedEmail])
 
   const fetchData = async () => {
     const response = await fetch(
