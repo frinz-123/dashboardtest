@@ -1,7 +1,12 @@
 'use client'
 import React, { useState, useEffect } from 'react'
-import { ChevronDown, BarChart2, Users, Clock, ChevronRight } from 'lucide-react'
+import { ChevronDown, BarChart2, Users, Clock, ChevronRight, Target } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
+import GaugeChart from 'react-gauge-chart'
+import BlurIn from './ui/blur-in'
+import { getCurrentPeriodInfo, getWeekDates, isDateInPeriod, getCurrentPeriodNumber } from '@/utils/dateUtils'
+import { calculateGoalProgress, getSellerGoal } from '@/utils/sellerGoals'
+import { motion } from 'framer-motion'
 
 const googleApiKey = 'AIzaSyDFYvzbw3A1xUj8iFJCE6dnZBTKGCitYKo'
 const spreadsheetId = '1a0jZVdKFNWTHDsM-68LT5_OLPMGejAKs9wfCxYqqe_g'
@@ -33,6 +38,8 @@ export default function Dashboard() {
   const [chartData, setChartData] = useState<{ x: string; venta: number }[]>([])
   const [percentageDifference, setPercentageDifference] = useState<number>(0)
   const [showAllSales, setShowAllSales] = useState(false)
+  const [goalProgress, setGoalProgress] = useState<number>(0)
+  const [currentPeriodSales, setCurrentPeriodSales] = useState<number>(0)
 
   const periods: TimePeriod[] = ['Diario', 'Semanal', 'Mensual']
 
@@ -43,6 +50,7 @@ export default function Dashboard() {
   useEffect(() => {
     if (salesData.length > 0 && selectedEmail) {
       updateChartData()
+      updateGoalProgress()
     }
   }, [selectedPeriod, selectedEmail, salesData])
 
@@ -66,17 +74,27 @@ export default function Dashboard() {
   }
 
   const filterSalesByDate = (sales: Sale[], period: TimePeriod) => {
-    const today = new Date()
-    const startDate = new Date(today)
+    const currentDate = new Date();
+    let startDate: Date, endDate: Date;
+
     if (period === 'Diario') {
-      startDate.setHours(0, 0, 0, 0)
+      startDate = new Date(currentDate.setHours(0, 0, 0, 0));
+      endDate = new Date(currentDate.setHours(23, 59, 59, 999));
     } else if (period === 'Semanal') {
-      startDate.setDate(today.getDate() - 7)
+      const { weekStart, weekEnd } = getWeekDates(currentDate);
+      startDate = weekStart;
+      endDate = weekEnd;
     } else if (period === 'Mensual') {
-      startDate.setMonth(today.getMonth() - 1)
+      const { periodStartDate, periodEndDate } = getCurrentPeriodInfo(currentDate);
+      startDate = periodStartDate;
+      endDate = periodEndDate;
     }
-    return sales.filter((sale) => new Date(sale.fechaSinHora) >= startDate)
-  }
+
+    return sales.filter((sale) => {
+      const saleDate = new Date(sale.fechaSinHora);
+      return isDateInPeriod(saleDate, startDate, endDate);
+    });
+  };
 
   const updateChartData = () => {
     const filteredSales = salesData
@@ -103,22 +121,23 @@ export default function Dashboard() {
 
       setChartData(sortedData)
     } else if (selectedPeriod === 'Mensual') {
+      const { periodStartDate } = getCurrentPeriodInfo();
       const groupedData = filteredSales.reduce((acc, sale) => {
-        const date = new Date(sale.fechaSinHora)
-        const weekNumber = Math.ceil((date.getDate() - 1) / 7)
-        const key = `S${weekNumber}`
+        const saleDate = new Date(sale.fechaSinHora);
+        const weekNumber = Math.floor((saleDate.getTime() - periodStartDate.getTime()) / (7 * 24 * 60 * 60 * 1000)) + 1;
+        const key = `S${weekNumber}`;
         if (!acc[key]) {
-          acc[key] = 0
+          acc[key] = 0;
         }
-        acc[key] += sale.venta
-        return acc
-      }, {} as Record<string, number>)
+        acc[key] += sale.venta;
+        return acc;
+      }, {} as Record<string, number>);
 
       const sortedData = Object.entries(groupedData)
         .sort(([weekA], [weekB]) => weekA.localeCompare(weekB))
-        .map(([week, venta]) => ({ x: week, venta }))
+        .map(([week, venta]) => ({ x: week, venta }));
 
-      setChartData(sortedData)
+      setChartData(sortedData);
     }
 
     // Calculate percentage difference
@@ -184,6 +203,35 @@ export default function Dashboard() {
 
   const visitStatus = getVisitStatus()
 
+  const updateGoalProgress = () => {
+    const currentPeriodNumber = getCurrentPeriodNumber()
+    console.log('Current Period Number:', currentPeriodNumber)
+
+    const { periodStartDate, periodEndDate } = getCurrentPeriodInfo()
+    
+    const periodSales = salesData
+      .filter((sale) => sale.email === selectedEmail)
+      .filter((sale) => {
+        const saleDate = new Date(sale.fechaSinHora)
+        return isDateInPeriod(saleDate, periodStartDate, periodEndDate)
+      })
+      .reduce((sum, sale) => sum + sale.venta, 0)
+
+    console.log('Period Sales:', periodSales)
+    setCurrentPeriodSales(periodSales)
+
+    const goal = getSellerGoal(selectedEmail, currentPeriodNumber as 11 | 12 | 13)
+    console.log('Goal:', goal)
+
+    const progress = goal > 0 ? (periodSales / goal) * 100 : 0
+    console.log('Progress:', progress)
+
+    setGoalProgress(isNaN(progress) ? 0 : progress)
+  }
+
+  const currentPeriodNumber = getCurrentPeriodNumber()
+  const currentGoal = getSellerGoal(selectedEmail, currentPeriodNumber as 11 | 12 | 13)
+
   return (
     <div className="min-h-screen bg-white px-4 py-3 font-sans w-full" style={{ fontFamily: 'Inter, sans-serif', fontSize: '0.8rem' }}>
       <header className="flex justify-between items-center mb-4">
@@ -191,7 +239,15 @@ export default function Dashboard() {
           <div className="w-8 h-8 bg-blue-600 rounded-full mr-2 flex items-center justify-center">
             <div className="w-5 h-0.5 bg-white rounded-full transform -rotate-45"></div>
           </div>
-          <h1 className="text-2xl font-medium tracking-tight">Ventas</h1>
+          <BlurIn
+            word="Ventas"
+            className="text-2xl font-medium tracking-tight"
+            duration={0.5}
+            variant={{
+              hidden: { filter: 'blur(4px)', opacity: 0 },
+              visible: { filter: 'blur(0px)', opacity: 1 }
+            }}
+          />
         </div>
         <div className="relative">
           <select
@@ -235,6 +291,11 @@ export default function Dashboard() {
             {percentageDifference >= 0 ? '+' : ''}{percentageDifference.toFixed(2)}%
           </span>
         </div>
+        {selectedPeriod === 'Mensual' && (
+          <p className="text-xs text-gray-500 mt-1">
+            Periodo {getCurrentPeriodInfo().periodNumber}, Semana {getCurrentPeriodInfo().weekInPeriod}
+          </p>
+        )}
         <div className="mt-3 h-[160px] w-full">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={chartData}>
@@ -254,6 +315,69 @@ export default function Dashboard() {
           </ResponsiveContainer>
         </div>
       </div>
+
+      {selectedPeriod === 'Mensual' && (
+        <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
+          <h2 className="text-gray-500 text-xs mb-0.5 flex items-center">
+            <Target className="mr-1.5 h-4 w-4" /> Meta del Periodo
+          </h2>
+          <div className="flex items-baseline mb-2">
+            <span className="text-2xl font-bold mr-2">
+              ${currentGoal ? currentGoal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'}
+            </span>
+            <span className={`text-xs px-1.5 py-0.5 rounded-full ${goalProgress >= 100 ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>
+              {goalProgress ? goalProgress.toFixed(1) : '0.0'}%
+            </span>
+          </div>
+          <motion.div 
+            className="w-full flex flex-col items-center justify-center"
+            initial={{ opacity: 0, scale: 0.5 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.5 }}
+          >
+            <div className="w-full max-w-xs mx-auto" style={{ aspectRatio: '2 / 1' }}>
+              {selectedEmail ? (
+                <GaugeChart
+                  id="goal-gauge-chart"
+                  nrOfLevels={3}
+                  colors={["#FF5F6D", "#FFC371", "#2ECC71"]}
+                  percent={goalProgress / 100}
+                  textColor="#333333"
+                  formatTextValue={() => ''}
+                  cornerRadius={0}
+                  arcWidth={0.3}
+                  arcPadding={0.02}
+                  needleColor="#333333"
+                  needleBaseColor="#333333"
+                  animate={true}
+                  animDelay={0}
+                  animateDuration={3000}
+                  marginInPercent={0.05}
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-gray-400">
+                  Seleccione un vendedor
+                </div>
+              )}
+            </div>
+            <motion.div 
+              className="text-lg font-bold text-gray-500 -mt-4"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5, duration: 0.5 }}
+            >
+              {goalProgress ? goalProgress.toFixed(1) : '0.0'}%
+            </motion.div>
+          </motion.div>
+          <p className="text-xs text-gray-500 text-center mt-2">
+            {selectedEmail ? (
+              goalProgress < 100
+                ? `Faltan $${(currentGoal - currentPeriodSales).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} para alcanzar la meta`
+                : 'Meta alcanzada!'
+            ) : 'Seleccione un vendedor para ver la meta'}
+          </p>
+        </div>
+      )}
 
       <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
         <h2 className="text-gray-700 font-semibold mb-2 flex items-center text-xs">
