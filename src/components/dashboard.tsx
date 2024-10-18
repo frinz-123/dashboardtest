@@ -286,7 +286,7 @@ export default function Dashboard() {
 
       <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
         <h2 className="text-gray-500 text-xs mb-0.5">Vendido</h2>
-        <div className="flex items-baseline">
+        <div className="flex items-center">
           <span className="text-2xl font-bold mr-2">${totalSales.toFixed(2)}</span>
           <span className={`text-xs px-1.5 py-0.5 rounded-full ${percentageDifference >= 0 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
             {percentageDifference >= 0 ? '+' : ''}{percentageDifference.toFixed(2)}%
@@ -322,7 +322,7 @@ export default function Dashboard() {
           <h2 className="text-gray-500 text-xs mb-0.5 flex items-center">
             <Target className="mr-1.5 h-4 w-4" /> Meta del Periodo
           </h2>
-          <div className="flex items-baseline mb-2">
+          <div className="flex items-center mb-2">
             <span className="text-2xl font-bold mr-2">
               ${currentGoal ? currentGoal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'}
             </span>
@@ -336,14 +336,15 @@ export default function Dashboard() {
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.5 }}
           >
-            <div style={{ width: 250, height: 250 }}>
+            <div style={{ width: 250, height: 250, marginTop: '20px' }}>
               <CircularProgressbar
                 value={goalProgress}
                 text={`${goalProgress.toFixed(1)}%`}
                 circleRatio={0.75}
+                strokeWidth={12}
                 styles={buildStyles({
                   rotation: 1 / 2 + 1 / 8,
-                  strokeLinecap: "butt",
+                  strokeLinecap: "round", // Changed from "butt" to "round"
                   trailColor: "#eee",
                   pathColor: goalProgress >= 100 ? "#2ECC71" : goalProgress >= 66 ? "#FFC371" : "#FF5F6D",
                   textColor: "#333333",
