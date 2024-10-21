@@ -33,50 +33,6 @@ export default function AdminPage() {
 
   const periods: TimePeriod[] = ['Diario', 'Semanal', 'Mensual']
 
-  useEffect(() => {
-    const authStatus = localStorage.getItem('adminAuthenticated')
-    if (authStatus === 'true') {
-      setIsAuthenticated(true)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (isAuthenticated) {
-      fetchData()
-    }
-  }, [isAuthenticated])
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    if (salesData.length > 0) {
-      updateChartData()
-    }
-  }, [selectedPeriod, salesData, updateChartData])
-
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (password === ADMIN_PASSWORD) {
-      setIsAuthenticated(true)
-      setError('')
-      localStorage.setItem('adminAuthenticated', 'true')
-    } else {
-      setError('Incorrect password. Please try again.')
-    }
-  }
-
-  const fetchData = async () => {
-    const response = await fetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:AH?key=${googleApiKey}`
-    )
-    const data = await response.json()
-    const rows = data.values.slice(1) // Remove header row
-    const sales: Sale[] = rows.map((row: string[]) => ({
-      venta: parseFloat(row[33]),
-      fechaSinHora: row[32],
-    }))
-    setSalesData(sales)
-  }
-
   const updateChartData = () => {
     const filteredSales = filterSalesByDate(salesData, selectedPeriod)
 
@@ -130,6 +86,49 @@ export default function AdminPage() {
       ? ((currentPeriodTotal - previousPeriodTotal) / previousPeriodTotal) * 100 
       : 0
     setPercentageDifference(difference)
+  }
+
+  useEffect(() => {
+    const authStatus = localStorage.getItem('adminAuthenticated')
+    if (authStatus === 'true') {
+      setIsAuthenticated(true)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchData()
+    }
+  }, [isAuthenticated])
+
+  useEffect(() => {
+    if (salesData.length > 0) {
+      updateChartData()
+    }
+  }, [selectedPeriod, salesData])
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (password === ADMIN_PASSWORD) {
+      setIsAuthenticated(true)
+      setError('')
+      localStorage.setItem('adminAuthenticated', 'true')
+    } else {
+      setError('Incorrect password. Please try again.')
+    }
+  }
+
+  const fetchData = async () => {
+    const response = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:AH?key=${googleApiKey}`
+    )
+    const data = await response.json()
+    const rows = data.values.slice(1) // Remove header row
+    const sales: Sale[] = rows.map((row: string[]) => ({
+      venta: parseFloat(row[33]),
+      fechaSinHora: row[32],
+    }))
+    setSalesData(sales)
   }
 
   const filterSalesByDate = (sales: Sale[], period: TimePeriod) => {
