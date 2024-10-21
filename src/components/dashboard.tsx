@@ -525,10 +525,11 @@ export default function Dashboard() {
               <Search className="h-4 w-4 text-gray-400 ml-2" />
               <input
                 type="text"
-                className="appearance-none bg-transparent py-1 pl-2 pr-8 text-xs focus:outline-none focus:text-base transition-all duration-200 ease-in-out w-full"
+                className="appearance-none bg-transparent py-2 pl-2 pr-8 text-base focus:outline-none w-full"
                 placeholder="Buscar cliente..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
+                style={{ fontSize: '16px' }} // Ensure minimum font size of 16px
               />
             </div>
             {filteredClientNames.length > 0 && (
@@ -536,7 +537,7 @@ export default function Dashboard() {
                 {filteredClientNames.map((name) => (
                   <div
                     key={name}
-                    className="px-4 py-2 text-xs hover:bg-gray-100 cursor-pointer"
+                    className="px-4 py-2 text-base hover:bg-gray-100 cursor-pointer"
                     onClick={() => {
                       setSelectedClient(name)
                       setSearchTerm('')
