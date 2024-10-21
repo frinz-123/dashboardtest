@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { ChevronDown, Menu, Lock, DollarSign } from 'lucide-react'
+import { Menu, Lock, DollarSign } from 'lucide-react'
 import BlurIn from '@/components/ui/blur-in'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { getCurrentPeriodInfo, getWeekDates, isDateInPeriod } from '@/utils/dateUtils'
@@ -46,11 +46,12 @@ export default function AdminPage() {
     }
   }, [isAuthenticated])
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (salesData.length > 0) {
       updateChartData()
     }
-  }, [selectedPeriod, salesData])
+  }, [selectedPeriod, salesData, updateChartData])
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault()
