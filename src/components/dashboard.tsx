@@ -1,6 +1,6 @@
 'use client'
 import React, { useState, useEffect } from 'react'
-import { ChevronDown, BarChart2, Users, Clock, ChevronRight, Target } from 'lucide-react'
+import { ChevronDown, BarChart2, Users, Clock, ChevronRight, Target, Menu, Search } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { CircularProgressbar, buildStyles } from 'react-circular-progressbar'
 import 'react-circular-progressbar/dist/styles.css'
@@ -8,6 +8,7 @@ import BlurIn from './ui/blur-in'
 import { getCurrentPeriodInfo, getWeekDates, isDateInPeriod, getCurrentPeriodNumber } from '@/utils/dateUtils'
 import { getSellerGoal } from '@/utils/sellerGoals'
 import { motion } from 'framer-motion'
+import SaleDetailsPopup from './SaleDetailsPopup'
 
 const googleApiKey = 'AIzaSyDFYvzbw3A1xUj8iFJCE6dnZBTKGCitYKo'
 const spreadsheetId = '1a0jZVdKFNWTHDsM-68LT5_OLPMGejAKs9wfCxYqqe_g'
@@ -20,6 +21,7 @@ type Sale = {
   codigo: string
   fechaSinHora: string
   email: string
+  products: Record<string, number>  // Add this line
 }
 
 const emailLabels: Record<string, string> = {
@@ -41,6 +43,13 @@ export default function Dashboard() {
   const [showAllSales, setShowAllSales] = useState(false)
   const [goalProgress, setGoalProgress] = useState<number>(0)
   const [currentPeriodSales, setCurrentPeriodSales] = useState<number>(0)
+  const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [clientNames, setClientNames] = useState<string[]>([])
+  const [selectedClient, setSelectedClient] = useState<string>('')
+  const [clientSales, setClientSales] = useState<Sale[]>([])
+  const [searchTerm, setSearchTerm] = useState('')
+  const [filteredClientNames, setFilteredClientNames] = useState<string[]>([])
+  const [selectedSale, setSelectedSale] = useState<Sale | null>(null)
 
   const periods: TimePeriod[] = ['Diario', 'Semanal', 'Mensual']
 
@@ -154,23 +163,66 @@ export default function Dashboard() {
     }
   }, [selectedPeriod, selectedEmail, salesData, updateChartData, updateGoalProgress])
 
+  useEffect(() => {
+    if (selectedClient) {
+      const filteredSales = salesData.filter(sale => sale.clientName === selectedClient)
+      setClientSales(filteredSales)
+    }
+  }, [selectedClient, salesData])
+
+  useEffect(() => {
+    if (searchTerm) {
+      const filtered = clientNames.filter(name => 
+        name && name.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+      setFilteredClientNames(filtered)
+      if (filtered.length > 0) {
+        setSelectedClient(filtered[0])
+      }
+    } else {
+      setFilteredClientNames([])
+    }
+  }, [searchTerm, clientNames])
+
   const fetchData = async () => {
     const response = await fetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:AH?key=${googleApiKey}`
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:AK?key=${googleApiKey}`
     )
     const data = await response.json()
     const rows = data.values.slice(1) // Remove header row
-    const sales: Sale[] = rows.map((row: string[]) => ({
-      clientName: row[0],
-      venta: parseFloat(row[33]),
-      codigo: row[31],
-      fechaSinHora: row[32],
-      email: row[7],
-    }))
+    const sales: Sale[] = rows.map((row: string[]) => {
+      const products: Record<string, number> = {}
+      for (let i = 8; i <= 31; i++) {
+        if (row[i] && row[i] !== '0') {
+          products[data.values[0][i]] = parseInt(row[i], 10)
+        }
+      }
+      for (let i = 34; i <= 36; i++) {
+        if (row[i] && row[i] !== '0') {
+          products[data.values[0][i]] = parseInt(row[i], 10)
+        }
+      }
+      return {
+        clientName: row[0] || 'Unknown',
+        venta: parseFloat(row[33]),
+        codigo: row[31],
+        fechaSinHora: row[32],
+        email: row[7],
+        products: products
+      }
+    })
     setSalesData(sales)
     const uniqueEmails = [...new Set(sales.map((sale) => sale.email))]
     setEmails(uniqueEmails)
     if (uniqueEmails.length > 0) setSelectedEmail(uniqueEmails[0])
+
+    // Extract unique client names
+    const uniqueClientNames = Array.from(new Set(sales.map(sale => sale.clientName))).filter(Boolean)
+    setClientNames(uniqueClientNames)
+    // Remove or comment out the following lines:
+    // if (uniqueClientNames.length > 0) {
+    //   setSelectedClient(uniqueClientNames[0])
+    // }
   }
 
   const filterSalesByDate = (sales: Sale[], period: TimePeriod) => {
@@ -250,19 +302,49 @@ export default function Dashboard() {
             }}
           />
         </div>
-        <div className="relative">
-          <select
-            className="appearance-none flex items-center text-gray-600 bg-white rounded-full pl-2 pr-6 py-0.5 text-xs border border-gray-300"
-            value={selectedEmail}
-            onChange={(e) => setSelectedEmail(e.target.value)}
-          >
-            {emails.map((email) => (
-              <option key={email} value={email}>
-                {emailLabels[email] || email}
-              </option>
-            ))}
-          </select>
-          <ChevronDown className="absolute right-1.5 top-1/2 transform -translate-y-1/2 h-3 w-3 text-gray-400 pointer-events-none" />
+        <div className="flex items-center">
+          <div className="relative mr-2">
+            <select
+              className="appearance-none flex items-center text-gray-600 bg-white rounded-full pl-2 pr-6 py-0.5 text-xs border border-gray-300"
+              value={selectedEmail}
+              onChange={(e) => setSelectedEmail(e.target.value)}
+            >
+              {emails.map((email) => (
+                <option key={email} value={email}>
+                  {emailLabels[email] || email}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-1.5 top-1/2 transform -translate-y-1/2 h-3 w-3 text-gray-400 pointer-events-none" />
+          </div>
+          <div className="relative">
+            <button
+              className="p-1 rounded-full hover:bg-gray-200 transition-colors duration-200"
+              onClick={() => setIsMenuOpen(!isMenuOpen)}
+            >
+              <Menu className="h-5 w-5 text-gray-600" />
+            </button>
+            {isMenuOpen && (
+              <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5">
+                <div className="py-1" role="menu" aria-orientation="vertical" aria-labelledby="options-menu">
+                  <a
+                    href="#"
+                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                    role="menuitem"
+                  >
+                    Dashboard
+                  </a>
+                  <a
+                    href="/admin"
+                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                    role="menuitem"
+                  >
+                    Admin
+                  </a>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
@@ -395,7 +477,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="bg-white rounded-lg border border-[#E2E4E9]">
+      <div className="bg-white rounded-lg mb-3 border border-[#E2E4E9]">
         <div className="p-3 pb-1.5">
           <div className="flex justify-between items-center">
             <h2 className="text-gray-700 font-semibold flex items-center text-xs">
@@ -427,6 +509,78 @@ export default function Dashboard() {
           ))}
         </div>
       </div>
+
+      <div className="bg-white rounded-lg border border-[#E2E4E9]">
+        <div className="p-3">
+          <div className="flex justify-between items-center mb-2">
+            <h2 className="text-gray-700 font-semibold flex items-center text-xs">
+              <Clock className="mr-1.5 h-4 w-4" /> Historial De Cliente
+            </h2>
+            <div className="relative">
+              <div className="flex items-center border border-gray-300 rounded-full">
+                <Search className="h-4 w-4 text-gray-400 ml-2" />
+                <input
+                  type="text"
+                  className="appearance-none bg-transparent py-1 pl-2 pr-8 text-xs focus:outline-none"
+                  placeholder="Buscar cliente..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
+              {filteredClientNames.length > 0 && (
+                <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg">
+                  {filteredClientNames.map((name) => (
+                    <div
+                      key={name}
+                      className="px-4 py-2 text-xs hover:bg-gray-100 cursor-pointer"
+                      onClick={() => {
+                        setSelectedClient(name)
+                        setSearchTerm('')
+                      }}
+                    >
+                      {name}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="max-h-60 overflow-y-auto">
+            {selectedClient && searchTerm === '' ? (
+              clientSales.length > 0 ? (
+                clientSales
+                  .sort((a, b) => new Date(b.fechaSinHora).getTime() - new Date(a.fechaSinHora).getTime())
+                  .map((sale, index) => (
+                    <div 
+                      key={index} 
+                      className="flex items-center justify-between py-2 border-b last:border-b-0 cursor-pointer hover:bg-gray-100"
+                      onClick={() => setSelectedSale(sale)}
+                    >
+                      <div className="flex items-center">
+                        <div className="text-left">
+                          <p className="text-xs font-medium">${sale.venta.toFixed(2)}</p>
+                          <p className="text-xxs text-gray-500">{sale.fechaSinHora}</p>
+                        </div>
+                      </div>
+                      <ChevronRight className="h-4 w-3 text-gray-400" />
+                    </div>
+                  ))
+              ) : (
+                <p className="text-xs text-gray-500 text-center py-4">No hay ventas para este cliente.</p>
+              )
+            ) : (
+              <p className="text-xs text-gray-500 text-center py-4">Selecciona un cliente para ver su historial de ventas.</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {selectedSale && (
+        <SaleDetailsPopup 
+          sale={selectedSale} 
+          onClose={() => setSelectedSale(null)} 
+        />
+      )}
     </div>
   )
 }
