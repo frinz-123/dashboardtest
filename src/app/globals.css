@@ -106,3 +106,8 @@ body {
     padding-right: env(safe-area-inset-right);
   }
 }
+
+input[type="text"], 
+input[type="search"] {
+  touch-action: manipulation;
+}

@@ -513,14 +513,9 @@ export default function Dashboard() {
       <div className="bg-white rounded-lg border border-[#E2E4E9]">
         <div className="p-3">
           <div className="flex justify-between items-center mb-2">
-            <div>
-              <h2 className="text-gray-700 font-semibold flex items-center text-xs">
-                <Clock className="mr-1.5 h-4 w-4" /> Historial De Cliente
-              </h2>
-              {selectedClient && (
-                <p className="text-xs text-gray-500 mt-1">Cliente: {selectedClient}</p>
-              )}
-            </div>
+            <h2 className="text-gray-700 font-semibold flex items-center text-xs">
+              <Clock className="mr-1.5 h-4 w-4" /> Historial De Cliente
+            </h2>
             <div className="relative">
               <div className="flex items-center border border-gray-300 rounded-full">
                 <Search className="h-4 w-4 text-gray-400 ml-2" />
