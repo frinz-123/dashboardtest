@@ -512,45 +512,43 @@ export default function Dashboard() {
 
       <div className="bg-white rounded-lg border border-[#E2E4E9]">
         <div className="p-3">
-          <div className="flex justify-between items-center mb-2">
-            <div>
-              <h2 className="text-gray-700 font-semibold flex items-center text-xs">
-                <Clock className="mr-1.5 h-4 w-4" /> Historial De Cliente
-              </h2>
-              {selectedClient && (
-                <p className="text-xs text-gray-500 mt-1">Cliente: {selectedClient}</p>
-              )}
-            </div>
-            <div className="relative">
-              <div className="flex items-center border border-gray-300 rounded-full">
-                <Search className="h-4 w-4 text-gray-400 ml-2" />
-                <input
-                  type="text"
-                  className="appearance-none bg-transparent py-1 pl-2 pr-8 text-xs focus:outline-none focus:text-base transition-all duration-200 ease-in-out"
-                  placeholder="Buscar cliente..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </div>
-              {filteredClientNames.length > 0 && (
-                <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg">
-                  {filteredClientNames.map((name) => (
-                    <div
-                      key={name}
-                      className="px-4 py-2 text-xs hover:bg-gray-100 cursor-pointer"
-                      onClick={() => {
-                        setSelectedClient(name)
-                        setSearchTerm('')
-                      }}
-                    >
-                      {name}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+          <div className="mb-2">
+            <h2 className="text-gray-700 font-semibold flex items-center text-xs">
+              <Clock className="mr-1.5 h-4 w-4" /> Historial De Cliente
+            </h2>
+            {selectedClient && (
+              <p className="text-xs text-gray-500 mt-1">Cliente: {selectedClient}</p>
+            )}
           </div>
-          <div className="max-h-60 overflow-y-auto">
+          <div className="relative">
+            <div className="flex items-center border border-gray-300 rounded-full w-full">
+              <Search className="h-4 w-4 text-gray-400 ml-2" />
+              <input
+                type="text"
+                className="appearance-none bg-transparent py-1 pl-2 pr-8 text-xs focus:outline-none focus:text-base transition-all duration-200 ease-in-out w-full"
+                placeholder="Buscar cliente..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+            {filteredClientNames.length > 0 && (
+              <div className="absolute z-10 mt-1 left-0 right-0 bg-white border border-gray-300 rounded-md shadow-lg">
+                {filteredClientNames.map((name) => (
+                  <div
+                    key={name}
+                    className="px-4 py-2 text-xs hover:bg-gray-100 cursor-pointer"
+                    onClick={() => {
+                      setSelectedClient(name)
+                      setSearchTerm('')
+                    }}
+                  >
+                    {name}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="max-h-60 overflow-y-auto mt-2">
             {selectedClient && searchTerm === '' ? (
               clientSales.length > 0 ? (
                 clientSales
