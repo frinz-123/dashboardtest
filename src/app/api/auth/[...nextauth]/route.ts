@@ -10,7 +10,7 @@ export const authOptions: AuthOptions = {
     }),
   ],
   callbacks: {
-    async signIn({ user, _account, _profile }) {
+    async signIn({ user, account: _, profile: __ }) {
       const allowedEmails = [
         'ventas1productoselrey@gmail.com',
         'ventas2productoselrey@gmail.com',

@@ -555,9 +555,11 @@ export default function FormPage() {
   const [key, setKey] = useState(0)
 
   const throttledLocationUpdate = useRef(
-    throttle((location: { lat: number, lng: number }) => {
-      setCurrentLocation(location);
-    }, 1000) // Throttle to once every second
+    throttle((loc: unknown) => {
+      if (isLocationObject(loc)) {
+        setCurrentLocation(loc);
+      }
+    }, 1000)
   ).current;
 
   useEffect(() => {
@@ -883,4 +885,16 @@ function throttle(func: (...args: unknown[]) => void, limit: number) {
       setTimeout(() => inThrottle = false, limit);
     }
   }
+}
+
+// Add this type guard
+function isLocationObject(obj: unknown): obj is { lat: number; lng: number } {
+  return (
+    typeof obj === 'object' &&
+    obj !== null &&
+    'lat' in obj &&
+    'lng' in obj &&
+    typeof (obj as any).lat === 'number' &&
+    typeof (obj as any).lng === 'number'
+  );
 }
