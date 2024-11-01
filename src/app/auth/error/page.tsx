@@ -47,8 +47,8 @@ export default function ErrorPage() {
 }
 
 export const metadata = {
-  title: 'Error - El Rey Chiltepin',
-  description: 'Error de autenticación',
+  title: 'El Rey Chiltepin - Autenticación',
+  description: 'Portal de autenticación de El Rey Chiltepin',
 }
 
 export const viewport = {

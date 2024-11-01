@@ -54,14 +54,3 @@ export default function SignInPage() {
     </Suspense>
   )
 }
-
-export const metadata = {
-  title: 'Iniciar Sesión - El Rey Chiltepin',
-  description: 'Página de inicio de sesión',
-}
-
-export const viewport = {
-  width: 'device-width',
-  initialScale: 1,
-  maximumScale: 1,
-} 
