@@ -5,8 +5,8 @@ import { AuthOptions } from "next-auth"
 export const authOptions: AuthOptions = {
   providers: [
     GoogleProvider({
-      clientId: "814854691379-gq7jtkbabk37v5434ao7b43m594gr9dv.apps.googleusercontent.com",
-      clientSecret: "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",
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
     }),
   ],
   callbacks: {
