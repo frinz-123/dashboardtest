@@ -2,10 +2,11 @@
 
 import { useSearchParams } from 'next/navigation'
 import { signIn } from 'next-auth/react'
+import { Suspense } from 'react'
 
-export default function ErrorPage() {
+function ErrorContent() {
   const searchParams = useSearchParams()
-  const error = searchParams.get('error')
+  const error = searchParams ? searchParams.get('error') : null
 
   return (
     <div className="min-h-screen bg-gray-100 flex items-center justify-center px-4 sm:px-6 lg:px-8">
@@ -31,4 +32,27 @@ export default function ErrorPage() {
       </div>
     </div>
   )
+}
+
+export default function ErrorPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    }>
+      <ErrorContent />
+    </Suspense>
+  )
+}
+
+export const metadata = {
+  title: 'Error - El Rey Chiltepin',
+  description: 'Error de autenticación',
+}
+
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
 } 
