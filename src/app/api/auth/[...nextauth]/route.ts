@@ -11,6 +11,7 @@ export const authOptions: AuthOptions = {
   ],
   pages: {
     signIn: '/auth/signin',
+    error: '/auth/error',
   },
   callbacks: {
     async signIn({ user, account: _, profile: __ }) {
@@ -27,11 +28,7 @@ export const authOptions: AuthOptions = {
       return allowedEmails.includes(user.email?.toLowerCase() || '')
     },
     async redirect({ url, baseUrl }) {
-      // Allows relative callback URLs
-      if (url.startsWith("/")) return `${baseUrl}${url}`
-      // Allows callback URLs on the same origin
-      else if (new URL(url).origin === baseUrl) return url
-      return baseUrl
+      return url.startsWith(baseUrl) ? url : baseUrl
     },
     async session({ session, token }) {
       return session
