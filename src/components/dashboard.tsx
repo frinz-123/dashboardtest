@@ -9,6 +9,8 @@ import { getCurrentPeriodInfo, getWeekDates, isDateInPeriod, getCurrentPeriodNum
 import { getSellerGoal } from '@/utils/sellerGoals'
 import { motion } from 'framer-motion'
 import SaleDetailsPopup from './SaleDetailsPopup'
+import Link from 'next/link'
+import { useSession, signOut } from 'next-auth/react'
 
 const googleApiKey = 'AIzaSyDFYvzbw3A1xUj8iFJCE6dnZBTKGCitYKo'
 const spreadsheetId = '1a0jZVdKFNWTHDsM-68LT5_OLPMGejAKs9wfCxYqqe_g'
@@ -34,6 +36,7 @@ const emailLabels: Record<string, string> = {
 }
 
 export default function Dashboard() {
+  const { data: session } = useSession()
   const [selectedPeriod, setSelectedPeriod] = useState<TimePeriod>('Diario')
   const [selectedEmail, setSelectedEmail] = useState<string>('')
   const [salesData, setSalesData] = useState<Sale[]>([])
@@ -184,6 +187,13 @@ export default function Dashboard() {
     }
   }, [searchTerm, clientNames])
 
+  useEffect(() => {
+    if (session?.user?.email) {
+      setSelectedEmail(session.user.email)
+      fetchData()
+    }
+  }, [session])
+
   const fetchData = async () => {
     const response = await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:AK?key=${googleApiKey}`
@@ -327,20 +337,34 @@ export default function Dashboard() {
             {isMenuOpen && (
               <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5">
                 <div className="py-1" role="menu" aria-orientation="vertical" aria-labelledby="options-menu">
-                  <a
-                    href="#"
+                  <Link
+                    href="/"
                     className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                     role="menuitem"
                   >
                     Dashboard
-                  </a>
-                  <a
+                  </Link>
+                  <Link
                     href="/admin"
                     className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                     role="menuitem"
                   >
                     Admin
-                  </a>
+                  </Link>
+                  <Link
+                    href="/form"
+                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                    role="menuitem"
+                  >
+                    Form
+                  </Link>
+                  <button
+                    onClick={() => signOut()}
+                    className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                    role="menuitem"
+                  >
+                    Cerrar sesión
+                  </button>
                 </div>
               </div>
             )}

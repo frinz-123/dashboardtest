@@ -111,3 +111,10 @@ input[type="text"],
 input[type="search"] {
   touch-action: manipulation;
 }
+
+/* Add these styles for better font rendering */
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
