@@ -5,7 +5,8 @@ import mapboxgl from 'mapbox-gl'
 import { RefreshCw } from 'lucide-react'
 import 'mapbox-gl/dist/mapbox-gl.css'
 
-mapboxgl.accessToken = 'pk.eyJ1IjoiZGVyZnJhbnoiLCJhIjoiY20wb2swMnJrMDk4bzJxcHE3Mm9tcHI4MiJ9.s8-tOip-Idq6D2zES4NFGA'
+// Hardcoded token should be an environment variable
+mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || 'pk.eyJ1IjoiZGVyZnJhbnoiLCJhIjoiY20wb2swMnJrMDk4bzJxcHE3Mm9tcHI4MiJ9.s8-tOip-Idq6D2zES4NFGA'
 
 type MapProps = {
   onLocationUpdate?: (location: { lat: number, lng: number }) => void;
