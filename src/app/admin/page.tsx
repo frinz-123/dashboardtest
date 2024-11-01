@@ -7,10 +7,11 @@ import BlurIn from '@/components/ui/blur-in'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { getCurrentPeriodInfo, getWeekDates, isDateInPeriod } from '@/utils/dateUtils'
 
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD!
-const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY!
-const spreadsheetId = process.env.NEXT_PUBLIC_SPREADSHEET_ID!
-const sheetName = process.env.NEXT_PUBLIC_SHEET_NAME!
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD
+
+const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY
+const spreadsheetId = process.env.NEXT_PUBLIC_SPREADSHEET_ID
+const sheetName = process.env.NEXT_PUBLIC_SHEET_NAME
 
 type Sale = {
   venta: number
@@ -102,10 +103,9 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (salesData.length > 0) {
-      updateChartData();
+      updateChartData()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedPeriod, salesData]);
+  }, [selectedPeriod, salesData])
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault()

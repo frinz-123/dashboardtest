@@ -5,10 +5,9 @@ import Dashboard from '@/components/dashboard'
 import { useSession } from "next-auth/react"
 import { redirect } from "next/navigation"
 
-// These environment variables might be undefined during build
-const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY!
-const spreadsheetId = process.env.NEXT_PUBLIC_SPREADSHEET_ID!
-const sheetName = process.env.NEXT_PUBLIC_SHEET_NAME!
+const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY
+const spreadsheetId = process.env.NEXT_PUBLIC_SPREADSHEET_ID
+const sheetName = process.env.NEXT_PUBLIC_SHEET_NAME
 
 async function getLatestRowNumber(): Promise<number> {
   try {

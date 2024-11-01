@@ -3,19 +3,12 @@ const withPWA = require('next-pwa')({
   disable: process.env.NODE_ENV === 'development',
   register: true,
   skipWaiting: true,
-  buildExcludes: [/middleware-manifest\.json$/],
 })
 
-/** @type {import('next').NextConfig} */
-const nextConfig = {
-  output: 'standalone',
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
+module.exports = withPWA({
+  // Your existing Next.js config options here
   images: {
-    unoptimized: true,
-    domains: ['your-domain.com'],
+    domains: ['your-domain.com'], // Add any domains you're loading images from
   },
-}
-
-module.exports = withPWA(nextConfig)
+  // Remove the 'target' property as it's no longer needed
+})

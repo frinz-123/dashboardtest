@@ -12,9 +12,9 @@ import SaleDetailsPopup from './SaleDetailsPopup'
 import Link from 'next/link'
 import { useSession, signOut } from 'next-auth/react'
 
-const googleApiKey = 'AIzaSyDFYvzbw3A1xUj8iFJCE6dnZBTKGCitYKo'
-const spreadsheetId = '1a0jZVdKFNWTHDsM-68LT5_OLPMGejAKs9wfCxYqqe_g'
-const sheetName = 'Form_Data'
+const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY
+const spreadsheetId = process.env.NEXT_PUBLIC_SPREADSHEET_ID
+const sheetName = process.env.NEXT_PUBLIC_SHEET_NAME
 
 type TimePeriod = 'Diario' | 'Semanal' | 'Mensual'
 type Sale = {
@@ -32,7 +32,8 @@ const emailLabels: Record<string, string> = {
   'ventas3productoselrey@gmail.com': 'Lidia',
   'ventasmztproductoselrey.com@gmail.com': 'Mazatlan',
   'franzcharbell@gmail.com': 'Franz',
-  'cesar.reyes.ochoa@gmail.com': 'Cesar'
+  'cesar.reyes.ochoa@gmail.com': 'Cesar',
+  'arturo.elreychiltepin@gmail.com': 'Arturo Mty'
 }
 
 export default function Dashboard() {

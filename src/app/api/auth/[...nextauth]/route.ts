@@ -1,6 +1,31 @@
 import NextAuth from "next-auth"
-import { options } from "./options"
+import GoogleProvider from "next-auth/providers/google"
+import { AuthOptions } from "next-auth"
 
-const handler = NextAuth(options)
+export const authOptions: AuthOptions = {
+  providers: [
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+    }),
+  ],
+  callbacks: {
+    async signIn({ user, account, profile }) {
+      const allowedEmails = [
+        'ventas1productoselrey@gmail.com',
+        'ventas2productoselrey@gmail.com',
+        'ventas3productoselrey@gmail.com',
+        'ventasmztproductoselrey.com@gmail.com',
+        'franzcharbell@gmail.com',
+        'cesar.reyes.ochoa@gmail.com',
+        process.env.OVERRIDE_EMAIL
+      ].filter(Boolean)
+      
+      return allowedEmails.includes(user.email?.toLowerCase() || '')
+    }
+  }
+}
+
+const handler = NextAuth(authOptions)
 
 export { handler as GET, handler as POST }

@@ -4,7 +4,6 @@
 
 import { Minus, Plus } from "lucide-react";
 import { Button, Group, Input, Label, NumberField } from "react-aria-components";
-import { cn } from "@/lib/utils";
 
 interface LabelNumbersProps {
   label: string;
@@ -15,7 +14,7 @@ interface LabelNumbersProps {
 export default function LabelNumbers({ label, value, onChange }: LabelNumbersProps) {
   return (
     <NumberField 
-      value={value}
+      defaultValue={value} 
       minValue={0}
       onChange={onChange}
     >

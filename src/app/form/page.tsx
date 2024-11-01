@@ -10,10 +10,10 @@ import Map from '@/components/ui/Map'
 import InputGray from '@/components/ui/InputGray'
 import { useSession } from "next-auth/react"
 
-const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY!
-const spreadsheetId = process.env.NEXT_PUBLIC_SPREADSHEET_ID!
-const sheetName = process.env.NEXT_PUBLIC_SHEET_NAME!
-const OVERRIDE_EMAIL = process.env.OVERRIDE_EMAIL!
+const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY
+const spreadsheetId = process.env.NEXT_PUBLIC_SPREADSHEET_ID
+const sheetName = process.env.NEXT_PUBLIC_SHEET_NAME
+const OVERRIDE_EMAIL = process.env.OVERRIDE_EMAIL
 
 function getClientCode(clientName: string): string {
   if (!clientName) return 'EFT'
@@ -523,6 +523,12 @@ const getProductPrice = (clientCode: string, product: string): number => {
   return priceList[product] || 0
 }
 
+type Client = {
+  name: string;
+  lat: number;
+  lng: number;
+}
+
 // Function to calculate distance between two points in meters using the Haversine formula
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371e3; // Earth's radius in meters
@@ -535,8 +541,9 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
           Math.cos(φ1) * Math.cos(φ2) *
           Math.sin(Δλ/2) * Math.sin(Δλ/2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  const distance = R * c;
 
-  return R * c; // Return the calculated distance
+  return distance;
 }
 
 export default function FormPage() {
@@ -555,11 +562,9 @@ export default function FormPage() {
   const [key, setKey] = useState(0)
 
   const throttledLocationUpdate = useRef(
-    throttle((loc: unknown) => {
-      if (isLocationObject(loc)) {
-        setCurrentLocation(loc);
-      }
-    }, 1000)
+    throttle((location: { lat: number, lng: number }) => {
+      setCurrentLocation(location);
+    }, 1000) // Throttle to once every second
   ).current;
 
   useEffect(() => {
@@ -876,25 +881,13 @@ export default function FormPage() {
 } 
 
 // Utility function for throttling
-function throttle(func: (...args: unknown[]) => void, limit: number) {
-  let inThrottle = false;
-  return function(this: unknown, ...args: unknown[]) {
+function throttle(func: Function, limit: number) {
+  let inThrottle: boolean;
+  return function(this: any, ...args: any[]) {
     if (!inThrottle) {
       func.apply(this, args);
       inThrottle = true;
       setTimeout(() => inThrottle = false, limit);
     }
   }
-}
-
-// Add this type guard
-function isLocationObject(obj: unknown): obj is { lat: number; lng: number } {
-  return (
-    typeof obj === 'object' &&
-    obj !== null &&
-    'lat' in obj &&
-    'lng' in obj &&
-    typeof (obj as any).lat === 'number' &&
-    typeof (obj as any).lng === 'number'
-  );
 }
