@@ -5,46 +5,20 @@ import Dashboard from '@/components/dashboard'
 import { useSession } from "next-auth/react"
 import { redirect } from "next/navigation"
 
-const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY
-const spreadsheetId = process.env.NEXT_PUBLIC_SPREADSHEET_ID
-const sheetName = process.env.NEXT_PUBLIC_SHEET_NAME
-
-async function getLatestRowNumber(): Promise<number> {
-  try {
-    const response = await fetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:A?key=${googleApiKey}`
-    )
-    const data = await response.json()
-    
-    if (!data.values) {
-      return 2 // Start at row 2 if sheet is empty (row 1 is headers)
-    }
-    
-    // Find the last non-empty row
-    let lastRow = data.values.length
-    while (lastRow > 0 && (!data.values[lastRow - 1] || !data.values[lastRow - 1][0])) {
-      lastRow--
-    }
-    
-    // Return the next available row number
-    return lastRow + 1
-  } catch (error) {
-    console.error('Error getting latest row:', error)
-    throw new Error('Failed to get latest row number')
-  }
-}
-
-export { getLatestRowNumber }
-
 export default function Home() {
-  const { data: session, status } = useSession()
+  const { data: session, status } = useSession({
+    required: true,
+    onUnauthenticated() {
+      redirect('/api/auth/signin')
+    },
+  })
 
   if (status === "loading") {
-    return <div>Loading...</div>
-  }
-
-  if (!session) {
-    redirect("/api/auth/signin")
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    )
   }
 
   return (

@@ -9,8 +9,11 @@ export const authOptions: AuthOptions = {
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
     }),
   ],
+  pages: {
+    signIn: '/auth/signin',
+  },
   callbacks: {
-    async signIn({ user, account, profile }) {
+    async signIn({ user, account: _, profile: __ }) {
       const allowedEmails = [
         'ventas1productoselrey@gmail.com',
         'ventas2productoselrey@gmail.com',
@@ -22,8 +25,28 @@ export const authOptions: AuthOptions = {
       ].filter(Boolean)
       
       return allowedEmails.includes(user.email?.toLowerCase() || '')
+    },
+    async redirect({ url, baseUrl }) {
+      // Allows relative callback URLs
+      if (url.startsWith("/")) return `${baseUrl}${url}`
+      // Allows callback URLs on the same origin
+      else if (new URL(url).origin === baseUrl) return url
+      return baseUrl
+    },
+    async session({ session, token }) {
+      return session
+    },
+    async jwt({ token, user }) {
+      if (user) {
+        token.id = user.id
+      }
+      return token
     }
-  }
+  },
+  secret: process.env.NEXTAUTH_SECRET,
+  session: {
+    strategy: "jwt",
+  },
 }
 
 const handler = NextAuth(authOptions)
