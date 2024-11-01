@@ -523,12 +523,6 @@ const getProductPrice = (clientCode: string, product: string): number => {
   return priceList[product] || 0
 }
 
-type Client = {
-  name: string;
-  lat: number;
-  lng: number;
-}
-
 // Function to calculate distance between two points in meters using the Haversine formula
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371e3; // Earth's radius in meters
@@ -880,9 +874,9 @@ export default function FormPage() {
 } 
 
 // Utility function for throttling
-function throttle(func: Function, limit: number) {
-  let inThrottle: boolean;
-  return function(this: any, ...args: any[]) {
+function throttle(func: (...args: unknown[]) => void, limit: number) {
+  let inThrottle = false;
+  return function(this: unknown, ...args: unknown[]) {
     if (!inThrottle) {
       func.apply(this, args);
       inThrottle = true;

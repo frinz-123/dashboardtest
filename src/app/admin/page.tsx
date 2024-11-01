@@ -102,9 +102,10 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (salesData.length > 0) {
-      updateChartData()
+      updateChartData();
     }
-  }, [selectedPeriod, salesData])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPeriod, salesData]);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault()

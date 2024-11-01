@@ -57,8 +57,9 @@ export default function Map({ onLocationUpdate }: MapProps) {
   }
 
   useEffect(() => {
-    getCurrentLocation()
-  }, [])
+    getCurrentLocation();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (location && mapContainer.current && !map.current) {
