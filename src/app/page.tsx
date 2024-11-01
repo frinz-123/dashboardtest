@@ -5,9 +5,9 @@ import Dashboard from '@/components/dashboard'
 import { useSession } from "next-auth/react"
 import { redirect } from "next/navigation"
 
-const googleApiKey = 'AIzaSyDFYvzbw3A1xUj8iFJCE6dnZBTKGCitYKo'
-const spreadsheetId = '1a0jZVdKFNWTHDsM-68LT5_OLPMGejAKs9wfCxYqqe_g'
-const sheetName = 'Form_Data'
+const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY!
+const spreadsheetId = process.env.NEXT_PUBLIC_SPREADSHEET_ID!
+const sheetName = process.env.NEXT_PUBLIC_SHEET_NAME!
 
 async function getLatestRowNumber(): Promise<number> {
   try {

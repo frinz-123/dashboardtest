@@ -10,10 +10,10 @@ import Map from '@/components/ui/Map'
 import InputGray from '@/components/ui/InputGray'
 import { useSession } from "next-auth/react"
 
-const googleApiKey = 'AIzaSyDFYvzbw3A1xUj8iFJCE6dnZBTKGCitYKo'
-const spreadsheetId = '1a0jZVdKFNWTHDsM-68LT5_OLPMGejAKs9wfCxYqqe_g'
-const sheetName = 'Form_Data'
-const OVERRIDE_EMAIL = 'franzcharbell@gmail.com' // Replace this with the actual email later
+const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY!
+const spreadsheetId = process.env.NEXT_PUBLIC_SPREADSHEET_ID!
+const sheetName = process.env.NEXT_PUBLIC_SHEET_NAME!
+const OVERRIDE_EMAIL = process.env.OVERRIDE_EMAIL!
 
 function getClientCode(clientName: string): string {
   if (!clientName) return 'EFT'
@@ -541,9 +541,8 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
           Math.cos(φ1) * Math.cos(φ2) *
           Math.sin(Δλ/2) * Math.sin(Δλ/2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-  const distance = R * c;
 
-  return distance;
+  return R * c; // Return the calculated distance
 }
 
 export default function FormPage() {
