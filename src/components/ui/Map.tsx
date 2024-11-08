@@ -29,33 +29,10 @@ export default function Map({ onLocationUpdate }: MapProps) {
 
     const options = {
       enableHighAccuracy: true,
-      timeout: 10000,  // Increased timeout for iOS
-      maximumAge: 0,   // Always get fresh position
+      timeout: 5000,
+      maximumAge: 0
     }
 
-    // For iOS, try to request permission explicitly
-    if (typeof window !== 'undefined' && navigator.permissions && navigator.permissions.query) {
-      navigator.permissions.query({ name: 'geolocation' })
-        .then(permissionStatus => {
-          permissionStatus.onchange = () => {
-            if (permissionStatus.state === 'granted') {
-              getPosition()
-            } else {
-              setLocationError('Please enable location services in your settings')
-            }
-          }
-        })
-        .catch(() => {
-          // Fallback to direct geolocation request if permissions API is not supported
-          getPosition()
-        })
-    } else {
-      // Direct geolocation request for older browsers
-      getPosition()
-    }
-  }
-
-  const getPosition = () => {
     navigator.geolocation.getCurrentPosition(
       (position) => {
         const newLocation = {
@@ -69,12 +46,10 @@ export default function Map({ onLocationUpdate }: MapProps) {
           map.current.setCenter([newLocation.lng, newLocation.lat])
           // Update marker position
           const markers = document.getElementsByClassName('mapboxgl-marker')
-          Array.from(markers).forEach(marker => marker.remove())
-          
-          new mapboxgl.Marker({
-            color: "#FF0000",
-            draggable: false
-          })
+          if (markers.length > 0) {
+            markers[0].remove()
+          }
+          new mapboxgl.Marker()
             .setLngLat([newLocation.lng, newLocation.lat])
             .addTo(map.current)
         }
@@ -85,13 +60,13 @@ export default function Map({ onLocationUpdate }: MapProps) {
         let errorMessage = 'Error getting location'
         switch (error.code) {
           case error.PERMISSION_DENIED:
-            errorMessage = 'Please allow location access in your device settings'
+            errorMessage = 'Please allow location access to use this feature'
             break
           case error.POSITION_UNAVAILABLE:
             errorMessage = 'Location information is unavailable'
             break
           case error.TIMEOUT:
-            errorMessage = 'Location request timed out. Please try again'
+            errorMessage = 'Location request timed out'
             break
         }
         setLocationError(errorMessage)
@@ -109,20 +84,21 @@ export default function Map({ onLocationUpdate }: MapProps) {
     )
   }
 
-  // Initial location request
+  // Request location permission when component mounts
   useEffect(() => {
-    // Add meta viewport tag for better mobile handling
-    const meta = document.createElement('meta')
-    meta.name = 'viewport'
-    meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no'
-    document.getElementsByTagName('head')[0].appendChild(meta)
-
-    // Request location
-    getCurrentLocation()
-
-    // Cleanup
-    return () => {
-      document.getElementsByTagName('head')[0].removeChild(meta)
+    if (typeof window !== 'undefined' && navigator.permissions) {
+      navigator.permissions.query({ name: 'geolocation' }).then((result) => {
+        if (result.state === 'granted') {
+          getCurrentLocation()
+        } else if (result.state === 'prompt') {
+          // This will trigger the permission prompt
+          getCurrentLocation()
+        } else {
+          setLocationError('Location permission denied')
+        }
+      })
+    } else {
+      getCurrentLocation()
     }
   }, [])
 
@@ -132,24 +108,14 @@ export default function Map({ onLocationUpdate }: MapProps) {
         container: mapContainer.current,
         style: 'mapbox://styles/mapbox/streets-v12',
         center: [location.lng, location.lat],
-        zoom: 15,
-        attributionControl: false, // Hide attribution for cleaner mobile view
-        cooperativeGestures: true  // Enable cooperative gestures for better iOS handling
+        zoom: 15
       })
 
       // Add navigation controls
-      map.current.addControl(
-        new mapboxgl.NavigationControl({
-          showCompass: false // Only show zoom controls
-        }),
-        'top-right'
-      )
+      map.current.addControl(new mapboxgl.NavigationControl())
 
       // Add marker at user's location
-      new mapboxgl.Marker({
-        color: "#FF0000",
-        draggable: false
-      })
+      new mapboxgl.Marker()
         .setLngLat([location.lng, location.lat])
         .addTo(map.current)
     }
@@ -157,15 +123,7 @@ export default function Map({ onLocationUpdate }: MapProps) {
 
   return (
     <div className="relative">
-      <div 
-        ref={mapContainer} 
-        style={{ 
-          height: '300px', 
-          borderRadius: '0.5rem',
-          overflow: 'hidden', // Ensure no content spills out
-          WebkitOverflowScrolling: 'touch' // Enable smooth scrolling on iOS
-        }} 
-      />
+      <div ref={mapContainer} style={{ height: '300px', borderRadius: '0.5rem' }} />
       <div className="flex justify-between items-center mt-2">
         {locationError ? (
           <p className="text-xs text-red-500">
@@ -178,9 +136,8 @@ export default function Map({ onLocationUpdate }: MapProps) {
         )}
         <button
           onClick={getCurrentLocation}
-          className="p-2 rounded-full hover:bg-gray-100 transition-colors duration-200 active:bg-gray-200" // Added active state for better mobile feedback
+          className="p-2 rounded-full hover:bg-gray-100 transition-colors duration-200"
           disabled={isRefreshing}
-          aria-label="Refresh location"
         >
           <RefreshCw 
             className={`h-4 w-4 text-gray-600 ${isRefreshing ? 'animate-spin' : ''}`} 
