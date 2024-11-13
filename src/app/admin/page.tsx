@@ -7,7 +7,7 @@ import BlurIn from '@/components/ui/blur-in'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar } from 'recharts'
 import { getCurrentPeriodInfo, getWeekDates, isDateInPeriod } from '@/utils/dateUtils'
 
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD
+const ADMIN_PASSWORD = process.env.NEXT_PUBLIC_ADMIN_PASSWORD
 
 const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY
 const spreadsheetId = process.env.NEXT_PUBLIC_SPREADSHEET_ID
