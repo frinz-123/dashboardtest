@@ -606,7 +606,7 @@ export default function FormPage() {
         clientLocation.lng
       )
 
-      if (distance > 100) {  // 100 meters threshold
+      if (distance > 200) {  // 200 meters threshold
         setLocationAlert('Estas lejos del cliente')
       } else {
         setLocationAlert(null)
