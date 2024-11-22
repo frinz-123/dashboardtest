@@ -1,11 +1,22 @@
 import React from 'react'
 import { X } from 'lucide-react'
 
+const EMAIL_TO_SELLER: Record<string, string> = {
+  'ventas1productoselrey@gmail.com': 'Ernesto',
+  'ventas2productoselrey@gmail.com': 'Roel',
+  'ventas3productoselrey@gmail.com': 'Lidia',
+  'ventasmztproductoselrey.com@gmail.com': 'Mazatlan',
+  'franzcharbell@gmail.com': 'Franz',
+  'cesar.reyes.ochoa@gmail.com': 'Cesar',
+  'arturo.elreychiltepin@gmail.com': 'Arturo Mty'
+};
+
 type Sale = {
   clientName: string;
   fechaSinHora: string;
   venta: number;
   products: Record<string, number>;
+  email: string;
 }
 
 type SaleDetailsPopupProps = {
@@ -14,6 +25,8 @@ type SaleDetailsPopupProps = {
 }
 
 export default function SaleDetailsPopup({ sale, onClose }: SaleDetailsPopupProps) {
+  const sellerName = EMAIL_TO_SELLER[sale.email] || 'Desconocido';
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg p-6 max-w-md w-full max-h-[80vh] overflow-y-auto">
@@ -24,6 +37,8 @@ export default function SaleDetailsPopup({ sale, onClose }: SaleDetailsPopupProp
           </button>
         </div>
         <p className="mb-2"><strong>Cliente:</strong> {sale.clientName}</p>
+        <p className="mb-2"><strong>Email:</strong> {sale.email}</p>
+        <p className="mb-2"><strong>Vendedor:</strong> {sellerName}</p>
         <p className="mb-2"><strong>Fecha:</strong> {sale.fechaSinHora}</p>
         <p className="mb-4"><strong>Total:</strong> ${sale.venta.toFixed(2)}</p>
         <h3 className="font-semibold mb-2">Productos:</h3>
