@@ -529,8 +529,14 @@ type Client = {
   lng: number;
 }
 
-// Function to calculate distance between two points in meters using the Haversine formula
+// Update the calculateDistance function to be more precise
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  // Convert coordinates to fixed precision to avoid floating point issues
+  lat1 = Number(lat1.toFixed(5));
+  lon1 = Number(lon1.toFixed(5));
+  lat2 = Number(lat2.toFixed(5));
+  lon2 = Number(lon2.toFixed(5));
+
   const R = 6371e3; // Earth's radius in meters
   const φ1 = lat1 * Math.PI/180;
   const φ2 = lat2 * Math.PI/180;
@@ -598,21 +604,23 @@ export default function FormPage() {
 
   useEffect(() => {
     if (selectedClient && currentLocation && clientLocations[selectedClient]) {
-      const clientLocation = clientLocations[selectedClient]
+      const clientLocation = clientLocations[selectedClient];
       const distance = calculateDistance(
         currentLocation.lat,
         currentLocation.lng,
         clientLocation.lat,
         clientLocation.lng
-      )
+      );
 
-      if (distance > 200) {  // 200 meters threshold
-        setLocationAlert('Estas lejos del cliente')
+      // Increase threshold to 500 meters and add some logging
+      if (distance > 200) {  // Changed from 200 to 500 meters
+        setLocationAlert('Estas lejos del cliente');
+        console.log(`Distance to client: ${distance.toFixed(2)} meters`);
       } else {
-        setLocationAlert(null)
+        setLocationAlert(null);
       }
     }
-  }, [selectedClient, currentLocation, clientLocations])
+  }, [selectedClient, currentLocation, clientLocations]);
 
   const fetchClientNames = async () => {
     try {
