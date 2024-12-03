@@ -86,7 +86,7 @@ const PRICES: ProductPrices = {
   'CLEY': {
     'Chiltepin Molido 50 g': 44.16,
     'Chiltepin Molido 20 g': 22.08,
-    'Chiltepin Entero 30 g': 15,
+    'Chiltepin Entero 30 g': 45,
     'Salsa Chiltepin El rey 195 ml': 15,
     'Salsa Especial El Rey 195 ml': 15,
     'Salsa Reina El rey 195 ml': 15,
@@ -591,14 +591,12 @@ export default function FormPage() {
   useEffect(() => {
     if (selectedClient) {
       const clientCode = getClientCode(selectedClient)
-      let total = 0
-      
-      Object.entries(quantities).forEach(([product, quantity]) => {
+      const calculatedTotal = Object.entries(quantities).reduce((sum, [product, quantity]) => {
         const price = getProductPrice(clientCode, product)
-        total += price * quantity
-      })
-
-      setTotal(total.toFixed(2))
+        return sum + (price * quantity)
+      }, 0)
+      
+      setTotal(calculatedTotal.toFixed(2))
     }
   }, [selectedClient, quantities])
 
@@ -677,14 +675,34 @@ export default function FormPage() {
   ]
 
   const handleQuantityChange = (product: string, value: number) => {
-    setQuantities(prev => ({
-      ...prev,
-      [product]: value
-    }))
+    setQuantities(prev => {
+      const newQuantities = {
+        ...prev,
+        [product]: value
+      }
+      
+      // Recalculate total immediately after quantity change
+      if (selectedClient) {
+        const clientCode = getClientCode(selectedClient)
+        const newTotal = Object.entries(newQuantities).reduce((sum, [prod, qty]) => {
+          const price = getProductPrice(clientCode, prod)
+          return sum + (price * qty)
+        }, 0)
+        
+        // Use setTimeout to avoid state update conflicts
+        setTimeout(() => setTotal(newTotal.toFixed(2)), 0)
+      }
+      
+      return newQuantities
+    })
   }
 
   const handleLocationUpdate = (location: { lat: number, lng: number }) => {
-    throttledLocationUpdate(location)
+    const limitedLocation = {
+      lat: Number(location.lat.toFixed(5)),
+      lng: Number(location.lng.toFixed(5))
+    }
+    throttledLocationUpdate(limitedLocation)
   }
 
   const canSubmitDespiteAlert = session?.user?.email === OVERRIDE_EMAIL
@@ -739,6 +757,27 @@ export default function FormPage() {
     } finally {
       setIsSubmitting(false)
     }
+  }
+
+  const calculateOrderDetails = () => {
+    if (!selectedClient) return []
+    
+    const clientCode = getClientCode(selectedClient)
+    const details: { product: string; quantity: number; price: number; subtotal: number }[] = []
+    
+    Object.entries(quantities).forEach(([product, quantity]) => {
+      if (quantity > 0) {
+        const price = getProductPrice(clientCode, product)
+        details.push({
+          product,
+          quantity,
+          price,
+          subtotal: price * quantity
+        })
+      }
+    })
+    
+    return details
   }
 
   return (
@@ -841,7 +880,10 @@ export default function FormPage() {
 
       <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
         <h2 className="text-gray-700 font-semibold text-xs mb-3">Ubicación Actual</h2>
-        <Map onLocationUpdate={handleLocationUpdate} />
+        <Map 
+          onLocationUpdate={handleLocationUpdate}
+          clientLocation={selectedClient ? clientLocations[selectedClient] : null}
+        />
       </div>
 
       <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9] space-y-4">
@@ -856,13 +898,26 @@ export default function FormPage() {
       </div>
 
       <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
-        <InputGray
-          label="Total"
-          value={total}
-          onChange={setTotal}
-          type="number"
-          placeholder="0.00"
-        />
+        {Object.values(quantities).some(q => q > 0) && (
+          <div className="text-sm">
+            <h3 className="font-semibold text-gray-700 mb-2">Detalles del pedido:</h3>
+            <div className="space-y-2">
+              {calculateOrderDetails().map(({ product, quantity, price, subtotal }) => (
+                <div key={product} className="flex justify-between text-gray-600">
+                  <span>{quantity}x {product}</span>
+                  <div className="text-right">
+                    <span className="text-gray-500">${price} c/u</span>
+                    <span className="ml-2">${subtotal.toFixed(2)}</span>
+                  </div>
+                </div>
+              ))}
+              <div className="border-t pt-2 font-medium flex justify-between text-gray-800">
+                <span>Total</span>
+                <span>${total}</span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       <button

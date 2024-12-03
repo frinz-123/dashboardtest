@@ -9,9 +9,10 @@ mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || ''
 
 type MapProps = {
   onLocationUpdate?: (location: { lat: number, lng: number }) => void;
+  clientLocation?: { lat: number, lng: number } | null;
 }
 
-export default function Map({ onLocationUpdate }: MapProps) {
+export default function Map({ onLocationUpdate, clientLocation }: MapProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<mapboxgl.Map | null>(null)
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(null)
@@ -36,8 +37,8 @@ export default function Map({ onLocationUpdate }: MapProps) {
     navigator.geolocation.getCurrentPosition(
       (position) => {
         const newLocation = {
-          lat: position.coords.latitude,
-          lng: position.coords.longitude
+          lat: Number(position.coords.latitude.toFixed(5)),
+          lng: Number(position.coords.longitude.toFixed(5))
         }
         setLocation(newLocation)
         onLocationUpdate?.(newLocation)
@@ -73,8 +74,8 @@ export default function Map({ onLocationUpdate }: MapProps) {
         
         // Set default location if there's an error
         const defaultLocation = {
-          lat: 29.0729673,
-          lng: -110.9559192
+          lat: 29.07297,
+          lng: -110.95592
         }
         setLocation(defaultLocation)
         onLocationUpdate?.(defaultLocation)
@@ -121,6 +122,47 @@ export default function Map({ onLocationUpdate }: MapProps) {
     }
   }, [location])
 
+  // Update the client location marker effect
+  useEffect(() => {
+    // Remove existing client markers first
+    const clientMarkers = document.getElementsByClassName('client-marker')
+    while (clientMarkers.length > 0) {
+      clientMarkers[0].remove()
+    }
+
+    // Only add new marker if map exists and clientLocation is provided
+    if (map.current && clientLocation) {
+      // Create a red marker
+      const marker = new mapboxgl.Marker({
+        color: '#FF0000',
+        scale: 0.8,
+        className: 'client-marker' // Add this class to identify client markers
+      })
+        .setLngLat([clientLocation.lng, clientLocation.lat])
+        .addTo(map.current)
+
+      // Adjust map bounds to show both markers
+      if (location) {
+        const bounds = new mapboxgl.LngLatBounds()
+        bounds.extend([location.lng, location.lat])
+        bounds.extend([clientLocation.lng, clientLocation.lat])
+        
+        map.current.fitBounds(bounds, {
+          padding: 50,
+          maxZoom: 15
+        })
+      }
+    }
+
+    // Reset map view to user location if no client location
+    if (map.current && !clientLocation && location) {
+      map.current.flyTo({
+        center: [location.lng, location.lat],
+        zoom: 15
+      })
+    }
+  }, [clientLocation, location])
+
   return (
     <div className="relative">
       <div ref={mapContainer} style={{ height: '300px', borderRadius: '0.5rem' }} />
@@ -131,7 +173,7 @@ export default function Map({ onLocationUpdate }: MapProps) {
           </p>
         ) : location && (
           <p className="text-xs text-gray-500">
-            Ubicación: {location.lat.toFixed(6)}, {location.lng.toFixed(6)}
+            Ubicación: {location.lat.toFixed(5)}, {location.lng.toFixed(5)}
           </p>
         )}
         <button
