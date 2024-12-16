@@ -552,6 +552,14 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
   return distance;
 }
 
+// Add this new utility function for a simpler distance check
+const calculateSimpleDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+  // Simple rectangular distance calculation (less accurate but more forgiving)
+  const latDiff = Math.abs(lat1 - lat2) * 111000 // Convert to meters (roughly)
+  const lonDiff = Math.abs(lon1 - lon2) * 111000 * Math.cos(lat1 * Math.PI / 180)
+  return Math.sqrt(latDiff * latDiff + lonDiff * lonDiff)
+}
+
 export default function FormPage() {
   const { data: session } = useSession()
   const [isMenuOpen, setIsMenuOpen] = useState(false)
@@ -566,6 +574,16 @@ export default function FormPage() {
   const [locationAlert, setLocationAlert] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [key, setKey] = useState(0)
+
+  // Add loading state for initial data fetch
+  const [isLoading, setIsLoading] = useState(true)
+  
+  // Add validation states
+  const [validationErrors, setValidationErrors] = useState<{
+    client?: string;
+    location?: string;
+    products?: string;
+  }>({})
 
   const throttledLocationUpdate = useRef(
     throttle((location: { lat: number, lng: number }) => {
@@ -601,30 +619,93 @@ export default function FormPage() {
   }, [selectedClient, quantities])
 
   useEffect(() => {
+    let timeoutId: NodeJS.Timeout
+    
     if (selectedClient && currentLocation && clientLocations[selectedClient]) {
-      const clientLocation = clientLocations[selectedClient];
-      const distance = calculateDistance(
-        currentLocation.lat,
-        currentLocation.lng,
-        clientLocation.lat,
-        clientLocation.lng
-      );
+      const clientLocation = clientLocations[selectedClient]
+      
+      try {
+        // First try with Haversine formula
+        const haversineDistance = calculateDistance(
+          currentLocation.lat,
+          currentLocation.lng,
+          clientLocation.lat,
+          clientLocation.lng
+        )
 
-      // Increase threshold to 500 meters and add some logging
-      if (distance > 200) {  // Changed from 200 to 500 meters
-        setLocationAlert('Estas lejos del cliente');
-        console.log(`Distance to client: ${distance.toFixed(2)} meters`);
-      } else {
-        setLocationAlert(null);
+        // If Haversine gives an unreasonable result or throws, use simple distance
+        if (isNaN(haversineDistance) || haversineDistance > 10000) { // 10km sanity check
+          console.log('Haversine distance check failed, using fallback method')
+          const simpleDistance = calculateSimpleDistance(
+            currentLocation.lat,
+            currentLocation.lng,
+            clientLocation.lat,
+            clientLocation.lng
+          )
+
+          if (simpleDistance > 200) {
+            timeoutId = setTimeout(() => {
+              setLocationAlert('Estas lejos del cliente (verificación simple)')
+            }, 1000)
+          } else {
+            setLocationAlert(null)
+          }
+        } else {
+          // Use Haversine result if it seems reasonable
+          if (haversineDistance > 200) {
+            timeoutId = setTimeout(() => {
+              setLocationAlert('Estas lejos del cliente')
+            }, 1000)
+          } else {
+            setLocationAlert(null)
+          }
+        }
+
+        // Log distances for debugging
+        console.log({
+          haversineDistance: haversineDistance?.toFixed(2),
+          simpleDistance: calculateSimpleDistance(
+            currentLocation.lat,
+            currentLocation.lng,
+            clientLocation.lat,
+            clientLocation.lng
+          ).toFixed(2),
+          currentLocation,
+          clientLocation
+        })
+
+      } catch (error) {
+        console.error('Distance calculation error:', error)
+        
+        // Final fallback: Use bounding box check
+        const latDiff = Math.abs(currentLocation.lat - clientLocation.lat)
+        const lngDiff = Math.abs(currentLocation.lng - clientLocation.lng)
+        
+        if (latDiff > 0.002 || lngDiff > 0.002) { // Roughly 200m in decimal degrees
+          timeoutId = setTimeout(() => {
+            setLocationAlert('Estas lejos del cliente (verificación básica)')
+          }, 1000)
+        } else {
+          setLocationAlert(null)
+        }
       }
     }
-  }, [selectedClient, currentLocation, clientLocations]);
 
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId)
+    }
+  }, [selectedClient, currentLocation, clientLocations])
+
+  // Modify fetchClientNames to handle errors better
   const fetchClientNames = async () => {
+    setIsLoading(true)
     try {
       const response = await fetch(
         `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:C?key=${googleApiKey}`
       )
+      if (!response.ok) {
+        throw new Error('Failed to fetch client data')
+      }
       const data = await response.json()
       const clients: Record<string, { lat: number, lng: number }> = {}
       const names = data.values.slice(1).map((row: any[]) => {
@@ -643,6 +724,12 @@ export default function FormPage() {
       setClientLocations(clients)
     } catch (error) {
       console.error('Error fetching client names:', error)
+      setValidationErrors(prev => ({
+        ...prev,
+        client: 'Error loading clients. Please try again.'
+      }))
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -707,9 +794,30 @@ export default function FormPage() {
 
   const canSubmitDespiteAlert = session?.user?.email === OVERRIDE_EMAIL
 
+  // Add form validation
+  const validateForm = (): boolean => {
+    const errors: typeof validationErrors = {}
+
+    if (!selectedClient) {
+      errors.client = 'Por favor selecciona un cliente'
+    }
+
+    if (!currentLocation) {
+      errors.location = 'Se requiere acceso a la ubicación'
+    }
+
+    const hasProducts = Object.values(quantities).some(q => q > 0)
+    if (!hasProducts) {
+      errors.products = 'Selecciona al menos un producto'
+    }
+
+    setValidationErrors(errors)
+    return Object.keys(errors).length === 0
+  }
+
+  // Modify handleSubmit with better error handling
   const handleSubmit = async () => {
-    if (!selectedClient || !currentLocation) {
-      alert('Por favor selecciona un cliente y permite el acceso a la ubicación')
+    if (!validateForm()) {
       return
     }
 
@@ -719,6 +827,7 @@ export default function FormPage() {
     }
 
     setIsSubmitting(true)
+    setValidationErrors({})
 
     try {
       const clientCode = getClientCode(selectedClient)
@@ -739,6 +848,10 @@ export default function FormPage() {
 
       const data = await response.json()
 
+      if (!response.ok) {
+        throw new Error(data.error || 'Error al enviar el pedido')
+      }
+
       if (data.success) {
         alert('Pedido enviado exitosamente')
         // Reset form
@@ -748,8 +861,6 @@ export default function FormPage() {
         setTotal('0.00')
         setFilteredClients([])
         setKey(prev => prev + 1)
-      } else {
-        throw new Error(data.error || 'Failed to submit form')
       }
     } catch (error) {
       console.error('Error submitting form:', error)
@@ -778,6 +889,15 @@ export default function FormPage() {
     })
     
     return details
+  }
+
+  // Add loading state UI
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    )
   }
 
   return (
@@ -835,6 +955,13 @@ export default function FormPage() {
                     role="menuitem"
                   >
                     Rutas
+                  </Link>
+                  <Link
+                    href="/inventario"
+                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                    role="menuitem"
+                  >
+                    Inventario
                   </Link>
                 </div>
               </div>
@@ -946,6 +1073,15 @@ export default function FormPage() {
           'Enviar Pedido'
         )}
       </button>
+
+      {/* Add validation error messages */}
+      {Object.entries(validationErrors).map(([key, error]) => (
+        error && (
+          <div key={key} className="text-red-500 text-xs mt-1">
+            {error}
+          </div>
+        )
+      ))}
     </div>
   )
 } 
