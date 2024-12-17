@@ -812,7 +812,7 @@ function InventoryBarChart({ articulos }: { articulos: Articulo[] }) {
               top: 5,
               bottom: 5
             }}
-            barSize={16}
+            barSize={24}
             maxBarSize={200}
           >
             <CartesianGrid horizontal={false} />

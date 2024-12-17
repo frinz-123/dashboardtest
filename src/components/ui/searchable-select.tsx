@@ -31,6 +31,15 @@ export function SearchableSelect({
   placeholder = "Seleccionar producto..." 
 }: SearchableSelectProps) {
   const [open, setOpen] = React.useState(false)
+  const [searchQuery, setSearchQuery] = React.useState("")
+
+  const filteredOptions = React.useMemo(() => {
+    if (!searchQuery) return options;
+    
+    return options.filter((option) =>
+      option.label.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [options, searchQuery]);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -52,20 +61,23 @@ export function SearchableSelect({
         align="start"
         sideOffset={8}
       >
-        <Command>
+        <Command shouldFilter={false}>
           <CommandInput 
             placeholder="Buscar producto..." 
             className="text-base"
+            value={searchQuery}
+            onValueChange={setSearchQuery}
           />
           <CommandEmpty>No se encontraron resultados.</CommandEmpty>
           <CommandGroup className="max-h-[300px] overflow-y-auto">
-            {options.map((option) => (
+            {filteredOptions.map((option) => (
               <CommandItem
                 key={option.value}
                 value={option.value}
                 onSelect={() => {
                   onValueChange(option.value)
                   setOpen(false)
+                  setSearchQuery("")
                 }}
                 className="text-base"
               >

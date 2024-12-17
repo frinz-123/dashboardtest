@@ -15,6 +15,10 @@ const spreadsheetId = process.env.NEXT_PUBLIC_SPREADSHEET_ID
 const sheetName = process.env.NEXT_PUBLIC_SHEET_NAME
 const OVERRIDE_EMAIL = process.env.OVERRIDE_EMAIL
 
+const MIN_MOVEMENT_THRESHOLD = 20; // Increased from 10 meters to 20 meters
+const MAX_LOCATION_AGE = 30000; // 30 seconds in milliseconds
+const MAX_CLIENT_DISTANCE = 450; // Maximum allowed distance to client in meters
+
 function getClientCode(clientName: string): string {
   if (!clientName) return 'EFT'
 
@@ -530,13 +534,7 @@ type Client = {
 }
 
 // Update the calculateDistance function to be more precise
-function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  // Convert coordinates to fixed precision to avoid floating point issues
-  lat1 = Number(lat1.toFixed(5));
-  lon1 = Number(lon1.toFixed(5));
-  lat2 = Number(lat2.toFixed(5));
-  lon2 = Number(lon2.toFixed(5));
-
+const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
   const R = 6371e3; // Earth's radius in meters
   const φ1 = lat1 * Math.PI/180;
   const φ2 = lat2 * Math.PI/180;
@@ -547,18 +545,40 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
           Math.cos(φ1) * Math.cos(φ2) *
           Math.sin(Δλ/2) * Math.sin(Δλ/2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-  const distance = R * c;
 
-  return distance;
-}
+  return R * c;
+};
 
-// Add this new utility function for a simpler distance check
-const calculateSimpleDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
-  // Simple rectangular distance calculation (less accurate but more forgiving)
-  const latDiff = Math.abs(lat1 - lat2) * 111000 // Convert to meters (roughly)
-  const lonDiff = Math.abs(lon1 - lon2) * 111000 * Math.cos(lat1 * Math.PI / 180)
-  return Math.sqrt(latDiff * latDiff + lonDiff * lonDiff)
-}
+// Update the hasSignificantMovement function to be more lenient
+const hasSignificantMovement = (
+  oldLocation: { lat: number; lng: number } | null,
+  newLocation: { lat: number; lng: number }
+): boolean => {
+  if (!oldLocation) return true;
+
+  const distance = calculateDistance(
+    oldLocation.lat,
+    oldLocation.lng,
+    newLocation.lat,
+    newLocation.lng
+  );
+
+  // Add some tolerance to the comparison
+  return distance > MIN_MOVEMENT_THRESHOLD * 0.8; // 20% tolerance
+};
+
+// Update the handleLocationUpdate function
+const handleLocationUpdate = (location: { lat: number, lng: number }) => {
+  // Round to 5 decimals but add a small buffer for comparison
+  const limitedLocation = {
+    lat: Number(location.lat.toFixed(5)),
+    lng: Number(location.lng.toFixed(5))
+  };
+
+  if (hasSignificantMovement(currentLocation, limitedLocation)) {
+    throttledLocationUpdate(limitedLocation);
+  }
+};
 
 export default function FormPage() {
   const { data: session } = useSession()
@@ -619,82 +639,21 @@ export default function FormPage() {
   }, [selectedClient, quantities])
 
   useEffect(() => {
-    let timeoutId: NodeJS.Timeout
-    
     if (selectedClient && currentLocation && clientLocations[selectedClient]) {
-      const clientLocation = clientLocations[selectedClient]
-      
-      try {
-        // First try with Haversine formula
-        const haversineDistance = calculateDistance(
-          currentLocation.lat,
-          currentLocation.lng,
-          clientLocation.lat,
-          clientLocation.lng
-        )
+      const distance = calculateDistance(
+        currentLocation.lat,
+        currentLocation.lng,
+        clientLocations[selectedClient].lat,
+        clientLocations[selectedClient].lng
+      );
 
-        // If Haversine gives an unreasonable result or throws, use simple distance
-        if (isNaN(haversineDistance) || haversineDistance > 10000) { // 10km sanity check
-          console.log('Haversine distance check failed, using fallback method')
-          const simpleDistance = calculateSimpleDistance(
-            currentLocation.lat,
-            currentLocation.lng,
-            clientLocation.lat,
-            clientLocation.lng
-          )
-
-          if (simpleDistance > 200) {
-            timeoutId = setTimeout(() => {
-              setLocationAlert('Estas lejos del cliente (verificación simple)')
-            }, 1000)
-          } else {
-            setLocationAlert(null)
-          }
-        } else {
-          // Use Haversine result if it seems reasonable
-          if (haversineDistance > 200) {
-            timeoutId = setTimeout(() => {
-              setLocationAlert('Estas lejos del cliente')
-            }, 1000)
-          } else {
-            setLocationAlert(null)
-          }
-        }
-
-        // Log distances for debugging
-        console.log({
-          haversineDistance: haversineDistance?.toFixed(2),
-          simpleDistance: calculateSimpleDistance(
-            currentLocation.lat,
-            currentLocation.lng,
-            clientLocation.lat,
-            clientLocation.lng
-          ).toFixed(2),
-          currentLocation,
-          clientLocation
-        })
-
-      } catch (error) {
-        console.error('Distance calculation error:', error)
-        
-        // Final fallback: Use bounding box check
-        const latDiff = Math.abs(currentLocation.lat - clientLocation.lat)
-        const lngDiff = Math.abs(currentLocation.lng - clientLocation.lng)
-        
-        if (latDiff > 0.002 || lngDiff > 0.002) { // Roughly 200m in decimal degrees
-          timeoutId = setTimeout(() => {
-            setLocationAlert('Estas lejos del cliente (verificación básica)')
-          }, 1000)
-        } else {
-          setLocationAlert(null)
-        }
+      if (distance > MAX_CLIENT_DISTANCE) {
+        setLocationAlert('Estas lejos del cliente');
+      } else {
+        setLocationAlert(null);
       }
     }
-
-    return () => {
-      if (timeoutId) clearTimeout(timeoutId)
-    }
-  }, [selectedClient, currentLocation, clientLocations])
+  }, [selectedClient, currentLocation, clientLocations]);
 
   // Modify fetchClientNames to handle errors better
   const fetchClientNames = async () => {
@@ -785,11 +744,15 @@ export default function FormPage() {
   };
 
   const handleLocationUpdate = (location: { lat: number, lng: number }) => {
+    // Round to 5 decimals but add a small buffer for comparison
     const limitedLocation = {
       lat: Number(location.lat.toFixed(5)),
       lng: Number(location.lng.toFixed(5))
+    };
+
+    if (hasSignificantMovement(currentLocation, limitedLocation)) {
+      throttledLocationUpdate(limitedLocation);
     }
-    throttledLocationUpdate(limitedLocation)
   }
 
   const canSubmitDespiteAlert = session?.user?.email === OVERRIDE_EMAIL
