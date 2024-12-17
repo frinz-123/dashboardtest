@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Bell, Plus, Search, Settings, Package, ChevronRight, LayoutGrid, TableIcon, Box, Tag, DollarSign, Clock, AlertCircle, Minus, TrendingUp } from 'lucide-react'
+import { Bell, Plus, Search, Settings, Package, ChevronRight, LayoutGrid, TableIcon, Box, Tag, DollarSign, Clock, AlertCircle, Minus, TrendingUp, Menu } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Label } from "@/components/ui/label"
@@ -21,6 +21,7 @@ import {
   Area,
   AreaChart
 } from "recharts"
+import Link from 'next/link'
 
 const spreadsheetId = process.env.NEXT_PUBLIC_SPREADSHEET_ID
 
@@ -853,16 +854,19 @@ function InventoryBarChart({ articulos }: { articulos: Articulo[] }) {
         <CardDescription>Top 12 Productos</CardDescription>
       </CardHeader>
       <CardContent className="h-[320px]">
-        <ChartContainer config={chartConfig} className="h-[280px]">
+        <ChartContainer config={chartConfig} className="h-[280px] max-w-full">
           <RechartsBarChart
             accessibilityLayer
             data={data}
             layout="vertical"
             margin={{
-              right: 16,
-              left: 100, // Add left margin for labels
+              right: 45,
+              left: 16,
+              top: 5,
+              bottom: 5
             }}
-            barSize={20} // Control bar height
+            barSize={16}
+            maxBarSize={200}
           >
             <CartesianGrid horizontal={false} />
             <RechartsYAxis
@@ -871,37 +875,30 @@ function InventoryBarChart({ articulos }: { articulos: Articulo[] }) {
               tickLine={false}
               tickMargin={10}
               axisLine={false}
-              tickFormatter={(value) => value.slice(0, 20)}
-              width={100} // Fixed width for labels
+              hide
+              width={0}
             />
             <RechartsXAxis 
               dataKey="cantidad" 
               type="number" 
-              domain={[0, 'dataMax + 20']} // Add padding to max value
+              domain={[0, 250]}
               hide 
             />
             <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
             <RechartsBar
               dataKey="cantidad"
               layout="vertical"
-              fill="#93C5FD" // Light blue (Tailwind blue-300)
+              fill="#93C5FD"
               radius={4}
-              minPointSize={2} // Minimum bar width
-              maxBarSize={20} // Maximum bar height
+              minPointSize={2}
+              maxBarSize={16}
             >
               <LabelList
                 dataKey="name"
                 position="insideLeft"
-                offset={8}
+                offset={6}
                 className="fill-[--color-label]"
-                fontSize={12}
-              />
-              <LabelList
-                dataKey="cantidad"
-                position="right"
-                offset={8}
-                className="fill-foreground"
-                fontSize={12}
+                fontSize={10}
               />
             </RechartsBar>
           </RechartsBarChart>
@@ -1014,13 +1011,15 @@ function InventoryAreaChart({ articulos }: { articulos: Articulo[] }) {
         <CardDescription>Movimientos de la semana</CardDescription>
       </CardHeader>
       <CardContent className="h-[320px]">
-        <ChartContainer config={chartConfig} className="h-[280px]">
+        <ChartContainer config={chartConfig} className="h-[280px] max-w-full">
           <AreaChart
             accessibilityLayer
             data={chartData}
             margin={{
-              left: 12,
-              right: 12,
+              left: 16,
+              right: 45,
+              top: 5,
+              bottom: 5
             }}
           >
             <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="#E5E7EB" />
@@ -1030,6 +1029,11 @@ function InventoryAreaChart({ articulos }: { articulos: Articulo[] }) {
               axisLine={false}
               tickMargin={8}
               stroke="#6B7280"
+            />
+            <RechartsYAxis
+              type="number"
+              domain={[0, 250]}  // Add fixed domain
+              hide
             />
             <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
             <defs>
@@ -1102,6 +1106,7 @@ export function PanelDeInventarioComponent() {
   const [articulos, setArticulos] = useState<Articulo[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   useEffect(() => {
     const loadInventario = async () => {
@@ -1364,6 +1369,55 @@ export function PanelDeInventarioComponent() {
               <Settings className="h-6 w-6" />
               <span className="sr-only">Configuración</span>
             </Button>
+            <div className="relative">
+              <button
+                className="p-1 rounded-full hover:bg-gray-200 transition-colors duration-200"
+                onClick={() => setIsMenuOpen(!isMenuOpen)}
+              >
+                <Menu className="h-5 w-5 text-gray-600" />
+              </button>
+              {isMenuOpen && (
+                <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-50">
+                  <div className="py-1" role="menu" aria-orientation="vertical" aria-labelledby="options-menu">
+                    <Link
+                      href="/"
+                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                      role="menuitem"
+                    >
+                      Dashboard
+                    </Link>
+                    <Link
+                      href="/admin"
+                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                      role="menuitem"
+                    >
+                      Admin
+                    </Link>
+                    <Link
+                      href="/form"
+                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                      role="menuitem"
+                    >
+                      Form
+                    </Link>
+                    <Link
+                      href="/rutas"
+                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                      role="menuitem"
+                    >
+                      Rutas
+                    </Link>
+                    <Link
+                      href="/inventario"
+                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                      role="menuitem"
+                    >
+                      Inventario
+                    </Link>
+                  </div>
+                </div>
+              )}
+            </div>
             <Avatar>
               <AvatarImage src="/placeholder.svg?height=32&width=32" alt="Usuario" />
               <AvatarFallback>U</AvatarFallback>
@@ -1419,19 +1473,28 @@ export function PanelDeInventarioComponent() {
               <div className="flex items-center gap-4 text-sm mt-2">
                 <div className="flex items-center gap-2">
                   <div className="h-4 w-2 rounded-full bg-green-500" />
-                  <span className="text-muted-foreground">En stock: {conteoEnStock}</span>
+                  <span className="text-muted-foreground">
+                    <span className="hidden sm:inline">En stock: </span>{conteoEnStock}
+                  </span>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="h-4 w-2 rounded-full bg-yellow-500" />
-                  <span className="text-muted-foreground">Bajo stock: {conteoBajoStock}</span>
+                  <span className="text-muted-foreground">
+                    <span className="hidden sm:inline">Bajo stock: </span>{conteoBajoStock}
+                  </span>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="h-4 w-2 rounded-full bg-red-500" />
-                  <span className="text-muted-foreground">Sin stock: {conteoSinStock}</span>
+                  <span className="text-muted-foreground">
+                    <span className="hidden sm:inline">Sin stock: </span>{conteoSinStock}
+                  </span>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="h-4 w-2 rounded-full bg-blue-500" />
-                  <span className="text-muted-foreground">Sobrestock: {articulos.filter(a => a.cantidad > STOCK_THRESHOLDS.HIGH).length}</span>
+                  <span className="text-muted-foreground">
+                    <span className="hidden sm:inline">Sobrestock: </span>
+                    {articulos.filter(a => a.cantidad > STOCK_THRESHOLDS.HIGH).length}
+                  </span>
                 </div>
               </div>
             </div>

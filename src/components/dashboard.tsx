@@ -336,7 +336,7 @@ export default function Dashboard() {
               <Menu className="h-5 w-5 text-gray-600" />
             </button>
             {isMenuOpen && (
-              <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5">
+              <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-[100]">
                 <div className="py-1" role="menu" aria-orientation="vertical" aria-labelledby="options-menu">
                   <Link
                     href="/"
@@ -365,6 +365,13 @@ export default function Dashboard() {
                     role="menuitem"
                   >
                     Rutas
+                  </Link>
+                  <Link
+                    href="/inventario"
+                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                    role="menuitem"
+                  >
+                    Inventario
                   </Link>
                   <button
                     onClick={() => signOut()}
