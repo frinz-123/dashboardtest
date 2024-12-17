@@ -765,24 +765,24 @@ export default function FormPage() {
     setQuantities(prev => {
       const newQuantities = {
         ...prev,
-        [product]: value
-      }
+        [product]: value >= 0 ? value : 0  // Allow zero values, just prevent negative
+      };
       
       // Recalculate total immediately after quantity change
       if (selectedClient) {
-        const clientCode = getClientCode(selectedClient)
+        const clientCode = getClientCode(selectedClient);
         const newTotal = Object.entries(newQuantities).reduce((sum, [prod, qty]) => {
-          const price = getProductPrice(clientCode, prod)
-          return sum + (price * qty)
-        }, 0)
+          const price = getProductPrice(clientCode, prod);
+          return sum + (price * qty);
+        }, 0);
         
         // Use setTimeout to avoid state update conflicts
-        setTimeout(() => setTotal(newTotal.toFixed(2)), 0)
+        setTimeout(() => setTotal(newTotal.toFixed(2)), 0);
       }
       
-      return newQuantities
-    })
-  }
+      return newQuantities;
+    });
+  };
 
   const handleLocationUpdate = (location: { lat: number, lng: number }) => {
     const limitedLocation = {
@@ -817,20 +817,22 @@ export default function FormPage() {
 
   // Modify handleSubmit with better error handling
   const handleSubmit = async () => {
-    if (!validateForm()) {
-      return
-    }
-
-    if (!session?.user?.email) {
-      alert('No se encontró el email del usuario')
-      return
-    }
-
-    setIsSubmitting(true)
-    setValidationErrors({})
+    setIsSubmitting(true);
+    setValidationErrors({});
 
     try {
-      const clientCode = getClientCode(selectedClient)
+      if (!selectedClient) {
+        setValidationErrors(prev => ({ ...prev, client: 'Selecciona un cliente' }));
+        return;
+      }
+
+      if (!currentLocation) {
+        setValidationErrors(prev => ({ ...prev, location: 'No se pudo obtener la ubicación' }));
+        return;
+      }
+
+      const clientCode = getClientCode(selectedClient);
+      
       const response = await fetch('/api/submit-form', {
         method: 'POST',
         headers: {
@@ -838,37 +840,39 @@ export default function FormPage() {
         },
         body: JSON.stringify({
           clientName: selectedClient,
+          clientCode: clientCode,
           products: quantities,
           total: parseFloat(total),
           location: currentLocation,
-          clientCode: clientCode,
-          userEmail: session.user.email,
+          userEmail: session?.user?.email || OVERRIDE_EMAIL,
+          date: new Date().toISOString()
         }),
-      })
+      });
 
-      const data = await response.json()
+      const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Error al enviar el pedido')
+        throw new Error(data.error || 'Error al enviar el pedido');
       }
 
       if (data.success) {
-        alert('Pedido enviado exitosamente')
+        alert('Pedido enviado exitosamente');
         // Reset form
-        setSelectedClient('')
-        setSearchTerm('')
-        setQuantities({})
-        setTotal('0.00')
-        setFilteredClients([])
-        setKey(prev => prev + 1)
+        setSelectedClient('');
+        setSearchTerm('');
+        setQuantities({});
+        setTotal('0.00');
+        setFilteredClients([]);
+        setKey(prev => prev + 1);
       }
+
     } catch (error) {
-      console.error('Error submitting form:', error)
-      alert('Error al enviar el pedido: ' + (error as Error).message)
+      console.error('Error submitting form:', error);
+      setValidationErrors(prev => ({ ...prev, submit: 'Error al enviar el pedido' }));
     } finally {
-      setIsSubmitting(false)
+      setIsSubmitting(false);
     }
-  }
+  };
 
   const calculateOrderDetails = () => {
     if (!selectedClient) return []

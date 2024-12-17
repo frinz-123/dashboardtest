@@ -22,6 +22,14 @@ import {
   AreaChart
 } from "recharts"
 import Link from 'next/link'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { SearchableSelect } from "@/components/ui/searchable-select"
 
 const spreadsheetId = process.env.NEXT_PUBLIC_SPREADSHEET_ID
 
@@ -368,80 +376,6 @@ interface ProductEntry {
   date?: string;
 }
 
-// Add this new component for the searchable select
-function SearchableSelect({ 
-  id, 
-  value, 
-  onChange, 
-  options, 
-  placeholder = "Seleccionar producto" 
-}: { 
-  id: string;
-  value: string;
-  onChange: (value: string) => void;
-  options: Articulo[];
-  placeholder?: string;
-}) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
-  const ref = useRef<HTMLDivElement>(null);
-
-  // Filter options based on search term
-  const filteredOptions = options.filter(option => 
-    option.nombre.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (ref.current && !ref.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  return (
-    <div ref={ref} className="relative col-span-3">
-      <div
-        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background cursor-pointer"
-        onClick={() => setIsOpen(!isOpen)}
-      >
-        {value ? options.find(o => o.id.toString() === value)?.nombre : placeholder}
-      </div>
-      {isOpen && (
-        <div className="absolute z-50 w-full mt-1 bg-background border rounded-md shadow-lg">
-          <Input
-            className="border-0 border-b rounded-t-md rounded-b-none focus:ring-0"
-            placeholder="Buscar producto..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            onClick={(e) => e.stopPropagation()}
-          />
-          <div className="max-h-[200px] overflow-y-auto">
-            {filteredOptions.map((option) => (
-              <div
-                key={option.id}
-                className={`px-3 py-2 cursor-pointer hover:bg-accent ${
-                  value === option.id.toString() ? 'bg-accent' : ''
-                }`}
-                onClick={() => {
-                  onChange(option.id.toString());
-                  setIsOpen(false);
-                  setSearchTerm("");
-                }}
-              >
-                {option.nombre}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 function DialogoAgregarEntrada({ 
   estaAbierto, 
   setEstaAbierto, 
@@ -572,12 +506,16 @@ function DialogoAgregarEntrada({
                   <Label htmlFor={`producto-${index}`} className="text-right">
                     Producto
                   </Label>
-                  <SearchableSelect
-                    id={`producto-${index}`}
-                    value={entry.productId}
-                    onChange={(value) => updateEntry(index, 'productId', value)}
-                    options={articulos}
-                  />
+                  <div className="col-span-3">
+                    <SearchableSelect
+                      value={entry.productId}
+                      onValueChange={(value) => updateEntry(index, 'productId', value)}
+                      options={articulos.map((articulo) => ({
+                        value: articulo.id.toString(),
+                        label: articulo.nombre
+                      }))}
+                    />
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-4 items-center gap-4">
@@ -612,16 +550,21 @@ function DialogoAgregarEntrada({
                   <Label htmlFor={`source-${index}`} className="text-right">
                     Origen
                   </Label>
-                  <select
-                    id={`source-${index}`}
-                    className="col-span-3 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
-                    value={entry.source}
-                    onChange={(e) => updateEntry(index, 'source', e.target.value as EntradaSource)}
-                  >
-                    <option value="Produccion">Producción</option>
-                    <option value="Inventario Inicial">Inventario Inicial</option>
-                    <option value="Retorno de vendedor">Retorno de vendedor</option>
-                  </select>
+                  <div className="col-span-3">
+                    <Select
+                      value={entry.source}
+                      onValueChange={(value) => updateEntry(index, 'source', value as EntradaSource)}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Seleccionar origen" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Produccion">Producción</SelectItem>
+                        <SelectItem value="Inventario Inicial">Inventario Inicial</SelectItem>
+                        <SelectItem value="Retorno de vendedor">Retorno de vendedor</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
               </div>
             );
@@ -748,12 +691,16 @@ function DialogoNuevaSalida({
                   <Label htmlFor={`producto-${index}`} className="text-right">
                     Producto
                   </Label>
-                  <SearchableSelect
-                    id={`producto-${index}`}
-                    value={entry.productId}
-                    onChange={(value) => updateEntry(index, 'productId', value)}
-                    options={articulos}
-                  />
+                  <div className="col-span-3">
+                    <SearchableSelect
+                      value={entry.productId}
+                      onValueChange={(value) => updateEntry(index, 'productId', value)}
+                      options={articulos.map((articulo) => ({
+                        value: articulo.id.toString(),
+                        label: articulo.nombre
+                      }))}
+                    />
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-4 items-center gap-4">
@@ -1509,27 +1456,17 @@ export function PanelDeInventarioComponent() {
             <InventoryAreaChart articulos={articulos} />
           </div>
           
-          <div className="flex justify-between items-center">
-            <div className="flex items-center gap-2">
-              <div className="relative w-full max-w-sm">
-                <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar inventario..."
-                  value={terminoBusqueda}
-                  onChange={(e) => setTerminoBusqueda(e.target.value)}
-                  className="pl-8 rounded-full"
-                />
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="rounded-full"
-                onClick={() => setEsVistaTargeta(!esVistaTargeta)}
-                aria-label={esVistaTargeta ? "Cambiar a vista de tabla" : "Cambiar a vista de tarjetas"}
-              >
-                {esVistaTargeta ? <TableIcon className="h-4 w-4" /> : <LayoutGrid className="h-4 w-4" />}
-              </Button>
+          <div className="space-y-3">
+            <div className="relative w-full sm:max-w-sm">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar inventario..."
+                value={terminoBusqueda}
+                onChange={(e) => setTerminoBusqueda(e.target.value)}
+                className="pl-8 rounded-full"
+              />
             </div>
+
             <div className="flex items-center gap-4">
               <Button
                 onClick={() => setEstaAgregarEntradaAbierto(true)}
@@ -1545,6 +1482,15 @@ export function PanelDeInventarioComponent() {
               >
                 <Minus className="h-4 w-4 mr-2" />
                 Salida
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="rounded-full ml-auto"
+                onClick={() => setEsVistaTargeta(!esVistaTargeta)}
+                aria-label={esVistaTargeta ? "Cambiar a vista de tabla" : "Cambiar a vista de tarjetas"}
+              >
+                {esVistaTargeta ? <TableIcon className="h-4 w-4" /> : <LayoutGrid className="h-4 w-4" />}
               </Button>
             </div>
           </div>
