@@ -549,37 +549,6 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
   return R * c;
 };
 
-// Update the hasSignificantMovement function to be more lenient
-const hasSignificantMovement = (
-  oldLocation: { lat: number; lng: number } | null,
-  newLocation: { lat: number; lng: number }
-): boolean => {
-  if (!oldLocation) return true;
-
-  const distance = calculateDistance(
-    oldLocation.lat,
-    oldLocation.lng,
-    newLocation.lat,
-    newLocation.lng
-  );
-
-  // Add some tolerance to the comparison
-  return distance > MIN_MOVEMENT_THRESHOLD * 0.8; // 20% tolerance
-};
-
-// Update the handleLocationUpdate function
-const handleLocationUpdate = (location: { lat: number, lng: number }) => {
-  // Round to 5 decimals but add a small buffer for comparison
-  const limitedLocation = {
-    lat: Number(location.lat.toFixed(5)),
-    lng: Number(location.lng.toFixed(5))
-  };
-
-  if (hasSignificantMovement(currentLocation, limitedLocation)) {
-    throttledLocationUpdate(limitedLocation);
-  }
-};
-
 export default function FormPage() {
   const { data: session } = useSession()
   const [isMenuOpen, setIsMenuOpen] = useState(false)
@@ -594,22 +563,48 @@ export default function FormPage() {
   const [locationAlert, setLocationAlert] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [key, setKey] = useState(0)
-
-  // Add loading state for initial data fetch
   const [isLoading, setIsLoading] = useState(true)
-  
-  // Add validation states
   const [validationErrors, setValidationErrors] = useState<{
     client?: string;
     location?: string;
     products?: string;
-  }>({})
-
+    submit?: string;
+  }>({});
+  
   const throttledLocationUpdate = useRef(
     throttle((location: { lat: number, lng: number }) => {
       setCurrentLocation(location);
-    }, 1000) // Throttle to once every second
+    }, 1000)
   ).current;
+
+  // Move hasSignificantMovement inside component
+  const hasSignificantMovement = (
+    oldLocation: { lat: number; lng: number } | null,
+    newLocation: { lat: number; lng: number }
+  ): boolean => {
+    if (!oldLocation) return true;
+
+    const distance = calculateDistance(
+      oldLocation.lat,
+      oldLocation.lng,
+      newLocation.lat,
+      newLocation.lng
+    );
+
+    return distance > MIN_MOVEMENT_THRESHOLD * 0.8;
+  };
+
+  // Update handleLocationUpdate to use the state
+  const handleLocationUpdate = (location: { lat: number, lng: number }) => {
+    const limitedLocation = {
+      lat: Number(location.lat.toFixed(5)),
+      lng: Number(location.lng.toFixed(5))
+    };
+
+    if (hasSignificantMovement(currentLocation, limitedLocation)) {
+      throttledLocationUpdate(limitedLocation);
+    }
+  };
 
   useEffect(() => {
     fetchClientNames()
@@ -667,7 +662,7 @@ export default function FormPage() {
       }
       const data = await response.json()
       const clients: Record<string, { lat: number, lng: number }> = {}
-      const names = data.values.slice(1).map((row: any[]) => {
+      const names = (data.values?.slice(1) || []).map((row: any[]) => {
         const name = row[0]
         if (name && row[1] && row[2]) {
           clients[name] = {
@@ -742,18 +737,6 @@ export default function FormPage() {
       return newQuantities;
     });
   };
-
-  const handleLocationUpdate = (location: { lat: number, lng: number }) => {
-    // Round to 5 decimals but add a small buffer for comparison
-    const limitedLocation = {
-      lat: Number(location.lat.toFixed(5)),
-      lng: Number(location.lng.toFixed(5))
-    };
-
-    if (hasSignificantMovement(currentLocation, limitedLocation)) {
-      throttledLocationUpdate(limitedLocation);
-    }
-  }
 
   const canSubmitDespiteAlert = session?.user?.email === OVERRIDE_EMAIL
 
@@ -862,7 +845,7 @@ export default function FormPage() {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
       </div>
     )
   }
@@ -894,7 +877,7 @@ export default function FormPage() {
             </button>
             {isMenuOpen && (
               <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-50">
-                <div className="py-1" role="menu" aria-orientation="vertical" aria-labelledby="options-menu">
+                <div className="py-1">
                   <Link
                     href="/"
                     className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
@@ -1057,7 +1040,12 @@ export default function FormPage() {
 function throttle(func: Function, limit: number) {
   let inThrottle: boolean;
   return function(this: any, ...args: any[]) {
-    if (!inThrottle) {
+ 
+
+function setValidationErrors(arg0: (prev: any) => any) {
+  throw new Error('Function not implemented.')
+}
+   if (!inThrottle) {
       func.apply(this, args);
       inThrottle = true;
       setTimeout(() => inThrottle = false, limit);
