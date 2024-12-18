@@ -1,21 +1,15 @@
 "use client"
 
 import * as React from "react"
-import { Check, ChevronsUpDown } from "lucide-react"
+import { Check, ChevronsUpDown, Search } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "./button"
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-} from "./command"
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "./popover"
+import { Input } from "./input"
 
 interface SearchableSelectProps {
   options: { value: string; label: string }[]
@@ -24,28 +18,21 @@ interface SearchableSelectProps {
   placeholder?: string
 }
 
-export function SearchableSelect({ 
-  options, 
-  value, 
-  onValueChange, 
-  placeholder = "Seleccionar producto..." 
+export function SearchableSelect({
+  options,
+  value,
+  onValueChange,
+  placeholder = "Seleccionar..."
 }: SearchableSelectProps) {
   const [open, setOpen] = React.useState(false)
   const [searchQuery, setSearchQuery] = React.useState("")
 
   const filteredOptions = React.useMemo(() => {
     if (!searchQuery) return options;
-    
     return options.filter((option) =>
       option.label.toLowerCase().includes(searchQuery.toLowerCase())
     );
   }, [options, searchQuery]);
-
-  const handleSelect = React.useCallback((currentValue: string) => {
-    onValueChange(currentValue);
-    setOpen(false);
-    setSearchQuery("");
-  }, [onValueChange]);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -62,38 +49,46 @@ export function SearchableSelect({
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent 
-        className="w-screen p-0 sm:w-[var(--radix-popover-trigger-width)] left-0 right-0 mt-16" 
-        align="start"
-        sideOffset={8}
-      >
-        <Command shouldFilter={false}>
-          <CommandInput 
-            placeholder="Buscar producto..." 
-            className="text-base"
+      <PopoverContent className="w-screen p-4 sm:w-[var(--radix-popover-trigger-width)] mt-16">
+        <div className="relative mb-3">
+          <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Buscar..."
             value={searchQuery}
-            onValueChange={setSearchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-9"
           />
-          <CommandEmpty>No se encontraron resultados.</CommandEmpty>
-          <CommandGroup className="max-h-[300px] overflow-y-auto">
-            {filteredOptions.map((option) => (
-              <CommandItem
+        </div>
+        <div className="max-h-[300px] overflow-y-auto">
+          {filteredOptions.length === 0 ? (
+            <div className="text-sm text-center py-2 text-muted-foreground">
+              No se encontraron resultados
+            </div>
+          ) : (
+            filteredOptions.map((option) => (
+              <div
                 key={option.value}
-                value={option.value}
-                onSelect={handleSelect}
-                className="text-base cursor-pointer"
+                className={cn(
+                  "flex items-center gap-2 px-2 py-3 text-base cursor-pointer hover:bg-accent rounded-md",
+                  value === option.value && "bg-accent"
+                )}
+                onClick={() => {
+                  onValueChange(option.value)
+                  setOpen(false)
+                  setSearchQuery("")
+                }}
               >
                 <Check
                   className={cn(
-                    "mr-2 h-4 w-4",
+                    "h-4 w-4",
                     value === option.value ? "opacity-100" : "opacity-0"
                   )}
                 />
                 {option.label}
-              </CommandItem>
-            ))}
-          </CommandGroup>
-        </Command>
+              </div>
+            ))
+          )}
+        </div>
       </PopoverContent>
     </Popover>
   )

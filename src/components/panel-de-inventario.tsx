@@ -29,7 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { SearchableSelect } from "@/components/ui/searchable-select"
+import { SearchableSelect } from "@/components/ui/searchable-select-v2"
 
 const spreadsheetId = process.env.NEXT_PUBLIC_SPREADSHEET_ID
 
@@ -64,61 +64,36 @@ interface ModalInventarioProps {
 async function fetchProductos(): Promise<Articulo[]> {
   const sheetName = process.env.NEXT_PUBLIC_SHEET_NAME2 || 'Productos'
   try {
-    console.log('Attempting to fetch from sheet:', sheetName);
-    if (!sheetName) {
-      throw new Error('Sheet name is undefined');
-    }
-
-    // First get an access token
-    const tokenResponse = await fetch('/api/auth/token');
-    if (!tokenResponse.ok) {
-      throw new Error('Failed to get access token');
-    }
-    const { access_token } = await tokenResponse.json();
-    
-    console.log('Got access token:', access_token); // Debug log
-    console.log('Sheet name:', sheetName); // Debug log
-    console.log('Spreadsheet ID:', spreadsheetId); // Debug log
-
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A2:D`;
-    console.log('Fetching from URL:', url); // Debug log
-
-    const response = await fetch(url, {
-      headers: {
-        'Authorization': `Bearer ${access_token}`,
-      }
-    });
+    // Use direct API key approach instead of OAuth token for public sheets
+    const response = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${process.env.NEXT_PUBLIC_SPREADSHEET_ID}/values/${sheetName}!A2:D?key=${process.env.NEXT_PUBLIC_GOOGLE_API_KEY}`
+    );
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('API Error:', errorText); // Debug log
       throw new Error(`Failed to fetch productos: ${response.status} ${response.statusText}`);
     }
 
     const data = await response.json();
-    console.log('Received data:', data); // Debug log
     
     if (!data.values || !Array.isArray(data.values)) {
-      console.log('No values found in response'); // Debug log
+      console.log('No values found in response');
       return [];
     }
 
-    return data.values.map((row: any[], index: number) => {
-      console.log('Processing row:', row); // Debug log
-      return {
-        id: index + 1,
-        nombre: row[0] || '',
-        categoria: row[1] || '',
-        precio: parseFloat(row[2]) || 0,
-        peso: parseFloat(row[3]) || 0,
-        cantidad: 0,
-        estado: 'Pendiente',
-        ultimaActualizacion: 'Nuevo'
-      };
-    });
+    return data.values.map((row: any[], index: number) => ({
+      id: index + 1,
+      nombre: row[0] || '',
+      categoria: row[1] || '',
+      precio: parseFloat(row[2]) || 0,
+      peso: parseFloat(row[3]) || 0,
+      cantidad: 0,
+      estado: 'Pendiente',
+      ultimaActualizacion: 'Nuevo'
+    }));
+
   } catch (error) {
     console.error('Error in fetchProductos:', error);
-    throw error; // Re-throw to be handled by the component
+    throw error;
   }
 }
 
@@ -509,11 +484,15 @@ function DialogoAgregarEntrada({
                   <div className="col-span-3">
                     <SearchableSelect
                       value={entry.productId}
-                      onValueChange={(value) => updateEntry(index, 'productId', value)}
+                      onValueChange={(value) => {
+                        console.log('Selected value:', value); // For debugging
+                        updateEntry(index, 'productId', value);
+                      }}
                       options={articulos.map((articulo) => ({
                         value: articulo.id.toString(),
                         label: articulo.nombre
                       }))}
+                      placeholder="Seleccionar producto"
                     />
                   </div>
                 </div>
@@ -694,11 +673,15 @@ function DialogoNuevaSalida({
                   <div className="col-span-3">
                     <SearchableSelect
                       value={entry.productId}
-                      onValueChange={(value) => updateEntry(index, 'productId', value)}
+                      onValueChange={(value) => {
+                        console.log('Selected value:', value); // For debugging
+                        updateEntry(index, 'productId', value);
+                      }}
                       options={articulos.map((articulo) => ({
                         value: articulo.id.toString(),
                         label: articulo.nombre
                       }))}
+                      placeholder="Seleccionar producto"
                     />
                   </div>
                 </div>
