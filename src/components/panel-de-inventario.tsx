@@ -64,7 +64,6 @@ interface ModalInventarioProps {
 async function fetchProductos(): Promise<Articulo[]> {
   const sheetName = process.env.NEXT_PUBLIC_SHEET_NAME2 || 'Productos'
   try {
-    // Use direct API key approach instead of OAuth token for public sheets
     const response = await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${process.env.NEXT_PUBLIC_SPREADSHEET_ID}/values/${sheetName}!A2:D?key=${process.env.NEXT_PUBLIC_GOOGLE_API_KEY}`
     );
@@ -104,7 +103,7 @@ async function fetchEntradas(): Promise<Record<string, { cantidad: number; peso:
     const { access_token } = await tokenResponse.json();
 
     const response = await fetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A2:D`,
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A2:F`,
       {
         headers: {
           'Authorization': `Bearer ${access_token}`,
@@ -131,6 +130,7 @@ async function fetchEntradas(): Promise<Record<string, { cantidad: number; peso:
       cantidades[nombre].peso += peso;
     });
 
+    console.log('Fetched cantidades:', cantidades); // Debug log
     return cantidades;
   } catch (error) {
     console.error('Error fetching entradas:', error);
@@ -1045,13 +1045,18 @@ export function PanelDeInventarioComponent() {
       
       try {
         const productos = await fetchProductos();
+        console.log('Fetched productos:', productos); // Debug log
+        
         const cantidades = await fetchEntradas();
+        console.log('Fetched cantidades:', cantidades); // Debug log
 
         const inventarioActualizado = productos.map(producto => {
           const cantidadInfo = cantidades[producto.nombre] || { cantidad: 0, peso: 0 };
           let estado = 'Sin Stock';
+          
           if (cantidadInfo.cantidad > 0) {
-            estado = cantidadInfo.cantidad <= 5 ? 'Bajo Stock' : cantidadInfo.cantidad > 100 ? 'Sobrestock' : 'En Stock';
+            estado = cantidadInfo.cantidad <= STOCK_THRESHOLDS.LOW ? 'Bajo Stock' : 
+                    cantidadInfo.cantidad > STOCK_THRESHOLDS.HIGH ? 'Sobrestock' : 'En Stock';
           }
 
           return {
@@ -1059,10 +1064,11 @@ export function PanelDeInventarioComponent() {
             cantidad: cantidadInfo.cantidad,
             peso: cantidadInfo.peso,
             estado,
-            ultimaActualizacion: '0d'
+            ultimaActualizacion: new Date().toLocaleDateString()
           };
         });
 
+        console.log('Updated inventory:', inventarioActualizado); // Debug log
         setArticulos(inventarioActualizado);
       } catch (err) {
         console.error('Error in loadInventario:', err);
