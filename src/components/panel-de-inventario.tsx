@@ -527,9 +527,10 @@ function DialogoAgregarEntrada({
                   <Input
                     id={`cantidad-${index}`}
                     type="number"
-                    className="col-span-3"
+                    className="col-span-3 text-base min-h-[44px]"
                     value={entry.cantidad}
                     onChange={(e) => updateEntry(index, 'cantidad', e.target.value)}
+                    style={{ fontSize: '16px' }}
                   />
                 </div>
 
@@ -541,9 +542,10 @@ function DialogoAgregarEntrada({
                     <Input
                       id={`peso-${index}`}
                       type="number"
-                      className="col-span-3"
+                      className="col-span-3 text-base min-h-[44px]"
                       value={entry.peso}
                       onChange={(e) => updateEntry(index, 'peso', e.target.value)}
+                      style={{ fontSize: '16px' }}
                     />
                   </div>
                 )}
@@ -716,9 +718,10 @@ function DialogoNuevaSalida({
                   <Input
                     id={`cantidad-${index}`}
                     type="number"
-                    className="col-span-3"
+                    className="col-span-3 text-base min-h-[44px]"
                     value={entry.cantidad}
                     onChange={(e) => updateEntry(index, 'cantidad', e.target.value)}
+                    style={{ fontSize: '16px' }}
                     max={selectedProduct?.cantidad || 0}
                   />
                 </div>
@@ -731,9 +734,10 @@ function DialogoNuevaSalida({
                     <Input
                       id={`peso-${index}`}
                       type="number"
-                      className="col-span-3"
+                      className="col-span-3 text-base min-h-[44px]"
                       value={entry.peso}
                       onChange={(e) => updateEntry(index, 'peso', e.target.value)}
+                      style={{ fontSize: '16px' }}
                     />
                   </div>
                 )}
@@ -1495,7 +1499,8 @@ export function PanelDeInventarioComponent() {
                 placeholder="Buscar inventario..."
                 value={terminoBusqueda}
                 onChange={(e) => setTerminoBusqueda(e.target.value)}
-                className="pl-8 rounded-full"
+                className="pl-8 rounded-full text-base min-h-[44px]"
+                style={{ fontSize: '16px' }}
               />
             </div>
 

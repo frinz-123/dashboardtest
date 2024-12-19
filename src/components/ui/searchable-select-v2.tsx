@@ -56,7 +56,8 @@ export function SearchableSelect({
             placeholder="Buscar..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9"
+            className="pl-9 text-base min-h-[44px]"
+            style={{ fontSize: '16px' }}
           />
         </div>
         <div className="max-h-[300px] overflow-y-auto">
@@ -69,9 +70,10 @@ export function SearchableSelect({
               <div
                 key={option.value}
                 className={cn(
-                  "flex items-center gap-2 px-2 py-3 text-base cursor-pointer hover:bg-accent rounded-md",
+                  "flex items-center gap-2 px-2 py-3 text-base cursor-pointer hover:bg-accent rounded-md min-h-[44px]",
                   value === option.value && "bg-accent"
                 )}
+                style={{ fontSize: '16px' }}
                 onClick={() => {
                   onValueChange(option.value)
                   setOpen(false)
