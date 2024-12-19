@@ -63,79 +63,112 @@ interface ModalInventarioProps {
 
 async function fetchProductos(): Promise<Articulo[]> {
   const sheetName = process.env.NEXT_PUBLIC_SHEET_NAME2 || 'Productos'
-  try {
-    const response = await fetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${process.env.NEXT_PUBLIC_SPREADSHEET_ID}/values/${sheetName}!A2:D?key=${process.env.NEXT_PUBLIC_GOOGLE_API_KEY}`
-    );
+  const maxRetries = 3;
+  
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const response = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${process.env.NEXT_PUBLIC_SPREADSHEET_ID}/values/${sheetName}!A2:D?key=${process.env.NEXT_PUBLIC_GOOGLE_API_KEY}`,
+        {
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache'
+          }
+        }
+      );
 
-    if (!response.ok) {
-      throw new Error(`Failed to fetch productos: ${response.status} ${response.statusText}`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch productos: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      
+      if (!data.values || !Array.isArray(data.values)) {
+        console.log('No values found in response');
+        return [];
+      }
+
+      return data.values.map((row: any[], index: number) => ({
+        id: index + 1,
+        nombre: row[0] || '',
+        categoria: row[1] || '',
+        precio: parseFloat(row[2]) || 0,
+        peso: parseFloat(row[3]) || 0,
+        cantidad: 0,
+        estado: 'Pendiente',
+        ultimaActualizacion: 'Nuevo'
+      }));
+
+    } catch (error) {
+      console.error(`Attempt ${attempt + 1} failed:`, error);
+      if (attempt === maxRetries - 1) throw error;
+      // Wait before retrying
+      await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
     }
-
-    const data = await response.json();
-    
-    if (!data.values || !Array.isArray(data.values)) {
-      console.log('No values found in response');
-      return [];
-    }
-
-    return data.values.map((row: any[], index: number) => ({
-      id: index + 1,
-      nombre: row[0] || '',
-      categoria: row[1] || '',
-      precio: parseFloat(row[2]) || 0,
-      peso: parseFloat(row[3]) || 0,
-      cantidad: 0,
-      estado: 'Pendiente',
-      ultimaActualizacion: 'Nuevo'
-    }));
-
-  } catch (error) {
-    console.error('Error in fetchProductos:', error);
-    throw error;
   }
+  throw new Error('Failed after max retries');
 }
 
 async function fetchEntradas(): Promise<Record<string, { cantidad: number; peso: number }>> {
-  const sheetName = process.env.NEXT_PUBLIC_SHEET_NAME3
-  try {
-    const tokenResponse = await fetch('/api/auth/token');
-    const { access_token } = await tokenResponse.json();
+  const sheetName = process.env.NEXT_PUBLIC_SHEET_NAME3;
+  const maxRetries = 3;
 
-    const response = await fetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A2:F`,
-      {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      // Get a fresh token each time
+      const tokenResponse = await fetch('/api/auth/token', {
+        cache: 'no-store',
         headers: {
-          'Authorization': `Bearer ${access_token}`,
+          'Cache-Control': 'no-cache'
         }
-      }
-    );
-
-    if (!response.ok) throw new Error('Failed to fetch entradas');
-
-    const data = await response.json();
-    const cantidades: Record<string, { cantidad: number; peso: number }> = {};
-
-    if (!data.values) return cantidades;
-
-    data.values.forEach((row: any[]) => {
-      const nombre = row[0];
-      const cantidad = parseInt(row[2]) || 0;
-      const peso = parseFloat(row[3]) || 0;
+      });
       
-      if (!cantidades[nombre]) {
-        cantidades[nombre] = { cantidad: 0, peso: 0 };
+      if (!tokenResponse.ok) {
+        throw new Error('Failed to get access token');
       }
-      cantidades[nombre].cantidad += cantidad;
-      cantidades[nombre].peso += peso;
-    });
 
-    console.log('Fetched cantidades:', cantidades); // Debug log
-    return cantidades;
-  } catch (error) {
-    console.error('Error fetching entradas:', error);
-    return {};
+      const { access_token } = await tokenResponse.json();
+
+      const response = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A2:F`,
+        {
+          headers: {
+            'Authorization': `Bearer ${access_token}`,
+            'Cache-Control': 'no-cache'
+          },
+          cache: 'no-store'
+        }
+      );
+
+      if (!response.ok) throw new Error('Failed to fetch entradas');
+
+      const data = await response.json();
+      const cantidades: Record<string, { cantidad: number; peso: number }> = {};
+
+      if (!data.values) return cantidades;
+
+      data.values.forEach((row: any[]) => {
+        const nombre = row[0];
+        const cantidad = parseInt(row[2]) || 0;
+        const peso = parseFloat(row[3]) || 0;
+        
+        if (!cantidades[nombre]) {
+          cantidades[nombre] = { cantidad: 0, peso: 0 };
+        }
+        cantidades[nombre].cantidad += cantidad;
+        cantidades[nombre].peso += peso;
+      });
+
+      return cantidades;
+
+    } catch (error) {
+      console.error(`Attempt ${attempt + 1} failed:`, error);
+      if (attempt === maxRetries - 1) return {};
+      // Wait before retrying
+      await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+    }
   }
+  return {};
 }
 
 type EntradaSource = 'Produccion' | 'Inventario Inicial' | 'Retorno de vendedor' | '';
@@ -1044,19 +1077,18 @@ export function PanelDeInventarioComponent() {
       setError(null);
       
       try {
-        const productos = await fetchProductos();
-        console.log('Fetched productos:', productos); // Debug log
-        
-        const cantidades = await fetchEntradas();
-        console.log('Fetched cantidades:', cantidades); // Debug log
+        const [productos, cantidades] = await Promise.all([
+          fetchProductos(),
+          fetchEntradas()
+        ]);
 
         const inventarioActualizado = productos.map(producto => {
           const cantidadInfo = cantidades[producto.nombre] || { cantidad: 0, peso: 0 };
           let estado = 'Sin Stock';
           
           if (cantidadInfo.cantidad > 0) {
-            estado = cantidadInfo.cantidad <= STOCK_THRESHOLDS.LOW ? 'Bajo Stock' : 
-                    cantidadInfo.cantidad > STOCK_THRESHOLDS.HIGH ? 'Sobrestock' : 'En Stock';
+            estado = cantidadInfo.cantidad <= 5 ? 'Bajo Stock' : 
+                    cantidadInfo.cantidad > 100 ? 'Sobrestock' : 'En Stock';
           }
 
           return {
@@ -1068,7 +1100,6 @@ export function PanelDeInventarioComponent() {
           };
         });
 
-        console.log('Updated inventory:', inventarioActualizado); // Debug log
         setArticulos(inventarioActualizado);
       } catch (err) {
         console.error('Error in loadInventario:', err);
@@ -1079,6 +1110,11 @@ export function PanelDeInventarioComponent() {
     };
 
     loadInventario();
+
+    // Set up periodic refresh
+    const refreshInterval = setInterval(loadInventario, 5 * 60 * 1000); // Refresh every 5 minutes
+
+    return () => clearInterval(refreshInterval);
   }, []);
 
   const articulosFiltrados = articulos.filter(articulo =>
