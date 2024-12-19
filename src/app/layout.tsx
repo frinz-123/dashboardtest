@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 import AuthProvider from '@/components/providers/AuthProvider'
+import { ZoomPrevention } from '@/components/ZoomPrevention'
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -44,8 +45,27 @@ export default function RootLayout({
           content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0, viewport-fit=cover, interactive-widget=resizes-content" 
         />
         <meta name="HandheldFriendly" content="true" />
+        <script dangerouslySetInnerHTML={{
+          __html: `
+            document.addEventListener('gesturestart', function(e) {
+              e.preventDefault();
+            });
+            document.addEventListener('gesturechange', function(e) {
+              e.preventDefault();
+            });
+            document.addEventListener('gestureend', function(e) {
+              e.preventDefault();
+            });
+            document.addEventListener('touchmove', function(e) {
+              if (e.scale !== 1) {
+                e.preventDefault();
+              }
+            }, { passive: false });
+          `
+        }} />
       </head>
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased touch-none`}>
+        <ZoomPrevention />
         <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
