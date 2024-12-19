@@ -15,8 +15,8 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Dashboard El rey",
-  description: "Sales dashboard for El rey",
+  title: "Dashboard",
+  description: "Dashboard for El Rey Chiltepin",
   manifest: "/manifest.json",
   themeColor: "#3b82f6",
   appleWebApp: {
@@ -28,7 +28,7 @@ export const metadata: Metadata = {
     width: "device-width",
     initialScale: 1,
     maximumScale: 1,
-    userScalable: false,
+    userScalable: "no",
   },
 };
 
@@ -45,6 +45,10 @@ export default function RootLayout({
         <link rel="apple-touch-icon" href="/icons/icon-512x512.png" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+        <meta 
+          name="viewport" 
+          content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" 
+        />
       </head>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         <AuthProvider>{children}</AuthProvider>

@@ -62,113 +62,103 @@ interface ModalInventarioProps {
 }
 
 async function fetchProductos(): Promise<Articulo[]> {
-  const sheetName = process.env.NEXT_PUBLIC_SHEET_NAME2 || 'Productos'
-  const maxRetries = 3;
+  const sheetName = process.env.NEXT_PUBLIC_SHEET_NAME2 || 'Productos';
   
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try {
-      const response = await fetch(
-        `https://sheets.googleapis.com/v4/spreadsheets/${process.env.NEXT_PUBLIC_SPREADSHEET_ID}/values/${sheetName}!A2:D?key=${process.env.NEXT_PUBLIC_GOOGLE_API_KEY}`,
-        {
-          cache: 'no-store',
-          headers: {
-            'Cache-Control': 'no-cache'
-          }
+  try {
+    const response = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${process.env.NEXT_PUBLIC_SPREADSHEET_ID}/values/${sheetName}!A2:D?key=${process.env.NEXT_PUBLIC_GOOGLE_API_KEY}`,
+      {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'Cache-Control': 'no-cache'
         }
-      );
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch productos: ${response.status} ${response.statusText}`);
       }
+    );
 
-      const data = await response.json();
-      
-      if (!data.values || !Array.isArray(data.values)) {
-        console.log('No values found in response');
-        return [];
-      }
-
-      return data.values.map((row: any[], index: number) => ({
-        id: index + 1,
-        nombre: row[0] || '',
-        categoria: row[1] || '',
-        precio: parseFloat(row[2]) || 0,
-        peso: parseFloat(row[3]) || 0,
-        cantidad: 0,
-        estado: 'Pendiente',
-        ultimaActualizacion: 'Nuevo'
-      }));
-
-    } catch (error) {
-      console.error(`Attempt ${attempt + 1} failed:`, error);
-      if (attempt === maxRetries - 1) throw error;
-      // Wait before retrying
-      await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+    if (!response.ok) {
+      throw new Error(`Failed to fetch productos: ${response.status}`);
     }
+
+    const data = await response.json();
+    
+    if (!data.values) {
+      console.log('No values found in response');
+      return [];
+    }
+
+    return data.values.map((row: any[], index: number) => ({
+      id: index + 1,
+      nombre: row[0] || '',
+      categoria: row[1] || '',
+      precio: parseFloat(row[2]) || 0,
+      peso: parseFloat(row[3]) || 0,
+      cantidad: 0,
+      estado: 'Pendiente',
+      ultimaActualizacion: 'Nuevo'
+    }));
+
+  } catch (error) {
+    console.error('Error in fetchProductos:', error);
+    throw error;
   }
-  throw new Error('Failed after max retries');
 }
 
 async function fetchEntradas(): Promise<Record<string, { cantidad: number; peso: number }>> {
   const sheetName = process.env.NEXT_PUBLIC_SHEET_NAME3;
-  const maxRetries = 3;
+  
+  try {
+    const tokenResponse = await fetch('/api/auth/token');
+    if (!tokenResponse.ok) {
+      throw new Error('Failed to get access token');
+    }
 
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try {
-      // Get a fresh token each time
-      const tokenResponse = await fetch('/api/auth/token', {
-        cache: 'no-store',
+    const { access_token } = await tokenResponse.json();
+    if (!access_token) {
+      throw new Error('No access token received');
+    }
+
+    const response = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A2:F`,
+      {
+        method: 'GET',
         headers: {
+          'Accept': 'application/json',
+          'Authorization': `Bearer ${access_token}`,
           'Cache-Control': 'no-cache'
         }
-      });
-      
-      if (!tokenResponse.ok) {
-        throw new Error('Failed to get access token');
       }
+    );
 
-      const { access_token } = await tokenResponse.json();
-
-      const response = await fetch(
-        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A2:F`,
-        {
-          headers: {
-            'Authorization': `Bearer ${access_token}`,
-            'Cache-Control': 'no-cache'
-          },
-          cache: 'no-store'
-        }
-      );
-
-      if (!response.ok) throw new Error('Failed to fetch entradas');
-
-      const data = await response.json();
-      const cantidades: Record<string, { cantidad: number; peso: number }> = {};
-
-      if (!data.values) return cantidades;
-
-      data.values.forEach((row: any[]) => {
-        const nombre = row[0];
-        const cantidad = parseInt(row[2]) || 0;
-        const peso = parseFloat(row[3]) || 0;
-        
-        if (!cantidades[nombre]) {
-          cantidades[nombre] = { cantidad: 0, peso: 0 };
-        }
-        cantidades[nombre].cantidad += cantidad;
-        cantidades[nombre].peso += peso;
-      });
-
-      return cantidades;
-
-    } catch (error) {
-      console.error(`Attempt ${attempt + 1} failed:`, error);
-      if (attempt === maxRetries - 1) return {};
-      // Wait before retrying
-      await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+    if (!response.ok) {
+      throw new Error('Failed to fetch entradas');
     }
+
+    const data = await response.json();
+    const cantidades: Record<string, { cantidad: number; peso: number }> = {};
+
+    if (!data.values) return cantidades;
+
+    data.values.forEach((row: any[]) => {
+      if (!row[0]) return;
+      
+      const nombre = row[0];
+      const cantidad = parseInt(row[2]) || 0;
+      const peso = parseFloat(row[3]) || 0;
+      
+      if (!cantidades[nombre]) {
+        cantidades[nombre] = { cantidad: 0, peso: 0 };
+      }
+      cantidades[nombre].cantidad += cantidad;
+      cantidades[nombre].peso += peso;
+    });
+
+    return cantidades;
+
+  } catch (error) {
+    console.error('Error fetching entradas:', error);
+    return {};
   }
-  return {};
 }
 
 type EntradaSource = 'Produccion' | 'Inventario Inicial' | 'Retorno de vendedor' | '';
@@ -1072,15 +1062,18 @@ export function PanelDeInventarioComponent() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   useEffect(() => {
+    let mounted = true;
+    let retryTimeout: NodeJS.Timeout;
+
     const loadInventario = async () => {
-      setIsLoading(true);
-      setError(null);
+      if (!mounted) return;
       
       try {
-        const [productos, cantidades] = await Promise.all([
-          fetchProductos(),
-          fetchEntradas()
-        ]);
+        const productos = await fetchProductos();
+        if (!mounted) return;
+        
+        const cantidades = await fetchEntradas();
+        if (!mounted) return;
 
         const inventarioActualizado = productos.map(producto => {
           const cantidadInfo = cantidades[producto.nombre] || { cantidad: 0, peso: 0 };
@@ -1100,21 +1093,35 @@ export function PanelDeInventarioComponent() {
           };
         });
 
+        if (!mounted) return;
         setArticulos(inventarioActualizado);
+        setError(null);
+        
+        // Schedule next refresh
+        retryTimeout = setTimeout(loadInventario, 60000); // Refresh every minute
+        
       } catch (err) {
-        console.error('Error in loadInventario:', err);
-        setError(err instanceof Error ? err.message : 'Error loading inventory');
+        console.error('Error loading inventory:', err);
+        if (mounted) {
+          setError(err instanceof Error ? err.message : 'Error loading inventory');
+          retryTimeout = setTimeout(loadInventario, 5000); // Retry after 5 seconds on error
+        }
       } finally {
-        setIsLoading(false);
+        if (mounted) {
+          setIsLoading(false);
+        }
       }
     };
 
+    setIsLoading(true);
     loadInventario();
 
-    // Set up periodic refresh
-    const refreshInterval = setInterval(loadInventario, 5 * 60 * 1000); // Refresh every 5 minutes
-
-    return () => clearInterval(refreshInterval);
+    return () => {
+      mounted = false;
+      if (retryTimeout) {
+        clearTimeout(retryTimeout);
+      }
+    };
   }, []);
 
   const articulosFiltrados = articulos.filter(articulo =>
