@@ -127,16 +127,15 @@ html {
   -moz-user-select: none;
   -ms-user-select: none;
   user-select: none;
-  touch-action: none;
+  touch-action: pan-x pan-y;
 }
 
 html, body {
-  touch-action: none;
-  overflow: hidden;
+  touch-action: pan-x pan-y;
   overscroll-behavior: none;
-  position: fixed;
   width: 100%;
   height: 100%;
+  position: relative;
 }
 
 /* Prevent touch events on specific elements that need them */
@@ -144,4 +143,11 @@ input, textarea {
   touch-action: manipulation;
   -webkit-user-select: text;
   user-select: text;
+}
+
+/* Add this for smoother scrolling */
+.scroll-container {
+  -webkit-overflow-scrolling: touch;
+  overflow-y: auto;
+  height: 100%;
 }
