@@ -105,26 +105,15 @@ async function fetchProductos(): Promise<Articulo[]> {
 }
 
 async function fetchEntradas(): Promise<Record<string, { cantidad: number; peso: number }>> {
-  const sheetName = process.env.NEXT_PUBLIC_SHEET_NAME3;
+  const sheetName = process.env.NEXT_PUBLIC_SHEET_NAME3 || 'Entradas';
   
   try {
-    const tokenResponse = await fetch('/api/auth/token');
-    if (!tokenResponse.ok) {
-      throw new Error('Failed to get access token');
-    }
-
-    const { access_token } = await tokenResponse.json();
-    if (!access_token) {
-      throw new Error('No access token received');
-    }
-
     const response = await fetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A2:F`,
+      `https://sheets.googleapis.com/v4/spreadsheets/${process.env.NEXT_PUBLIC_SPREADSHEET_ID}/values/${sheetName}!A2:F?key=${process.env.NEXT_PUBLIC_GOOGLE_API_KEY}`,
       {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
-          'Authorization': `Bearer ${access_token}`,
           'Cache-Control': 'no-cache'
         }
       }
@@ -1337,7 +1326,7 @@ export function PanelDeInventarioComponent() {
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-background font-inter">
+    <div className="min-h-screen bg-white overflow-y-auto">
       <div className="border-b">
         <header className="flex items-center justify-between px-6 lg:px-0 py-4 max-w-6xl mx-auto w-full">
           <div className="flex items-center">
