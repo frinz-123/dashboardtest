@@ -64,7 +64,7 @@ export default function RootLayout({
           `
         }} />
       </head>
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased touch-none`}>
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased scroll-container`}>
         <ZoomPrevention />
         <AuthProvider>{children}</AuthProvider>
       </body>
