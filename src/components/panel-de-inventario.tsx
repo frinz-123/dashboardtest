@@ -58,6 +58,7 @@ interface ModalInventarioProps {
   estaAbierto: boolean;
   setEstaAbierto: (value: boolean) => void;
   articulos: Articulo[];
+  setArticulos: (articulos: Articulo[]) => void;
   alGuardar: (cantidades: Cantidades) => void;
 }
 
@@ -104,7 +105,7 @@ async function fetchProductos(): Promise<Articulo[]> {
   }
 }
 
-async function fetchEntradas(): Promise<Record<string, { cantidad: number; peso: number }>> {
+async function fetchEntradas(): Promise<Record<string, { cantidad: number; peso: number; ultimaActualizacion: string }>> {
   const sheetName = process.env.NEXT_PUBLIC_SHEET_NAME3 || 'Entradas';
   
   try {
@@ -124,7 +125,7 @@ async function fetchEntradas(): Promise<Record<string, { cantidad: number; peso:
     }
 
     const data = await response.json();
-    const cantidades: Record<string, { cantidad: number; peso: number }> = {};
+    const cantidades: Record<string, { cantidad: number; peso: number; ultimaActualizacion: string }> = {};
 
     if (!data.values) return cantidades;
 
@@ -134,12 +135,17 @@ async function fetchEntradas(): Promise<Record<string, { cantidad: number; peso:
       const nombre = row[0];
       const cantidad = parseInt(row[2]) || 0;
       const peso = parseFloat(row[3]) || 0;
+      const fecha = row[5] || new Date().toISOString().split('T')[0];
       
       if (!cantidades[nombre]) {
-        cantidades[nombre] = { cantidad: 0, peso: 0 };
+        cantidades[nombre] = { cantidad: 0, peso: 0, ultimaActualizacion: fecha };
       }
       cantidades[nombre].cantidad += cantidad;
       cantidades[nombre].peso += peso;
+      // Update the date only if this entry is more recent
+      if (fecha > cantidades[nombre].ultimaActualizacion) {
+        cantidades[nombre].ultimaActualizacion = fecha;
+      }
     });
 
     return cantidades;
@@ -150,7 +156,7 @@ async function fetchEntradas(): Promise<Record<string, { cantidad: number; peso:
   }
 }
 
-type EntradaSource = 'Produccion' | 'Inventario Inicial' | 'Retorno de vendedor' | '';
+type EntradaSource = 'Produccion' | 'Inventario Inicial' | 'Retorno de vendedor' | 'Automatic Deduction' | '';
 
 interface Entrada {
   nombre: string;
@@ -275,84 +281,189 @@ function TarjetaInventario({ articulo }: { articulo: Articulo }) {
   )
 }
 
+interface TableFilters {
+  categoria: string;
+  estado: string;
+  ordenar: string;
+}
+
 function TablaInventario({ articulos }: { articulos: Articulo[] }) {
+  const [filters, setFilters] = useState<TableFilters>({
+    categoria: '',
+    estado: '',
+    ordenar: 'nombre-asc'
+  });
+
+  // Get unique categories
+  const categorias = ['Todas', ...new Set(articulos.map(a => a.categoria))];
+  
+  // Get unique estados
+  const estados = ['Todos', 'En Stock', 'Bajo Stock', 'Sin Stock', 'Sobrestock'];
+
+  // Apply filters and sorting
+  const articulosFiltrados = articulos
+    .filter(articulo => {
+      if (filters.categoria && filters.categoria !== 'Todas') {
+        if (articulo.categoria !== filters.categoria) return false;
+      }
+      if (filters.estado && filters.estado !== 'Todos') {
+        if (articulo.estado !== filters.estado) return false;
+      }
+      return true;
+    })
+    .sort((a, b) => {
+      switch (filters.ordenar) {
+        case 'nombre-asc':
+          return a.nombre.localeCompare(b.nombre);
+        case 'nombre-desc':
+          return b.nombre.localeCompare(a.nombre);
+        case 'cantidad-asc':
+          return a.cantidad - b.cantidad;
+        case 'cantidad-desc':
+          return b.cantidad - a.cantidad;
+        case 'actualizado-asc':
+          return a.ultimaActualizacion.localeCompare(b.ultimaActualizacion);
+        case 'actualizado-desc':
+          return b.ultimaActualizacion.localeCompare(a.ultimaActualizacion);
+        default:
+          return 0;
+      }
+    });
+
   return (
-    <Table>
-      <TableHeader>
-        <TableRow className="bg-gray-100">
-          <TableHead className="rounded-tl-lg">
-            <div className="flex items-center">
-              <Box className="mr-2 h-4 w-4" />
-              Nombre
-            </div>
-          </TableHead>
-          <TableHead>
-            <div className="flex items-center">
-              <Tag className="mr-2 h-4 w-4" />
-              Categoría
-            </div>
-          </TableHead>
-          <TableHead>
-            <div className="flex items-center">
-              <DollarSign className="mr-2 h-4 w-4" />
-              Precio
-            </div>
-          </TableHead>
-          <TableHead>
-            <div className="flex items-center">
-              <Package className="mr-2 h-4 w-4" />
-              Cantidad
-            </div>
-          </TableHead>
-          <TableHead>
-            <div className="flex items-center">
-              <AlertCircle className="mr-2 h-4 w-4" />
-              Estado
-            </div>
-          </TableHead>
-          <TableHead className="rounded-tr-lg">
-            <div className="flex items-center">
-              <Clock className="mr-2 h-4 w-4" />
-              Última Actualización
-            </div>
-          </TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {articulos.map((articulo) => (
-          <TableRow key={articulo.id}>
-            <TableCell>{articulo.nombre}</TableCell>
-            <TableCell>
-              <Badge 
-                variant="secondary" 
-                className={obtenerColorCategoria(articulo.categoria)}
-              >
-                {articulo.categoria}
-              </Badge>
-            </TableCell>
-            <TableCell>${articulo.precio.toFixed(2)}</TableCell>
-            <TableCell>
-              {articulo.cantidad}
-              {articulo.categoria.toLowerCase() === 'costal' && (
-                <span className="ml-2 text-amber-600">
-                  ({articulo.peso.toFixed(1)} kg)
-                </span>
-              )}
-            </TableCell>
-            <TableCell>
-              <Badge 
-                variant="secondary" 
-                className={obtenerColorEstado(articulo.estado)}
-              >
-                {articulo.estado}
-              </Badge>
-            </TableCell>
-            <TableCell>{articulo.ultimaActualizacion}</TableCell>
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-4 items-center">
+        <Select
+          value={filters.categoria}
+          onValueChange={(value) => setFilters(prev => ({ ...prev, categoria: value }))}
+        >
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Filtrar por categoría" />
+          </SelectTrigger>
+          <SelectContent>
+            {categorias.map(categoria => (
+              <SelectItem key={categoria} value={categoria}>
+                {categoria}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select
+          value={filters.estado}
+          onValueChange={(value) => setFilters(prev => ({ ...prev, estado: value }))}
+        >
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Filtrar por estado" />
+          </SelectTrigger>
+          <SelectContent>
+            {estados.map(estado => (
+              <SelectItem key={estado} value={estado}>
+                {estado}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select
+          value={filters.ordenar}
+          onValueChange={(value) => setFilters(prev => ({ ...prev, ordenar: value }))}
+        >
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Ordenar por" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="nombre-asc">Nombre (A-Z)</SelectItem>
+            <SelectItem value="nombre-desc">Nombre (Z-A)</SelectItem>
+            <SelectItem value="cantidad-asc">Cantidad (Menor a Mayor)</SelectItem>
+            <SelectItem value="cantidad-desc">Cantidad (Mayor a Menor)</SelectItem>
+            <SelectItem value="actualizado-asc">Actualización (Más antiguo)</SelectItem>
+            <SelectItem value="actualizado-desc">Actualización (Más reciente)</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <div className="ml-auto text-sm text-muted-foreground">
+          {articulosFiltrados.length} productos encontrados
+        </div>
+      </div>
+
+      <Table>
+        <TableHeader>
+          <TableRow className="bg-gray-100">
+            <TableHead className="rounded-tl-lg">
+              <div className="flex items-center">
+                <Box className="mr-2 h-4 w-4" />
+                Nombre
+              </div>
+            </TableHead>
+            <TableHead>
+              <div className="flex items-center">
+                <Tag className="mr-2 h-4 w-4" />
+                Categoría
+              </div>
+            </TableHead>
+            <TableHead>
+              <div className="flex items-center">
+                <DollarSign className="mr-2 h-4 w-4" />
+                Precio
+              </div>
+            </TableHead>
+            <TableHead>
+              <div className="flex items-center">
+                <Package className="mr-2 h-4 w-4" />
+                Cantidad
+              </div>
+            </TableHead>
+            <TableHead>
+              <div className="flex items-center">
+                <AlertCircle className="mr-2 h-4 w-4" />
+                Estado
+              </div>
+            </TableHead>
+            <TableHead className="rounded-tr-lg">
+              <div className="flex items-center">
+                <Clock className="mr-2 h-4 w-4" />
+                Última Actualización
+              </div>
+            </TableHead>
           </TableRow>
-        ))}
-      </TableBody>
-    </Table>
-  )
+        </TableHeader>
+        <TableBody>
+          {articulosFiltrados.map((articulo) => (
+            <TableRow key={articulo.id}>
+              <TableCell>{articulo.nombre}</TableCell>
+              <TableCell>
+                <Badge 
+                  variant="secondary" 
+                  className={obtenerColorCategoria(articulo.categoria)}
+                >
+                  {articulo.categoria}
+                </Badge>
+              </TableCell>
+              <TableCell>${articulo.precio.toFixed(2)}</TableCell>
+              <TableCell>
+                {articulo.cantidad}
+                {articulo.categoria.toLowerCase() === 'costal' && (
+                  <span className="ml-2 text-amber-600">
+                    ({articulo.peso.toFixed(1)} kg)
+                  </span>
+                )}
+              </TableCell>
+              <TableCell>
+                <Badge 
+                  variant="secondary" 
+                  className={obtenerColorEstado(articulo.estado)}
+                >
+                  {articulo.estado}
+                </Badge>
+              </TableCell>
+              <TableCell>{articulo.ultimaActualizacion}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
 }
 
 interface ProductEntry {
@@ -400,23 +511,31 @@ function DialogoAgregarEntrada({
               categoria: producto.categoria,
               cantidad: parseInt(entry.cantidad),
               peso: producto.categoria.toLowerCase() === 'costal' ? parseFloat(entry.peso) || 0 : 0,
-              source: entry.source,
+              source: entry.source as EntradaSource,
               date: new Date().toISOString().split('T')[0]
             };
 
             // Add the deduction logic for Molido, Habanero, and ENT products
+            console.log('Product being processed:', producto.nombre);
+
             if (
-              (producto.nombre === 'Chiltepin Molido 50 g' || producto.nombre === '20g') ||
+              (producto.nombre === 'Chiltepin Molido 50 g' || 
+               producto.nombre === '20g' || 
+               producto.nombre === '500gr MOL' ||  // Try both versions
+               producto.nombre === '500gr Mol' ||   // Case sensitivity might matter
+               producto.nombre === '500 gr MOL') || // Space might matter
               (producto.nombre === 'Hab50g' || producto.nombre === 'Hab20g') ||
               (producto.nombre === 'E30g' || producto.nombre === 'Molinillo' || 
                producto.nombre === 'Tira E' || producto.nombre === 'Bt 500 gr ent' || 
-               producto.nombre === 'Ba 500 gr ent')
+               producto.nombre === 'Ba 500 gr ent' || producto.nombre === '4 Onzas / 115 g')
             ) {
-              // Determine which costal to deduct from
+              // Add debug log
+              console.log('Matched product for deduction:', producto.nombre);
+              
               let costalName = 'Costal MOL';
               if (producto.nombre.includes('Hab')) {
                 costalName = 'Costal Hab';
-              } else if (['E30g', 'Molinillo', 'Tira E', 'Bt 500 gr ent', 'Ba 500 gr ent'].includes(producto.nombre)) {
+              } else if (['E30g', 'Molinillo', 'Tira E', 'Bt 500 gr ent', 'Ba 500 gr ent', '4 Onzas / 115 g'].includes(producto.nombre)) {
                 costalName = 'Costal ENT';
               }
               
@@ -428,23 +547,30 @@ function DialogoAgregarEntrada({
                 // Calculate weight deduction based on product
                 if (producto.nombre === 'Chiltepin Molido 50 g' || producto.nombre === 'Hab50g') {
                   deduction = 0.05 * Math.abs(parseInt(entry.cantidad));  // 50g = 0.05kg
+                } else if (producto.nombre === '500gr MOL') {
+                  deduction = 0.5 * Math.abs(parseInt(entry.cantidad));  // 500g = 0.5kg from Costal MOL
+                  console.log('500gr MOL deduction calculated:', deduction); // Debug log
                 } else if (producto.nombre === '20g' || producto.nombre === 'Hab20g') {
                   deduction = 0.02 * Math.abs(parseInt(entry.cantidad));  // 20g = 0.02kg
                 } else if (['E30g', 'Molinillo', 'Tira E'].includes(producto.nombre)) {
                   deduction = 0.03 * Math.abs(parseInt(entry.cantidad));  // 30g = 0.03kg
                 } else if (['Bt 500 gr ent', 'Ba 500 gr ent'].includes(producto.nombre)) {
                   deduction = 0.5 * Math.abs(parseInt(entry.cantidad));   // 500g = 0.5kg
+                } else if (producto.nombre === '4 Onzas / 115 g') {
+                  deduction = 0.115 * Math.abs(parseInt(entry.cantidad));  // 115g = 0.115kg
                 }
 
                 // Create deduction entry for the corresponding costal
                 const costalDeduction: Entrada = {
                   nombre: costalName,
-                  categoria: 'Costal',
+                  categoria: 'Salida',
                   cantidad: 0,
                   peso: -deduction,
-                  source: '',
+                  source: 'Automatic Deduction' as EntradaSource,
                   date: new Date().toISOString().split('T')[0]
                 };
+
+                console.log('Costal deduction being sent:', costalDeduction); // Debug log
 
                 // Send the costal deduction to the API
                 await fetch('/api/inventory/add-entrada', {
@@ -555,6 +681,7 @@ function DialogoAgregarEntrada({
                         <SelectItem value="Produccion">Producción</SelectItem>
                         <SelectItem value="Inventario Inicial">Inventario Inicial</SelectItem>
                         <SelectItem value="Retorno de vendedor">Retorno de vendedor</SelectItem>
+                        <SelectItem value="Automatic Deduction">Automatic Deduction</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -594,6 +721,7 @@ function DialogoNuevaSalida({
   estaAbierto, 
   setEstaAbierto, 
   articulos, 
+  setArticulos,  // Add this line
   alGuardar 
 }: ModalInventarioProps): JSX.Element {
   const [entries, setEntries] = useState<ProductEntry[]>([{ 
@@ -636,6 +764,75 @@ function DialogoNuevaSalida({
               date: new Date().toISOString().split('T')[0]
             };
 
+            // Add the deduction logic for Molido, Habanero, and ENT products
+            console.log('Product being processed:', producto.nombre);
+
+            if (
+              (producto.nombre === 'Chiltepin Molido 50 g' || 
+               producto.nombre === '20g' || 
+               producto.nombre === '500gr MOL' ||  // Try both versions
+               producto.nombre === '500gr Mol' ||   // Case sensitivity might matter
+               producto.nombre === '500 gr MOL') || // Space might matter
+              (producto.nombre === 'Hab50g' || producto.nombre === 'Hab20g') ||
+              (producto.nombre === 'E30g' || producto.nombre === 'Molinillo' || 
+               producto.nombre === 'Tira E' || producto.nombre === 'Bt 500 gr ent' || 
+               producto.nombre === 'Ba 500 gr ent' || producto.nombre === '4 Onzas / 115 g')
+            ) {
+              // Add debug log
+              console.log('Matched product for deduction:', producto.nombre);
+              
+              let costalName = 'Costal MOL';
+              if (producto.nombre.includes('Hab')) {
+                costalName = 'Costal Hab';
+              } else if (['E30g', 'Molinillo', 'Tira E', 'Bt 500 gr ent', 'Ba 500 gr ent', '4 Onzas / 115 g'].includes(producto.nombre)) {
+                costalName = 'Costal ENT';
+              }
+              
+              const costal = articulos.find(p => p.nombre === costalName);
+              
+              if (costal) {
+                let deduction = 0;
+                
+                // Calculate weight deduction based on product
+                if (producto.nombre === 'Chiltepin Molido 50 g' || producto.nombre === 'Hab50g') {
+                  deduction = 0.05 * Math.abs(parseInt(entry.cantidad));  // 50g = 0.05kg
+                } else if (producto.nombre === '500gr MOL') {
+                  deduction = 0.5 * Math.abs(parseInt(entry.cantidad));  // 500g = 0.5kg from Costal MOL
+                  console.log('500gr MOL deduction calculated:', deduction); // Debug log
+                } else if (producto.nombre === '20g' || producto.nombre === 'Hab20g') {
+                  deduction = 0.02 * Math.abs(parseInt(entry.cantidad));  // 20g = 0.02kg
+                } else if (['E30g', 'Molinillo', 'Tira E'].includes(producto.nombre)) {
+                  deduction = 0.03 * Math.abs(parseInt(entry.cantidad));  // 30g = 0.03kg
+                } else if (['Bt 500 gr ent', 'Ba 500 gr ent'].includes(producto.nombre)) {
+                  deduction = 0.5 * Math.abs(parseInt(entry.cantidad));   // 500g = 0.5kg
+                } else if (producto.nombre === '4 Onzas / 115 g') {
+                  deduction = 0.115 * Math.abs(parseInt(entry.cantidad));  // 115g = 0.115kg
+                }
+
+                // Create deduction entry for the corresponding costal
+                const costalDeduction: Entrada = {
+                  nombre: costalName,
+                  categoria: 'Salida',
+                  cantidad: 0,
+                  peso: -deduction,
+                  source: 'Automatic Deduction' as EntradaSource,
+                  date: new Date().toISOString().split('T')[0]
+                };
+
+                console.log('Costal deduction being sent:', costalDeduction); // Debug log
+
+                // Send the costal deduction to the API
+                await fetch('/api/inventory/add-entrada', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify(costalDeduction),
+                });
+              }
+            }
+
+            // Send the original salida
             const response = await fetch('/api/inventory/add-entrada', {
               method: 'POST',
               headers: {
@@ -656,14 +853,47 @@ function DialogoNuevaSalida({
           }
         }
       }
+
+      // Reload inventory after successful subtractions
+      const productos = await fetchProductos();
+      const cantidades = await fetchEntradas();
       
-      // Reset and close after successful subtractions
-      alGuardar(cantidades);
-      setEntries([{ productId: '', cantidad: '', peso: '', source: '' }]);
-      setError(null);
-      setEstaAbierto(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al agregar salida');
+      const inventarioActualizado = productos.map(producto => {
+        const cantidadInfo = cantidades[producto.nombre] || { 
+          cantidad: 0, 
+          peso: 0, 
+          ultimaActualizacion: new Date().toISOString().split('T')[0] 
+        };
+        const estado = getEstado(producto.nombre, cantidadInfo.cantidad);
+
+        // Format the date to show relative time
+        const formatRelativeDate = (dateStr: string) => {
+          const date = new Date(dateStr);
+          const now = new Date();
+          const diffTime = Math.abs(now.getTime() - date.getTime());
+          const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+          
+          if (diffDays === 0) return 'Hoy';
+          if (diffDays === 1) return 'Ayer';
+          if (diffDays < 7) return `${diffDays}d`;
+          if (diffDays < 30) return `${Math.floor(diffDays / 7)}sem`;
+          return `${Math.floor(diffDays / 30)}m`;
+        };
+
+        return {
+          ...producto,
+          cantidad: cantidadInfo.cantidad,
+          peso: cantidadInfo.peso,
+          estado,
+          ultimaActualizacion: formatRelativeDate(cantidadInfo.ultimaActualizacion)
+        };
+      });
+
+      setArticulos(inventarioActualizado);
+      setEstaAbierto(false);  // Use setEstaAbierto instead of setEstaNuevaSalidaAbierto
+    } catch (error) {
+      console.error('Error in manejarNuevaSalida:', error);
+      setError(error instanceof Error ? error.message : 'Error adding salida');
     }
   };
 
@@ -762,12 +992,80 @@ function DialogoNuevaSalida({
 }
 
 // First, let's add these constants at the top of the file after the interfaces
-const STOCK_THRESHOLDS = {
-  LOW: 5,
-  HIGH: 100
+const TOTAL_BARS = 20;
+
+// Add this constant near the top of the file, after the interfaces
+type ProductThresholds = {
+  LOW: number;
+  HIGH: number;
 };
 
-const TOTAL_BARS = 20;
+type ProductThresholdsMap = {
+  [key: string]: ProductThresholds;
+  DEFAULT: ProductThresholds;
+};
+
+// Update the PRODUCT_THRESHOLDS definition with the type
+const PRODUCT_THRESHOLDS: ProductThresholdsMap = {
+  // Salsas 195ml
+  'Salsa Chiltepin 195': { LOW: 3360, HIGH: 33600 },
+  'Salsa Especial 195': { LOW: 3360, HIGH: 33600 },
+  'Salsa Reina 195': { LOW: 1440, HIGH: 14400 },
+  'Salsa Habanera 195': { LOW: 1440, HIGH: 14400 },
+  
+  // Paquetes
+  'Paquete El Rey': { LOW: 120, HIGH: 1200 },
+  
+  // Salsas Litro
+  'Salsa Chiltepin Litro': { LOW: 540, HIGH: 5400 },
+  'Salsa Especial Litro': { LOW: 540, HIGH: 5400 },
+  'Salsa Reina Litro': { LOW: 270, HIGH: 2700 },
+  'Salsa Habanera Litro': { LOW: 270, HIGH: 2700 },
+  
+  // Michela Mix
+  'Michela Mix Tamarindo': { LOW: 240, HIGH: 2400 },
+  'Michela Mix Mango': { LOW: 240, HIGH: 2400 },
+  'Michela Mix Sandia': { LOW: 240, HIGH: 2400 },
+  'Michela Mix Picafresa': { LOW: 240, HIGH: 2400 },
+  'Michela Mix Fuego': { LOW: 240, HIGH: 2400 },
+  
+  // Rey Mix
+  'Rey Mix Original': { LOW: 240, HIGH: 2400 },
+  'Rey Mix Especial': { LOW: 240, HIGH: 2400 },
+  
+  // Chiltepin Products
+  'Chiltepin Molido 50 g': { LOW: 1440, HIGH: 14400 },
+  '20g': { LOW: 1920, HIGH: 19200 },
+  'E30g': { LOW: 480, HIGH: 4800 },
+  'Molinillo': { LOW: 480, HIGH: 4800 },
+  'Hab50g': { LOW: 240, HIGH: 2400 },
+  'Hab20g': { LOW: 480, HIGH: 4800 },
+  
+  // Tiras
+  'Tira E': { LOW: 100, HIGH: 1000 },
+  'Tira M': { LOW: 30, HIGH: 300 },
+  
+  // Bulk Products
+  'Bt 500 gr ent': { LOW: 50, HIGH: 500 },
+  'Ba 500 gr ent': { LOW: 50, HIGH: 500 },
+  '1 LB ENT': { LOW: 10, HIGH: 100 },
+  '115 gr ENT': { LOW: 10, HIGH: 100 },
+  'Litro ENT': { LOW: 10, HIGH: 100 },
+  '4 Onzas / 115 g': { LOW: 10, HIGH: 100 },
+  
+  // Default thresholds for any product not listed
+  'DEFAULT': { LOW: 5, HIGH: 50 }
+};
+
+// Then modify the getEstado function (add this new function)
+function getEstado(nombre: string, cantidad: number): string {
+  const thresholds = PRODUCT_THRESHOLDS[nombre] || PRODUCT_THRESHOLDS['DEFAULT'];
+  
+  if (cantidad <= 0) return 'Sin Stock';
+  if (cantidad <= thresholds.LOW) return 'Bajo Stock';
+  if (cantidad > thresholds.HIGH) return 'Sobrestock';
+  return 'En Stock';
+}
 
 function InventoryBarChart({ articulos }: { articulos: Articulo[] }) {
   const data = articulos
@@ -1069,20 +1367,33 @@ export function PanelDeInventarioComponent() {
         if (!mounted) return;
 
         const inventarioActualizado = productos.map(producto => {
-          const cantidadInfo = cantidades[producto.nombre] || { cantidad: 0, peso: 0 };
-          let estado = 'Sin Stock';
-          
-          if (cantidadInfo.cantidad > 0) {
-            estado = cantidadInfo.cantidad <= 5 ? 'Bajo Stock' : 
-                    cantidadInfo.cantidad > 100 ? 'Sobrestock' : 'En Stock';
-          }
+          const cantidadInfo = cantidades[producto.nombre] || { 
+            cantidad: 0, 
+            peso: 0, 
+            ultimaActualizacion: new Date().toISOString().split('T')[0] 
+          };
+          const estado = getEstado(producto.nombre, cantidadInfo.cantidad);
+
+          // Format the date to show relative time
+          const formatRelativeDate = (dateStr: string) => {
+            const date = new Date(dateStr);
+            const now = new Date();
+            const diffTime = Math.abs(now.getTime() - date.getTime());
+            const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+            
+            if (diffDays === 0) return 'Hoy';
+            if (diffDays === 1) return 'Ayer';
+            if (diffDays < 7) return `${diffDays}d`;
+            if (diffDays < 30) return `${Math.floor(diffDays / 7)}sem`;
+            return `${Math.floor(diffDays / 30)}m`;
+          };
 
           return {
             ...producto,
             cantidad: cantidadInfo.cantidad,
             peso: cantidadInfo.peso,
             estado,
-            ultimaActualizacion: new Date().toLocaleDateString()
+            ultimaActualizacion: formatRelativeDate(cantidadInfo.ultimaActualizacion)
           };
         });
 
@@ -1132,7 +1443,9 @@ export function PanelDeInventarioComponent() {
               nombre: producto.nombre,
               categoria: producto.categoria,
               cantidad: Number(cantidad),
-              peso: producto.categoria.toLowerCase() === 'costal' ? parseFloat(producto.peso.toString()) || 0 : 0
+              peso: producto.categoria.toLowerCase() === 'costal' ? parseFloat(producto.peso.toString()) || 0 : 0,
+              source: 'Produccion',
+              date: new Date().toISOString().split('T')[0]
             };
 
             const response = await fetch('/api/inventory/add-entrada', {
@@ -1161,18 +1474,33 @@ export function PanelDeInventarioComponent() {
       const cantidades = await fetchEntradas();
       
       const inventarioActualizado = productos.map(producto => {
-        const cantidadInfo = cantidades[producto.nombre] || { cantidad: 0, peso: 0 };
-        let estado = 'Sin Stock';
-        if (cantidadInfo.cantidad > 0) {
-          estado = cantidadInfo.cantidad <= 5 ? 'Bajo Stock' : cantidadInfo.cantidad > 100 ? 'Sobrestock' : 'En Stock';
-        }
+        const cantidadInfo = cantidades[producto.nombre] || { 
+          cantidad: 0, 
+          peso: 0, 
+          ultimaActualizacion: new Date().toISOString().split('T')[0] 
+        };
+        const estado = getEstado(producto.nombre, cantidadInfo.cantidad);
+
+        // Format the date to show relative time
+        const formatRelativeDate = (dateStr: string) => {
+          const date = new Date(dateStr);
+          const now = new Date();
+          const diffTime = Math.abs(now.getTime() - date.getTime());
+          const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+          
+          if (diffDays === 0) return 'Hoy';
+          if (diffDays === 1) return 'Ayer';
+          if (diffDays < 7) return `${diffDays}d`;
+          if (diffDays < 30) return `${Math.floor(diffDays / 7)}sem`;
+          return `${Math.floor(diffDays / 30)}m`;
+        };
 
         return {
           ...producto,
           cantidad: cantidadInfo.cantidad,
           peso: cantidadInfo.peso,
           estado,
-          ultimaActualizacion: '0d'
+          ultimaActualizacion: formatRelativeDate(cantidadInfo.ultimaActualizacion)
         };
       });
 
@@ -1200,18 +1528,26 @@ export function PanelDeInventarioComponent() {
             };
 
             // Add the deduction logic for Molido, Habanero, and ENT products
+            console.log('Product being processed:', producto.nombre);
+
             if (
-              (producto.nombre === 'Chiltepin Molido 50 g' || producto.nombre === '20g') ||
+              (producto.nombre === 'Chiltepin Molido 50 g' || 
+               producto.nombre === '20g' || 
+               producto.nombre === '500gr MOL' ||  // Try both versions
+               producto.nombre === '500gr Mol' ||   // Case sensitivity might matter
+               producto.nombre === '500 gr MOL') || // Space might matter
               (producto.nombre === 'Hab50g' || producto.nombre === 'Hab20g') ||
               (producto.nombre === 'E30g' || producto.nombre === 'Molinillo' || 
                producto.nombre === 'Tira E' || producto.nombre === 'Bt 500 gr ent' || 
-               producto.nombre === 'Ba 500 gr ent')
+               producto.nombre === 'Ba 500 gr ent' || producto.nombre === '4 Onzas / 115 g')
             ) {
-              // Determine which costal to deduct from
+              // Add debug log
+              console.log('Matched product for deduction:', producto.nombre);
+              
               let costalName = 'Costal MOL';
               if (producto.nombre.includes('Hab')) {
                 costalName = 'Costal Hab';
-              } else if (['E30g', 'Molinillo', 'Tira E', 'Bt 500 gr ent', 'Ba 500 gr ent'].includes(producto.nombre)) {
+              } else if (['E30g', 'Molinillo', 'Tira E', 'Bt 500 gr ent', 'Ba 500 gr ent', '4 Onzas / 115 g'].includes(producto.nombre)) {
                 costalName = 'Costal ENT';
               }
               
@@ -1223,23 +1559,30 @@ export function PanelDeInventarioComponent() {
                 // Calculate weight deduction based on product
                 if (producto.nombre === 'Chiltepin Molido 50 g' || producto.nombre === 'Hab50g') {
                   deduction = 0.05 * Math.abs(cantidad);  // 50g = 0.05kg
+                } else if (producto.nombre === '500gr MOL') {
+                  deduction = 0.5 * Math.abs(cantidad);  // 500g = 0.5kg from Costal MOL
+                  console.log('500gr MOL deduction calculated:', deduction); // Debug log
                 } else if (producto.nombre === '20g' || producto.nombre === 'Hab20g') {
                   deduction = 0.02 * Math.abs(cantidad);  // 20g = 0.02kg
                 } else if (['E30g', 'Molinillo', 'Tira E'].includes(producto.nombre)) {
                   deduction = 0.03 * Math.abs(cantidad);  // 30g = 0.03kg
                 } else if (['Bt 500 gr ent', 'Ba 500 gr ent'].includes(producto.nombre)) {
                   deduction = 0.5 * Math.abs(cantidad);   // 500g = 0.5kg
+                } else if (producto.nombre === '4 Onzas / 115 g') {
+                  deduction = 0.115 * Math.abs(cantidad);  // 115g = 0.115kg
                 }
 
                 // Create deduction entry for the corresponding costal
                 const costalDeduction: Entrada = {
                   nombre: costalName,
-                  categoria: 'Costal',
+                  categoria: 'Salida',
                   cantidad: 0,
                   peso: -deduction,
-                  source: '',
+                  source: 'Automatic Deduction' as EntradaSource,
                   date: new Date().toISOString().split('T')[0]
                 };
+
+                console.log('Costal deduction being sent:', costalDeduction); // Debug log
 
                 // Send the costal deduction to the API
                 await fetch('/api/inventory/add-entrada', {
@@ -1279,20 +1622,33 @@ export function PanelDeInventarioComponent() {
       const cantidades = await fetchEntradas();
       
       const inventarioActualizado = productos.map(producto => {
-        const cantidadInfo = cantidades[producto.nombre] || { cantidad: 0, peso: 0 };
-        let estado = 'Sin Stock';
-        if (cantidadInfo.cantidad > 0) {
-          estado = cantidadInfo.cantidad <= 5 ? 'Bajo Stock' : cantidadInfo.cantidad > 100 ? 'Sobrestock' : 'En Stock';
-        }
+        const cantidadInfo = cantidades[producto.nombre] || { 
+          cantidad: 0, 
+          peso: 0, 
+          ultimaActualizacion: new Date().toISOString().split('T')[0] 
+        };
+        const estado = getEstado(producto.nombre, cantidadInfo.cantidad);
+
+        // Format the date to show relative time
+        const formatRelativeDate = (dateStr: string) => {
+          const date = new Date(dateStr);
+          const now = new Date();
+          const diffTime = Math.abs(now.getTime() - date.getTime());
+          const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+          
+          if (diffDays === 0) return 'Hoy';
+          if (diffDays === 1) return 'Ayer';
+          if (diffDays < 7) return `${diffDays}d`;
+          if (diffDays < 30) return `${Math.floor(diffDays / 7)}sem`;
+          return `${Math.floor(diffDays / 30)}m`;
+        };
 
         return {
           ...producto,
           cantidad: cantidadInfo.cantidad,
           peso: cantidadInfo.peso,
           estado,
-          ultimaActualizacion: '0d',
-          source: '',
-          date: new Date().toISOString().split('T')[0]
+          ultimaActualizacion: formatRelativeDate(cantidadInfo.ultimaActualizacion)
         };
       });
 
@@ -1326,7 +1682,7 @@ export function PanelDeInventarioComponent() {
   }
 
   return (
-    <div className="min-h-screen bg-white overflow-y-auto">
+    <div className="min-h-screen bg-white px-4 py-3 w-full overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
       <div className="border-b">
         <header className="flex items-center justify-between px-6 lg:px-0 py-4 max-w-6xl mx-auto w-full">
           <div className="flex items-center">
@@ -1417,20 +1773,31 @@ export function PanelDeInventarioComponent() {
               </div>
               <div className="flex gap-1 h-8 items-center">
                 {Array.from({ length: TOTAL_BARS }).map((_, index) => {
-                  // Calculate percentages for different stock levels
-                  const sinStock = (conteoSinStock / articulos.length) * TOTAL_BARS;
-                  const bajoStock = (conteoBajoStock / articulos.length) * TOTAL_BARS;
-                  const sobreStock = (articulos.filter(a => a.cantidad > STOCK_THRESHOLDS.HIGH).length / articulos.length) * TOTAL_BARS;
+                  // Calculate percentages using the new thresholds
+                  const sinStock = articulos.filter(a => a.cantidad <= 0).length;
+                  const bajoStock = articulos.filter(a => {
+                    const threshold = PRODUCT_THRESHOLDS[a.nombre] || PRODUCT_THRESHOLDS['DEFAULT'];
+                    return a.cantidad > 0 && a.cantidad <= threshold.LOW;
+                  }).length;
+                  const sobreStock = articulos.filter(a => {
+                    const threshold = PRODUCT_THRESHOLDS[a.nombre] || PRODUCT_THRESHOLDS['DEFAULT'];
+                    return a.cantidad > threshold.HIGH;
+                  }).length;
+
+                  // Calculate bar positions
+                  const sinStockBars = (sinStock / articulos.length) * TOTAL_BARS;
+                  const bajoStockBars = (bajoStock / articulos.length) * TOTAL_BARS;
+                  const sobreStockBars = (sobreStock / articulos.length) * TOTAL_BARS;
                   
                   let barColor;
-                  if (index < sinStock) {
-                    barColor = 'bg-red-500';
-                  } else if (index < sinStock + bajoStock) {
-                    barColor = 'bg-yellow-500';
-                  } else if (index > TOTAL_BARS - sobreStock) {
-                    barColor = 'bg-blue-500';
+                  if (index < sinStockBars) {
+                    barColor = 'bg-red-500';      // Sin Stock (red)
+                  } else if (index < sinStockBars + bajoStockBars) {
+                    barColor = 'bg-yellow-500';   // Bajo Stock (yellow)
+                  } else if (index > TOTAL_BARS - sobreStockBars) {
+                    barColor = 'bg-blue-500';     // Sobrestock (blue)
                   } else {
-                    barColor = 'bg-green-500';
+                    barColor = 'bg-green-500';    // En Stock (green)
                   }
 
                   return (
@@ -1446,26 +1813,38 @@ export function PanelDeInventarioComponent() {
                 <div className="flex items-center gap-2">
                   <div className="h-4 w-2 rounded-full bg-green-500" />
                   <span className="text-muted-foreground">
-                    <span className="hidden sm:inline">En stock: </span>{conteoEnStock}
+                    <span className="hidden sm:inline">En stock: </span>
+                    {articulos.filter(a => {
+                      const threshold = PRODUCT_THRESHOLDS[a.nombre] || PRODUCT_THRESHOLDS['DEFAULT'];
+                      return a.cantidad > threshold.LOW && a.cantidad <= threshold.HIGH;
+                    }).length}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="h-4 w-2 rounded-full bg-yellow-500" />
                   <span className="text-muted-foreground">
-                    <span className="hidden sm:inline">Bajo stock: </span>{conteoBajoStock}
+                    <span className="hidden sm:inline">Bajo stock: </span>
+                    {articulos.filter(a => {
+                      const threshold = PRODUCT_THRESHOLDS[a.nombre] || PRODUCT_THRESHOLDS['DEFAULT'];
+                      return a.cantidad > 0 && a.cantidad <= threshold.LOW;
+                    }).length}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="h-4 w-2 rounded-full bg-red-500" />
                   <span className="text-muted-foreground">
-                    <span className="hidden sm:inline">Sin stock: </span>{conteoSinStock}
+                    <span className="hidden sm:inline">Sin stock: </span>
+                    {articulos.filter(a => a.cantidad <= 0).length}
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="h-4 w-2 rounded-full bg-blue-500" />
                   <span className="text-muted-foreground">
                     <span className="hidden sm:inline">Sobrestock: </span>
-                    {articulos.filter(a => a.cantidad > STOCK_THRESHOLDS.HIGH).length}
+                    {articulos.filter(a => {
+                      const threshold = PRODUCT_THRESHOLDS[a.nombre] || PRODUCT_THRESHOLDS['DEFAULT'];
+                      return a.cantidad > threshold.HIGH;
+                    }).length}
                   </span>
                 </div>
               </div>
@@ -1537,12 +1916,14 @@ export function PanelDeInventarioComponent() {
         estaAbierto={estaAgregarEntradaAbierto}
         setEstaAbierto={setEstaAgregarEntradaAbierto}
         articulos={articulos}
-        alGuardar={manejarAgregarEntrada}
-      />
+        alGuardar={manejarAgregarEntrada} setArticulos={function (articulos: Articulo[]): void {
+          throw new Error('Function not implemented.')
+        } }      />
       <DialogoNuevaSalida 
         estaAbierto={estaNuevaSalidaAbierto}
         setEstaAbierto={setEstaNuevaSalidaAbierto}
         articulos={articulos}
+        setArticulos={setArticulos}  // Add this line
         alGuardar={manejarNuevaSalida}
       />
     </div>

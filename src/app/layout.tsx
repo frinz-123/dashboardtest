@@ -1,19 +1,14 @@
 import type { Metadata } from "next";
-import localFont from "next/font/local";
+import { Inter } from 'next/font/google'
 import "./globals.css";
 import AuthProvider from '@/components/providers/AuthProvider'
 import { ZoomPrevention } from '@/components/ZoomPrevention'
 
-const geistSans = localFont({
-  src: "./fonts/GeistVF.woff",
-  variable: "--font-geist-sans",
-  weight: "100 900",
-});
-const geistMono = localFont({
-  src: "./fonts/GeistMonoVF.woff",
-  variable: "--font-geist-mono",
-  weight: "100 900",
-});
+const inter = Inter({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-inter',
+})
 
 export const metadata: Metadata = {
   title: "Dashboard El rey",
@@ -33,7 +28,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" className={inter.variable}>
       <head>
         <link rel="icon" href="/icons/favicon.ico" sizes="any" />
         <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
@@ -64,7 +59,7 @@ export default function RootLayout({
           `
         }} />
       </head>
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased scroll-container`}>
+      <body className={`${inter.variable} antialiased scroll-container`}>
         <ZoomPrevention />
         <AuthProvider>{children}</AuthProvider>
       </body>
