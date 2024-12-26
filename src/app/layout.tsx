@@ -37,25 +37,14 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta 
           name="viewport" 
-          content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0, viewport-fit=cover, interactive-widget=resizes-content" 
+          content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" 
         />
         <meta name="HandheldFriendly" content="true" />
         <script dangerouslySetInnerHTML={{
           __html: `
-            document.addEventListener('gesturestart', function(e) {
-              e.preventDefault();
-            });
-            document.addEventListener('gesturechange', function(e) {
-              e.preventDefault();
-            });
-            document.addEventListener('gestureend', function(e) {
-              e.preventDefault();
-            });
-            document.addEventListener('touchmove', function(e) {
-              if (e.scale !== 1) {
-                e.preventDefault();
-              }
-            }, { passive: false });
+            document.addEventListener('touchstart', function() {}, {passive: true});
+            document.addEventListener('touchmove', function() {}, {passive: true});
+            document.addEventListener('wheel', function() {}, {passive: true});
           `
         }} />
       </head>

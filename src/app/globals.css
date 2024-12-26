@@ -228,8 +228,8 @@ html {
   height: 100%;
   -webkit-text-size-adjust: 100%;
   overflow-y: auto;
-  overscroll-behavior-y: none;
-  touch-action: manipulation;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y pinch-zoom; /* Enable vertical scrolling and pinch zoom */
 }
 
 body {
@@ -238,11 +238,11 @@ body {
   position: relative;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  overscroll-behavior-y: none;
-  touch-action: pan-y;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y pinch-zoom;
 }
 
-/* Remove duplicate and conflicting scroll container styles */
+/* Update scroll container styles */
 .scroll-container {
   height: 100%;
   width: 100%;
@@ -250,11 +250,30 @@ body {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
   position: relative;
+  touch-action: pan-y pinch-zoom;
 }
 
-/* Update touch handling for better compatibility */
+/* Chrome-specific fixes */
+@supports (-webkit-touch-callout: none) {
+  html, 
+  body {
+    height: -webkit-fill-available;
+  }
+}
+
+/* Only prevent touch events on non-interactive elements */
 * {
   -webkit-tap-highlight-color: transparent;
+}
+
+/* Allow touch events on interactive elements */
+a, 
+button, 
+input, 
+textarea, 
+select, 
+[role="button"],
+[tabindex="0"] {
   touch-action: manipulation;
 }
 
@@ -266,12 +285,4 @@ select,
   -webkit-user-select: text;
   user-select: text;
   touch-action: manipulation;
-}
-
-/* Chrome-specific optimizations */
-@supports (-webkit-touch-callout: none) {
-  html, 
-  body {
-    height: -webkit-fill-available;
-  }
 }
