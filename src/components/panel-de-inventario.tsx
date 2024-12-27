@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Bell, Plus, Search, Settings, Package, ChevronRight, LayoutGrid, TableIcon, Box, Tag, DollarSign, Clock, AlertCircle, Minus, TrendingUp, Menu } from 'lucide-react'
+import { Bell, Plus, Search, Settings, Package, ChevronRight, LayoutGrid, TableIcon, Box, Tag, DollarSign, Clock, AlertCircle, Minus, TrendingUp, Menu, Pencil, Trash2 } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Label } from "@/components/ui/label"
@@ -291,7 +291,7 @@ function TablaInventario({ articulos }: { articulos: Articulo[] }) {
   const [filters, setFilters] = useState<TableFilters>({
     categoria: '',
     estado: '',
-    ordenar: 'nombre-asc'
+    ordenar: 'cantidad-desc'  // Set default to cantidad-desc (Mayor a Menor)
   });
 
   // Get unique categories
@@ -373,12 +373,12 @@ function TablaInventario({ articulos }: { articulos: Articulo[] }) {
             <SelectValue placeholder="Ordenar por" />
           </SelectTrigger>
           <SelectContent>
+            <SelectItem value="cantidad-desc">Cantidad (Mayor a Menor)</SelectItem>
+            <SelectItem value="cantidad-asc">Cantidad (Menor a Mayor)</SelectItem>
             <SelectItem value="nombre-asc">Nombre (A-Z)</SelectItem>
             <SelectItem value="nombre-desc">Nombre (Z-A)</SelectItem>
-            <SelectItem value="cantidad-asc">Cantidad (Menor a Mayor)</SelectItem>
-            <SelectItem value="cantidad-desc">Cantidad (Mayor a Menor)</SelectItem>
-            <SelectItem value="actualizado-asc">Actualización (Más antiguo)</SelectItem>
             <SelectItem value="actualizado-desc">Actualización (Más reciente)</SelectItem>
+            <SelectItem value="actualizado-asc">Actualización (Más antiguo)</SelectItem>
           </SelectContent>
         </Select>
 
@@ -387,81 +387,81 @@ function TablaInventario({ articulos }: { articulos: Articulo[] }) {
         </div>
       </div>
 
-      <Table>
-        <TableHeader>
-          <TableRow className="bg-gray-100">
-            <TableHead className="rounded-tl-lg">
-              <div className="flex items-center">
-                <Box className="mr-2 h-4 w-4" />
-                Nombre
-              </div>
-            </TableHead>
-            <TableHead>
-              <div className="flex items-center">
-                <Tag className="mr-2 h-4 w-4" />
-                Categoría
-              </div>
-            </TableHead>
-            <TableHead>
-              <div className="flex items-center">
-                <DollarSign className="mr-2 h-4 w-4" />
-                Precio
-              </div>
-            </TableHead>
-            <TableHead>
-              <div className="flex items-center">
-                <Package className="mr-2 h-4 w-4" />
-                Cantidad
-              </div>
-            </TableHead>
-            <TableHead>
-              <div className="flex items-center">
-                <AlertCircle className="mr-2 h-4 w-4" />
-                Estado
-              </div>
-            </TableHead>
-            <TableHead className="rounded-tr-lg">
-              <div className="flex items-center">
-                <Clock className="mr-2 h-4 w-4" />
-                Última Actualización
-              </div>
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
+    <Table>
+      <TableHeader>
+        <TableRow className="bg-gray-100">
+          <TableHead className="rounded-tl-lg">
+            <div className="flex items-center">
+              <Box className="mr-2 h-4 w-4" />
+              Nombre
+            </div>
+          </TableHead>
+          <TableHead>
+            <div className="flex items-center">
+              <Tag className="mr-2 h-4 w-4" />
+              Categoría
+            </div>
+          </TableHead>
+          <TableHead>
+            <div className="flex items-center">
+              <DollarSign className="mr-2 h-4 w-4" />
+              Precio
+            </div>
+          </TableHead>
+          <TableHead>
+            <div className="flex items-center">
+              <Package className="mr-2 h-4 w-4" />
+              Cantidad
+            </div>
+          </TableHead>
+          <TableHead>
+            <div className="flex items-center">
+              <AlertCircle className="mr-2 h-4 w-4" />
+              Estado
+            </div>
+          </TableHead>
+          <TableHead className="rounded-tr-lg">
+            <div className="flex items-center">
+              <Clock className="mr-2 h-4 w-4" />
+              Última Actualización
+            </div>
+          </TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
           {articulosFiltrados.map((articulo) => (
-            <TableRow key={articulo.id}>
-              <TableCell>{articulo.nombre}</TableCell>
-              <TableCell>
-                <Badge 
-                  variant="secondary" 
-                  className={obtenerColorCategoria(articulo.categoria)}
-                >
-                  {articulo.categoria}
-                </Badge>
-              </TableCell>
-              <TableCell>${articulo.precio.toFixed(2)}</TableCell>
-              <TableCell>
-                {articulo.cantidad}
-                {articulo.categoria.toLowerCase() === 'costal' && (
-                  <span className="ml-2 text-amber-600">
-                    ({articulo.peso.toFixed(1)} kg)
-                  </span>
-                )}
-              </TableCell>
-              <TableCell>
-                <Badge 
-                  variant="secondary" 
-                  className={obtenerColorEstado(articulo.estado)}
-                >
-                  {articulo.estado}
-                </Badge>
-              </TableCell>
-              <TableCell>{articulo.ultimaActualizacion}</TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+          <TableRow key={articulo.id}>
+            <TableCell>{articulo.nombre}</TableCell>
+            <TableCell>
+              <Badge 
+                variant="secondary" 
+                className={obtenerColorCategoria(articulo.categoria)}
+              >
+                {articulo.categoria}
+              </Badge>
+            </TableCell>
+            <TableCell>${articulo.precio.toFixed(2)}</TableCell>
+            <TableCell>
+              {articulo.cantidad}
+              {articulo.categoria.toLowerCase() === 'costal' && (
+                <span className="ml-2 text-amber-600">
+                  ({articulo.peso.toFixed(1)} kg)
+                </span>
+              )}
+            </TableCell>
+            <TableCell>
+              <Badge 
+                variant="secondary" 
+                className={obtenerColorEstado(articulo.estado)}
+              >
+                {articulo.estado}
+              </Badge>
+            </TableCell>
+            <TableCell>{articulo.ultimaActualizacion}</TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
     </div>
   );
 }
@@ -755,84 +755,17 @@ function DialogoNuevaSalida({
         if (entry.productId && entry.cantidad) {
           const producto = articulos.find(p => p.id === parseInt(entry.productId));
           if (producto) {
+            const entryQuantity = parseInt(entry.cantidad);
             const salida: Entrada = {
               nombre: producto.nombre,
               categoria: producto.categoria,
-              cantidad: -Math.abs(parseInt(entry.cantidad)),
+              cantidad: -Math.abs(entryQuantity),
               peso: producto.categoria.toLowerCase() === 'costal' ? parseFloat(entry.peso) || 0 : 0,
               source: '',
               date: new Date().toISOString().split('T')[0]
             };
 
-            // Add the deduction logic for Molido, Habanero, and ENT products
-            console.log('Product being processed:', producto.nombre);
-
-            if (
-              (producto.nombre === 'Chiltepin Molido 50 g' || 
-               producto.nombre === '20g' || 
-               producto.nombre === '500gr MOL' ||  // Try both versions
-               producto.nombre === '500gr Mol' ||   // Case sensitivity might matter
-               producto.nombre === '500 gr MOL') || // Space might matter
-              (producto.nombre === 'Hab50g' || producto.nombre === 'Hab20g') ||
-              (producto.nombre === 'E30g' || producto.nombre === 'Molinillo' || 
-               producto.nombre === 'Tira E' || producto.nombre === 'Bt 500 gr ent' || 
-               producto.nombre === 'Ba 500 gr ent' || producto.nombre === '4 Onzas / 115 g')
-            ) {
-              // Add debug log
-              console.log('Matched product for deduction:', producto.nombre);
-              
-              let costalName = 'Costal MOL';
-              if (producto.nombre.includes('Hab')) {
-                costalName = 'Costal Hab';
-              } else if (['E30g', 'Molinillo', 'Tira E', 'Bt 500 gr ent', 'Ba 500 gr ent', '4 Onzas / 115 g'].includes(producto.nombre)) {
-                costalName = 'Costal ENT';
-              }
-              
-              const costal = articulos.find(p => p.nombre === costalName);
-              
-              if (costal) {
-                let deduction = 0;
-                
-                // Calculate weight deduction based on product
-                if (producto.nombre === 'Chiltepin Molido 50 g' || producto.nombre === 'Hab50g') {
-                  deduction = 0.05 * Math.abs(parseInt(entry.cantidad));  // 50g = 0.05kg
-                } else if (producto.nombre === '500gr MOL') {
-                  deduction = 0.5 * Math.abs(parseInt(entry.cantidad));  // 500g = 0.5kg from Costal MOL
-                  console.log('500gr MOL deduction calculated:', deduction); // Debug log
-                } else if (producto.nombre === '20g' || producto.nombre === 'Hab20g') {
-                  deduction = 0.02 * Math.abs(parseInt(entry.cantidad));  // 20g = 0.02kg
-                } else if (['E30g', 'Molinillo', 'Tira E'].includes(producto.nombre)) {
-                  deduction = 0.03 * Math.abs(parseInt(entry.cantidad));  // 30g = 0.03kg
-                } else if (['Bt 500 gr ent', 'Ba 500 gr ent'].includes(producto.nombre)) {
-                  deduction = 0.5 * Math.abs(parseInt(entry.cantidad));   // 500g = 0.5kg
-                } else if (producto.nombre === '4 Onzas / 115 g') {
-                  deduction = 0.115 * Math.abs(parseInt(entry.cantidad));  // 115g = 0.115kg
-                }
-
-                // Create deduction entry for the corresponding costal
-                const costalDeduction: Entrada = {
-                  nombre: costalName,
-                  categoria: 'Salida',
-                  cantidad: 0,
-                  peso: -deduction,
-                  source: 'Automatic Deduction' as EntradaSource,
-                  date: new Date().toISOString().split('T')[0]
-                };
-
-                console.log('Costal deduction being sent:', costalDeduction); // Debug log
-
-                // Send the costal deduction to the API
-                await fetch('/api/inventory/add-entrada', {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                  },
-                  body: JSON.stringify(costalDeduction),
-                });
-              }
-            }
-
-            // Send the original salida
+            // Send the salida directly without any deductions
             const response = await fetch('/api/inventory/add-entrada', {
               method: 'POST',
               headers: {
@@ -853,7 +786,7 @@ function DialogoNuevaSalida({
           }
         }
       }
-
+      
       // Reload inventory after successful subtractions
       const productos = await fetchProductos();
       const cantidades = await fetchEntradas();
@@ -892,7 +825,7 @@ function DialogoNuevaSalida({
       setArticulos(inventarioActualizado);
       setEstaAbierto(false);  // Use setEstaAbierto instead of setEstaNuevaSalidaAbierto
     } catch (error) {
-      console.error('Error in manejarNuevaSalida:', error);
+      console.error('Error in handleSubmit:', error);
       setError(error instanceof Error ? error.message : 'Error adding salida');
     }
   };
@@ -1163,90 +1096,144 @@ function InventoryAreaChart({ articulos }: { articulos: Articulo[] }) {
     entradas: number;
     salidas: number;
   }>>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    let isMounted = true;
+    
     const fetchMovements = async () => {
       try {
-        const tokenResponse = await fetch('/api/auth/token');
-        const { access_token } = await tokenResponse.json();
-        
-        const response = await fetch(
-          `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${process.env.NEXT_PUBLIC_SHEET_NAME3}!A2:F`,
+        // Initialize data structure for the last 7 days
+        const days = Array.from({length: 7}, (_, i) => {
+          const d = new Date();
+          d.setDate(d.getDate() - i);
+          return d.toLocaleDateString('es-ES', { weekday: 'short' });
+        }).reverse();
+
+        const initialData = Object.fromEntries(
+          days.map(day => [day, { entradas: 0, salidas: 0 }])
+        );
+
+        // Fetch data with timeout
+        const fetchPromise = fetch(
+          `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${process.env.NEXT_PUBLIC_SHEET_NAME3}!A2:F?key=${process.env.NEXT_PUBLIC_GOOGLE_API_KEY}`,
           {
             headers: {
-              'Authorization': `Bearer ${access_token}`,
+              'Cache-Control': 'no-cache'
             }
           }
         );
 
-        if (!response.ok) throw new Error('Failed to fetch movements');
-        const data = await response.json();
-        
-        // Process the last 7 days of data
-        const movements = data.values || [];
-        const dailyData = new Map<string, { entradas: number; salidas: number }>();
-        
-        // Get last 7 days
-        const days = Array.from({length: 7}, (_, i) => {
-          const d = new Date();
-          d.setDate(d.getDate() - i);
-          return d;
-        }).reverse();
+        // Update the Promise.race with proper typing
+        const response = await Promise.race([
+          fetchPromise,
+          new Promise<Response>((_, reject) => 
+            setTimeout(() => reject(new Error('Timeout')), 5000)
+          )
+        ]) as Response; // Explicitly type as Response
 
-        // Initialize all days with zero values
-        days.forEach(day => {
-          const dayKey = day.toLocaleDateString('es-ES', { weekday: 'short' });
-          dailyData.set(dayKey, { entradas: 0, salidas: 0 });
-        });
+        if (!response || !response.ok || !isMounted) return;
         
-        movements.forEach((row: any[]) => {
-          const cantidad = parseInt(row[2]) || 0;
-          const date = new Date(row[5]); // Using the date column
+        const data: { values?: any[][] } = await response.json();
+        if (!data?.values || !isMounted) return;
+
+        // Process only the last 7 days of data
+        const today = new Date();
+        const weekAgo = new Date(today);
+        weekAgo.setDate(weekAgo.getDate() - 7);
+
+        // Process data in chunks for better performance
+        const chunkSize = 100;
+        for (let i = 0; i < data.values.length; i += chunkSize) {
+          const chunk = data.values.slice(i, i + chunkSize);
           
-          // Only process last 7 days
-          const today = new Date();
-          const weekAgo = new Date();
-          weekAgo.setDate(weekAgo.getDate() - 7);
-          
-          if (date >= weekAgo && date <= today) {
-            const dayKey = date.toLocaleDateString('es-ES', { weekday: 'short' });
-            const current = dailyData.get(dayKey) || { entradas: 0, salidas: 0 };
-            
-            if (cantidad > 0) {
-              current.entradas += cantidad;
-            } else {
-              current.salidas += Math.abs(cantidad);
+          chunk.forEach((row: any[]) => {
+            const date = new Date(row[5] || new Date());
+            if (date >= weekAgo && date <= today) {
+              const dayKey = date.toLocaleDateString('es-ES', { weekday: 'short' });
+              const cantidad = parseInt(row[2]) || 0;
+              
+              if (initialData[dayKey]) {
+                if (cantidad > 0) {
+                  initialData[dayKey].entradas += cantidad;
+                } else {
+                  initialData[dayKey].salidas += Math.abs(cantidad);
+                }
+              }
             }
-            
-            dailyData.set(dayKey, current);
-          }
-        });
+          });
 
-        const processedData = Array.from(dailyData.entries())
-          .map(([day, data]) => ({
-            day: day.charAt(0).toUpperCase() + day.slice(1),
-            ...data
-          }));
+          // Allow UI to breathe between chunks
+          await new Promise(resolve => setTimeout(resolve, 0));
+        }
+
+        if (!isMounted) return;
+
+        const processedData = Object.entries(initialData).map(([day, data]) => ({
+          day: day.charAt(0).toUpperCase() + day.slice(1),
+          ...data
+        }));
 
         setChartData(processedData);
       } catch (error) {
         console.error('Error fetching movement data:', error);
+        // Set empty data for each day if there's an error
+        const emptyData = Array.from({length: 7}, (_, i) => {
+          const d = new Date();
+          d.setDate(d.getDate() - i);
+          return {
+            day: d.toLocaleDateString('es-ES', { weekday: 'short' })
+              .charAt(0).toUpperCase() + 
+              d.toLocaleDateString('es-ES', { weekday: 'short' }).slice(1),
+            entradas: 0,
+            salidas: 0
+          };
+        }).reverse();
+        
+        if (isMounted) {
+          setChartData(emptyData);
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
     };
 
     fetchMovements();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const chartConfig = {
     entradas: {
       label: "Entradas",
-      color: "hsl(142, 76%, 36%)", // Green color
+      color: "hsl(142, 76%, 36%)",
     },
     salidas: {
       label: "Salidas",
-      color: "hsl(346, 87%, 43%)", // Red color
+      color: "hsl(346, 87%, 43%)",
     },
   } satisfies ChartConfig;
+
+  // Show loading skeleton while data is being fetched
+  if (isLoading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Entradas vs Salidas</CardTitle>
+          <CardDescription>Movimientos de la semana</CardDescription>
+        </CardHeader>
+        <CardContent className="h-[320px] flex items-center justify-center">
+          <div className="animate-pulse flex space-x-4">
+            <div className="h-[280px] w-full bg-gray-200 rounded"></div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card>
@@ -1257,7 +1244,6 @@ function InventoryAreaChart({ articulos }: { articulos: Articulo[] }) {
       <CardContent className="h-[320px]">
         <ChartContainer config={chartConfig} className="h-[280px] max-w-full">
           <AreaChart
-            accessibilityLayer
             data={chartData}
             margin={{
               left: 16,
@@ -1276,7 +1262,7 @@ function InventoryAreaChart({ articulos }: { articulos: Articulo[] }) {
             />
             <RechartsYAxis
               type="number"
-              domain={[0, 250]}  // Add fixed domain
+              domain={[0, 250]}
               hide
             />
             <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
@@ -1340,6 +1326,217 @@ function getWeekNumber(date: Date): number {
   d.setUTCDate(d.getUTCDate() + 4 - dayNum);
   const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
   return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+}
+
+// Add this interface near the top with other interfaces
+interface RecentEntry {
+  id: string;
+  nombre: string;
+  cantidad: number;
+  source: string;
+  date: string;
+}
+
+// Add this component for the recent entries table
+function RecentEntriesTable() {
+  const [recentEntries, setRecentEntries] = useState<RecentEntry[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [editingEntry, setEditingEntry] = useState<RecentEntry | null>(null);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+
+  useEffect(() => {
+    fetchRecentEntries();
+  }, []);
+
+  const fetchRecentEntries = async () => {
+    try {
+      const response = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${process.env.NEXT_PUBLIC_SHEET_NAME3}!A:F?key=${process.env.NEXT_PUBLIC_GOOGLE_API_KEY}`,
+        {
+          headers: {
+            'Cache-Control': 'no-cache'
+          }
+        }
+      );
+
+      if (!response.ok) throw new Error('Failed to fetch recent entries');
+      
+      const data = await response.json();
+      if (!data.values) return;
+
+      // Get all entries except header
+      const allEntries = data.values.slice(1);
+
+      // Get the last 10 entries (most recent entries are at the bottom of the sheet)
+      const recentEntries = allEntries.slice(-10).reverse();
+
+      const entries: RecentEntry[] = recentEntries.map((row: any[], index: number) => {
+        // Format the date for display
+        const formatDate = (dateStr: string) => {
+          if (!dateStr) return new Date().toISOString().split('T')[0];
+          return dateStr;
+        };
+
+        return {
+          id: index.toString(),
+          nombre: row[0] || '',
+          cantidad: parseFloat(row[2]) || 0,
+          source: row[4] || 'N/A',
+          date: formatDate(row[5])
+        };
+      });
+
+      setRecentEntries(entries);
+    } catch (error) {
+      console.error('Error fetching recent entries:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleEdit = async (updatedEntry: RecentEntry) => {
+    try {
+      const response = await fetch('/api/inventory/update-entrada', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updatedEntry),
+      });
+
+      if (!response.ok) throw new Error('Failed to update entry');
+      
+      await fetchRecentEntries(); // Refresh the list
+      setIsEditDialogOpen(false);
+      setEditingEntry(null);
+    } catch (error) {
+      console.error('Error updating entry:', error);
+    }
+  };
+
+  const handleDelete = async (entryId: string) => {
+    if (!confirm('¿Estás seguro de que quieres eliminar esta entrada?')) return;
+
+    try {
+      const response = await fetch('/api/inventory/delete-entrada', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ id: entryId }),
+      });
+
+      if (!response.ok) throw new Error('Failed to delete entry');
+      
+      await fetchRecentEntries(); // Refresh the list
+    } catch (error) {
+      console.error('Error deleting entry:', error);
+    }
+  };
+
+  return (
+    <Card className="mt-6">
+      <CardHeader>
+        <CardTitle>Entradas Recientes</CardTitle>
+        <CardDescription>Últimas 10 entradas al inventario</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="animate-pulse space-y-4">
+            {[...Array(5)].map((_, i) => (
+              <div key={i} className="h-12 bg-gray-200 rounded"></div>
+            ))}
+          </div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Producto</TableHead>
+                <TableHead>Cantidad</TableHead>
+                <TableHead>Origen</TableHead>
+                <TableHead>Fecha</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {recentEntries.map((entry) => (
+                <TableRow key={entry.id}>
+                  <TableCell>{entry.nombre}</TableCell>
+                  <TableCell>
+                    {entry.cantidad > 0 ? (
+                      <span className="text-green-600">+{entry.cantidad}</span>
+                    ) : (
+                      <span className="text-red-600">{entry.cantidad}</span>
+                    )}
+                  </TableCell>
+                  <TableCell>{entry.source}</TableCell>
+                  <TableCell>
+                    {entry.date ? new Date(entry.date).toLocaleDateString('es-ES', {
+                      year: 'numeric',
+                      month: 'short',
+                      day: 'numeric'
+                    }) : 'Fecha no disponible'}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Editar Entrada</DialogTitle>
+          </DialogHeader>
+          {editingEntry && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="cantidad" className="text-right">
+                  Cantidad
+                </Label>
+                <Input
+                  id="cantidad"
+                  type="number"
+                  value={editingEntry.cantidad}
+                  onChange={(e) => setEditingEntry({
+                    ...editingEntry,
+                    cantidad: parseInt(e.target.value)
+                  })}
+                  className="col-span-3"
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="source" className="text-right">
+                  Origen
+                </Label>
+                <Select
+                  value={editingEntry.source}
+                  onValueChange={(value) => setEditingEntry({
+                    ...editingEntry,
+                    source: value
+                  })}
+                >
+                  <SelectTrigger className="col-span-3">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Produccion">Producci��n</SelectItem>
+                    <SelectItem value="Inventario Inicial">Inventario Inicial</SelectItem>
+                    <SelectItem value="Retorno de vendedor">Retorno de vendedor</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button onClick={() => editingEntry && handleEdit(editingEntry)}>
+              Guardar cambios
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </Card>
+  );
 }
 
 export function PanelDeInventarioComponent() {
@@ -1859,6 +2056,7 @@ export function PanelDeInventarioComponent() {
             <InventoryBarChart articulos={articulos} />
             <InventoryAreaChart articulos={articulos} />
           </div>
+          <RecentEntriesTable /> {/* Add this line */}
           
           <div className="space-y-3">
             <div className="relative w-full sm:max-w-sm">
