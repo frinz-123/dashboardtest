@@ -37,7 +37,8 @@ export async function POST(req: Request) {
           entrada.cantidad.toString(),
           entrada.peso.toString(),
           entrada.source,
-          entrada.date
+          entrada.date,
+          entrada.comentario || ''
         ]],
       },
     });

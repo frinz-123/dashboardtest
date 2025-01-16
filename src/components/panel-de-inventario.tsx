@@ -165,6 +165,7 @@ interface Entrada {
   peso: number;
   source: EntradaSource;
   date: string;
+  comentario?: string;  // Add this line
 }
 
 async function agregarEntrada(entrada: Entrada) {
@@ -472,6 +473,7 @@ interface ProductEntry {
   peso: string;
   source: EntradaSource;
   date?: string;
+  comentario?: string;  // Add this line
 }
 
 function DialogoAgregarEntrada({ 
@@ -512,7 +514,8 @@ function DialogoAgregarEntrada({
               cantidad: parseInt(entry.cantidad),
               peso: producto.categoria.toLowerCase() === 'costal' ? parseFloat(entry.peso) || 0 : 0,
               source: entry.source as EntradaSource,
-              date: new Date().toISOString().split('T')[0]
+              date: new Date().toISOString().split('T')[0],
+              comentario: entry.comentario  // Add this line
             };
 
             // Add the deduction logic for Molido, Habanero, and ENT products
@@ -686,6 +689,21 @@ function DialogoAgregarEntrada({
                     </Select>
                   </div>
                 </div>
+
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor={`comentario-${index}`} className="text-right">
+                    Comentario
+                  </Label>
+                  <Input
+                    id={`comentario-${index}`}
+                    type="text"
+                    className="col-span-3 text-base min-h-[44px]"
+                    value={entry.comentario}
+                    onChange={(e) => updateEntry(index, 'comentario', e.target.value)}
+                    placeholder="Agregar comentario..."
+                    style={{ fontSize: '16px' }}
+                  />
+                </div>
               </div>
             );
           })}
@@ -721,14 +739,15 @@ function DialogoNuevaSalida({
   estaAbierto, 
   setEstaAbierto, 
   articulos, 
-  setArticulos,  // Add this line
+  setArticulos,
   alGuardar 
 }: ModalInventarioProps): JSX.Element {
   const [entries, setEntries] = useState<ProductEntry[]>([{ 
     productId: '', 
     cantidad: '', 
     peso: '',
-    source: ''  // Add this
+    source: '',
+    comentario: ''  // Add this line
   }]);
   const [error, setError] = useState<string | null>(null);
 
@@ -737,7 +756,8 @@ function DialogoNuevaSalida({
       productId: '', 
       cantidad: '', 
       peso: '', 
-      source: ''  // Add this
+      source: '',
+      comentario: ''  // Add this line
     }]);
   };
 
@@ -762,7 +782,8 @@ function DialogoNuevaSalida({
               cantidad: -Math.abs(entryQuantity),
               peso: producto.categoria.toLowerCase() === 'costal' ? parseFloat(entry.peso) || 0 : 0,
               source: '',
-              date: new Date().toISOString().split('T')[0]
+              date: new Date().toISOString().split('T')[0],
+              comentario: entry.comentario  // Add this line
             };
 
             // Send the salida directly without any deductions
@@ -893,6 +914,43 @@ function DialogoNuevaSalida({
                     />
                   </div>
                 )}
+
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor={`source-${index}`} className="text-right">
+                    Origen
+                  </Label>
+                  <div className="col-span-3">
+                    <Select
+                      value={entry.source}
+                      onValueChange={(value) => updateEntry(index, 'source', value as EntradaSource)}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Seleccionar origen" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Produccion">Producción</SelectItem>
+                        <SelectItem value="Inventario Inicial">Inventario Inicial</SelectItem>
+                        <SelectItem value="Retorno de vendedor">Retorno de vendedor</SelectItem>
+                        <SelectItem value="Automatic Deduction">Automatic Deduction</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor={`comentario-${index}`} className="text-right">
+                    Comentario
+                  </Label>
+                  <Input
+                    id={`comentario-${index}`}
+                    type="text"
+                    className="col-span-3 text-base min-h-[44px]"
+                    value={entry.comentario}
+                    onChange={(e) => updateEntry(index, 'comentario', e.target.value)}
+                    placeholder="Agregar comentario..."
+                    style={{ fontSize: '16px' }}
+                  />
+                </div>
               </div>
             );
           })}
@@ -1335,6 +1393,7 @@ interface RecentEntry {
   cantidad: number;
   source: string;
   date: string;
+  comentario?: string;  // Add this line
 }
 
 // Add this component for the recent entries table
@@ -1351,7 +1410,7 @@ function RecentEntriesTable() {
   const fetchRecentEntries = async () => {
     try {
       const response = await fetch(
-        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${process.env.NEXT_PUBLIC_SHEET_NAME3}!A:F?key=${process.env.NEXT_PUBLIC_GOOGLE_API_KEY}`,
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${process.env.NEXT_PUBLIC_SHEET_NAME3}!A:G?key=${process.env.NEXT_PUBLIC_GOOGLE_API_KEY}`,
         {
           headers: {
             'Cache-Control': 'no-cache'
@@ -1382,7 +1441,8 @@ function RecentEntriesTable() {
           nombre: row[0] || '',
           cantidad: parseFloat(row[2]) || 0,
           source: row[4] || 'N/A',
-          date: formatDate(row[5])
+          date: formatDate(row[5]),
+          comentario: row[6] || ''  // Add this line
         };
       });
 
@@ -1455,6 +1515,7 @@ function RecentEntriesTable() {
                 <TableHead>Cantidad</TableHead>
                 <TableHead>Origen</TableHead>
                 <TableHead>Fecha</TableHead>
+                <TableHead>Comentario</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -1476,65 +1537,13 @@ function RecentEntriesTable() {
                       day: 'numeric'
                     }) : 'Fecha no disponible'}
                   </TableCell>
+                  <TableCell>{entry.comentario || '-'}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
         )}
       </CardContent>
-
-      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Editar Entrada</DialogTitle>
-          </DialogHeader>
-          {editingEntry && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="cantidad" className="text-right">
-                  Cantidad
-                </Label>
-                <Input
-                  id="cantidad"
-                  type="number"
-                  value={editingEntry.cantidad}
-                  onChange={(e) => setEditingEntry({
-                    ...editingEntry,
-                    cantidad: parseInt(e.target.value)
-                  })}
-                  className="col-span-3"
-                />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="source" className="text-right">
-                  Origen
-                </Label>
-                <Select
-                  value={editingEntry.source}
-                  onValueChange={(value) => setEditingEntry({
-                    ...editingEntry,
-                    source: value
-                  })}
-                >
-                  <SelectTrigger className="col-span-3">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Produccion">Producci��n</SelectItem>
-                    <SelectItem value="Inventario Inicial">Inventario Inicial</SelectItem>
-                    <SelectItem value="Retorno de vendedor">Retorno de vendedor</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          )}
-          <DialogFooter>
-            <Button onClick={() => editingEntry && handleEdit(editingEntry)}>
-              Guardar cambios
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </Card>
   );
 }
