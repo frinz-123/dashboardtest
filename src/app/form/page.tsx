@@ -13,7 +13,7 @@ import { useSession } from "next-auth/react"
 const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY
 const spreadsheetId = process.env.NEXT_PUBLIC_SPREADSHEET_ID
 const sheetName = process.env.NEXT_PUBLIC_SHEET_NAME
-const OVERRIDE_EMAIL = process.env.OVERRIDE_EMAIL
+const OVERRIDE_EMAILS = process.env.NEXT_PUBLIC_OVERRIDE_EMAIL?.split(',').map(email => email.trim()) || [];
 
 const MIN_MOVEMENT_THRESHOLD = 20; // Increased from 10 meters to 20 meters
 const MAX_LOCATION_AGE = 30000; // 30 seconds in milliseconds
@@ -738,7 +738,11 @@ export default function FormPage() {
     });
   };
 
-  const canSubmitDespiteAlert = session?.user?.email === OVERRIDE_EMAIL
+  const isOverrideEmail = (email: string | null | undefined) => {
+    console.log('Override Emails:', OVERRIDE_EMAILS); // Debug log
+    console.log('Current user email:', email); // Debug log
+    return email ? OVERRIDE_EMAILS.includes(email) : false;
+  };
 
   // Add form validation
   const validateForm = (): boolean => {
@@ -790,7 +794,7 @@ export default function FormPage() {
           products: quantities,
           total: parseFloat(total),
           location: currentLocation,
-          userEmail: session?.user?.email || OVERRIDE_EMAIL,
+          userEmail: session?.user?.email || OVERRIDE_EMAILS[0],
           date: new Date().toISOString()
         }),
       });
@@ -1011,7 +1015,7 @@ export default function FormPage() {
           !selectedClient || 
           !currentLocation || 
           isSubmitting || 
-          (locationAlert !== null && !canSubmitDespiteAlert)
+          (locationAlert !== null && !isOverrideEmail(session?.user?.email))
         }
       >
         {isSubmitting ? (
@@ -1023,6 +1027,11 @@ export default function FormPage() {
           'Enviar Pedido'
         )}
       </button>
+
+      {/* Add debug info */}
+      <div className="text-xs text-gray-500 mb-2">
+        Debug: Current email: {session?.user?.email || 'No email'}, Override allowed: {isOverrideEmail(session?.user?.email) ? 'Yes' : 'No'}
+      </div>
 
       {/* Add validation error messages */}
       {Object.entries(validationErrors).map(([key, error]) => (
@@ -1040,12 +1049,7 @@ export default function FormPage() {
 function throttle(func: Function, limit: number) {
   let inThrottle: boolean;
   return function(this: any, ...args: any[]) {
- 
-
-function setValidationErrors(arg0: (prev: any) => any) {
-  throw new Error('Function not implemented.')
-}
-   if (!inThrottle) {
+    if (!inThrottle) {
       func.apply(this, args);
       inThrottle = true;
       setTimeout(() => inThrottle = false, limit);
