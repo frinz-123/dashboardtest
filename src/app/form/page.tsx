@@ -85,7 +85,7 @@ const PRICES: ProductPrices = {
     'El Rey Mix Especial': 60,
     'Habanero Molido 50 g': 40,
     'Habanero Molido 20 g': 20,
-    'Medio Kilo Chiltepin Entero': 500
+    'Medio Kilo Chiltepin Entero': 600
   },
   'CLEY': {
     'Chiltepin Molido 50 g': 44.16,
@@ -549,10 +549,20 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
   return R * c;
 };
 
+// Add a debounce utility function near the throttle function at the bottom
+function debounce(func: Function, wait: number) {
+  let timeout: NodeJS.Timeout;
+  return function(this: any, ...args: any[]) {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => func.apply(this, args), wait);
+  };
+}
+
 export default function FormPage() {
   const { data: session } = useSession()
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('')
   const [clientNames, setClientNames] = useState<string[]>([])
   const [filteredClients, setFilteredClients] = useState<string[]>([])
   const [selectedClient, setSelectedClient] = useState<string>('')
@@ -576,6 +586,19 @@ export default function FormPage() {
       setCurrentLocation(location);
     }, 1000)
   ).current;
+
+  // Add a debounced search handler
+  const debouncedSearch = useRef(
+    debounce((value: string) => {
+      setDebouncedSearchTerm(value);
+    }, 300)
+  ).current;
+
+  // Update the search term handler
+  const handleSearchChange = (value: string) => {
+    setSearchTerm(value);
+    debouncedSearch(value);
+  };
 
   // Move hasSignificantMovement inside component
   const hasSignificantMovement = (
@@ -610,16 +633,22 @@ export default function FormPage() {
     fetchClientNames()
   }, [])
 
+  // Update the search effect to use the debounced search term
   useEffect(() => {
-    if (searchTerm) {
-      const filtered = clientNames.filter(name => 
-        name && name.toLowerCase().includes(searchTerm.toLowerCase())
-      )
-      setFilteredClients(filtered)
+    if (debouncedSearchTerm) {
+      // Optimize filtering by using lowercase once and limiting results
+      const searchLower = debouncedSearchTerm.toLowerCase();
+      const MAX_RESULTS = 20; // Limit to 20 results for better performance
+      
+      const filtered = clientNames
+        .filter(name => name && name.toLowerCase().includes(searchLower))
+        .slice(0, MAX_RESULTS);
+      
+      setFilteredClients(filtered);
     } else {
-      setFilteredClients([])
+      setFilteredClients([]);
     }
-  }, [searchTerm, clientNames])
+  }, [debouncedSearchTerm, clientNames]);
 
   useEffect(() => {
     if (selectedClient) {
@@ -810,6 +839,7 @@ export default function FormPage() {
         // Reset form
         setSelectedClient('');
         setSearchTerm('');
+        setDebouncedSearchTerm('');
         setQuantities({});
         setTotal('0.00');
         setFilteredClients([]);
@@ -928,11 +958,12 @@ export default function FormPage() {
         <div className="relative">
           <SearchInput 
             value={searchTerm}
-            onChange={setSearchTerm}
+            onChange={handleSearchChange}
             onClear={() => {
-              setSearchTerm('')
-              setSelectedClient('')
-              setFilteredClients([])
+              setSearchTerm('');
+              setDebouncedSearchTerm('');
+              setSelectedClient('');
+              setFilteredClients([]);
             }}
             placeholder="Buscar cliente..."
           />
@@ -943,14 +974,19 @@ export default function FormPage() {
                   key={name}
                   className="px-4 py-2 text-sm hover:bg-gray-100 cursor-pointer"
                   onClick={() => {
-                    setSelectedClient(name)
-                    setSearchTerm(name)
-                    setFilteredClients([])
+                    setSelectedClient(name);
+                    setSearchTerm(name);
+                    setFilteredClients([]);
                   }}
                 >
                   {name}
                 </div>
               ))}
+              {debouncedSearchTerm && filteredClients.length === 20 && (
+                <div className="px-4 py-2 text-xs text-gray-500 italic">
+                  Mostrando primeros 20 resultados. Continúa escribiendo para refinar la búsqueda.
+                </div>
+              )}
             </div>
           )}
         </div>

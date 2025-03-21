@@ -16,7 +16,7 @@ const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY
 const spreadsheetId = process.env.NEXT_PUBLIC_SPREADSHEET_ID
 const sheetName = process.env.NEXT_PUBLIC_SHEET_NAME
 
-type TimePeriod = 'Diario' | 'Semanal' | 'Mensual'
+type TimePeriod = 'Diario' | 'Ayer' | 'Semanal' | 'Mensual'
 type Sale = {
   clientName: string
   venta: number
@@ -55,14 +55,14 @@ export default function Dashboard() {
   const [filteredClientNames, setFilteredClientNames] = useState<string[]>([])
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null)
 
-  const periods: TimePeriod[] = ['Diario', 'Semanal', 'Mensual']
+  const periods: TimePeriod[] = ['Diario', 'Ayer', 'Semanal', 'Mensual']
 
   const updateChartData = React.useCallback(() => {
     const filteredSales = salesData
       .filter((sale) => sale.email === selectedEmail)
       .filter((sale) => filterSalesByDate([sale], selectedPeriod).length > 0)
 
-    if (selectedPeriod === 'Diario') {
+    if (selectedPeriod === 'Diario' || selectedPeriod === 'Ayer') {
       const sortedSales = filteredSales.sort((a, b) => new Date(a.fechaSinHora).getTime() - new Date(b.fechaSinHora).getTime())
       setChartData(sortedSales.map((sale, index) => ({ x: `${index + 1}`, venta: sale.venta })))
     } else if (selectedPeriod === 'Semanal') {
@@ -108,6 +108,11 @@ export default function Dashboard() {
 
     if (selectedPeriod === 'Diario') {
       previousPeriodStartDate = new Date(new Date().setDate(new Date().getDate() - 1))
+      previousPeriodStartDate.setHours(0, 0, 0, 0)
+      previousPeriodEndDate = new Date(previousPeriodStartDate)
+      previousPeriodEndDate.setHours(23, 59, 59, 999)
+    } else if (selectedPeriod === 'Ayer') {
+      previousPeriodStartDate = new Date(new Date().setDate(new Date().getDate() - 2))
       previousPeriodStartDate.setHours(0, 0, 0, 0)
       previousPeriodEndDate = new Date(previousPeriodStartDate)
       previousPeriodEndDate.setHours(23, 59, 59, 999)
@@ -243,6 +248,11 @@ export default function Dashboard() {
     if (period === 'Diario') {
       startDate = new Date(currentDate.setHours(0, 0, 0, 0));
       endDate = new Date(currentDate.setHours(23, 59, 59, 999));
+    } else if (period === 'Ayer') {
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      startDate = new Date(yesterday.setHours(0, 0, 0, 0));
+      endDate = new Date(yesterday.setHours(23, 59, 59, 999));
     } else if (period === 'Semanal') {
       const { weekStart, weekEnd } = getWeekDates(currentDate);
       startDate = weekStart;
@@ -263,6 +273,8 @@ export default function Dashboard() {
     switch (period) {
       case 'Diario':
         return 24 * 60 * 60 * 1000 // 1 day in milliseconds
+      case 'Ayer':
+        return 24 * 60 * 60 * 1000 // 1 day in milliseconds (same as Diario)
       case 'Semanal':
         return 7 * 24 * 60 * 60 * 1000 // 7 days in milliseconds
       case 'Mensual':
@@ -282,7 +294,9 @@ export default function Dashboard() {
   }, {} as Record<string, number>)
 
   const visitsCount = filteredSales.length
-  const maxVisits = selectedPeriod === 'Diario' ? 30 : selectedPeriod === 'Semanal' ? 180 : 720
+  const maxVisits = selectedPeriod === 'Diario' ? 30 : 
+                    selectedPeriod === 'Ayer' ? 30 : 
+                    selectedPeriod === 'Semanal' ? 180 : 720
   const visitPercentage = (visitsCount / maxVisits) * 100
 
   const getVisitStatus = () => {
