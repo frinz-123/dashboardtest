@@ -3,7 +3,6 @@
 import { useSearchParams } from 'next/navigation'
 import { signIn } from 'next-auth/react'
 import { Suspense } from 'react'
-import { div } from 'framer-motion/client'
 import React from 'react'
 
 function ErrorContent() {
@@ -45,15 +44,4 @@ export default function ErrorPage() {
       <ErrorContent />
     </Suspense>
   )
-}
-
-export const metadata = {
-  title: 'El Rey Chiltepin - Autenticación',
-  description: 'Portal de autenticación de El Rey Chiltepin',
-}
-
-export const viewport = {
-  width: 'device-width',
-  initialScale: 1,
-  maximumScale: 1,
 } 
