@@ -7,7 +7,8 @@ import { redirect } from "next/navigation"
 const AUTHORIZED_EMAILS = [
   'cesar.reyes.ochoa@gmail.com',
   'franzcharbell@gmail.com',
-  'inventarioelrey@gmail.com'
+  'inventarioelrey@gmail.com',
+  'ventasmochisproductoselrey@gmail.com'
 ]
 
 export default function InventarioPage() {

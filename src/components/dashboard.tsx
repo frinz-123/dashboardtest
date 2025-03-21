@@ -31,6 +31,7 @@ const emailLabels: Record<string, string> = {
   'ventas2productoselrey@gmail.com': 'Roel',
   'ventas3productoselrey@gmail.com': 'Lidia',
   'ventasmztproductoselrey.com@gmail.com': 'Mazatlan',
+  'ventasmochisproductoselrey@gmail.com': 'Mochis',
   'franzcharbell@gmail.com': 'Franz',
   'cesar.reyes.ochoa@gmail.com': 'Cesar',
   'arturo.elreychiltepin@gmail.com': 'Arturo Mty'
@@ -249,7 +250,7 @@ export default function Dashboard() {
       startDate = new Date(currentDate.setHours(0, 0, 0, 0));
       endDate = new Date(currentDate.setHours(23, 59, 59, 999));
     } else if (period === 'Ayer') {
-      const yesterday = new Date();
+      const yesterday = new Date(currentDate);
       yesterday.setDate(yesterday.getDate() - 1);
       startDate = new Date(yesterday.setHours(0, 0, 0, 0));
       endDate = new Date(yesterday.setHours(23, 59, 59, 999));
@@ -274,7 +275,7 @@ export default function Dashboard() {
       case 'Diario':
         return 24 * 60 * 60 * 1000 // 1 day in milliseconds
       case 'Ayer':
-        return 24 * 60 * 60 * 1000 // 1 day in milliseconds (same as Diario)
+        return 24 * 60 * 60 * 1000 // 1 day in milliseconds
       case 'Semanal':
         return 7 * 24 * 60 * 60 * 1000 // 7 days in milliseconds
       case 'Mensual':
@@ -294,9 +295,7 @@ export default function Dashboard() {
   }, {} as Record<string, number>)
 
   const visitsCount = filteredSales.length
-  const maxVisits = selectedPeriod === 'Diario' ? 30 : 
-                    selectedPeriod === 'Ayer' ? 30 : 
-                    selectedPeriod === 'Semanal' ? 180 : 720
+  const maxVisits = selectedPeriod === 'Diario' ? 30 : selectedPeriod === 'Semanal' ? 180 : 720
   const visitPercentage = (visitsCount / maxVisits) * 100
 
   const getVisitStatus = () => {
