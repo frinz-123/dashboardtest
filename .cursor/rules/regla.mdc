@@ -1,9 +1,9 @@
 ---
-description:
-globs:
+description: Reflect on 5-7 different possible sources of the problem, distill those down to 1-2 most likely sources, and then add logs to validate your assumptions before we move onto implementing the actual code fix
+globs: 
+alwaysApply: false
 ---
 
 # Your rule content
 
-- You can @ files here
-- You can use markdown but dont have to
+Reflect on 5-7 different possible sources of the problem, distill those down to 1-2 most likely sources, and then add logs to validate your assumptions before we move onto implementing the actual code fix

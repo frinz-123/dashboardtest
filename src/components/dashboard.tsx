@@ -108,18 +108,31 @@ export default function Dashboard() {
     let previousPeriodEndDate: Date
 
     if (selectedPeriod === 'Diario') {
-      previousPeriodStartDate = new Date(new Date().setDate(new Date().getDate() - 1))
-      previousPeriodStartDate.setHours(0, 0, 0, 0)
-      previousPeriodEndDate = new Date(previousPeriodStartDate)
-      previousPeriodEndDate.setHours(23, 59, 59, 999)
+      // Create a new date for yesterday
+      const previousDay = new Date();
+      previousDay.setDate(previousDay.getDate() - 1);
+      
+      previousPeriodStartDate = new Date(previousDay);
+      previousPeriodStartDate.setHours(0, 0, 0, 0);
+      
+      previousPeriodEndDate = new Date(previousDay);
+      previousPeriodEndDate.setHours(23, 59, 59, 999);
     } else if (selectedPeriod === 'Ayer') {
-      previousPeriodStartDate = new Date(new Date().setDate(new Date().getDate() - 2))
-      previousPeriodStartDate.setHours(0, 0, 0, 0)
-      previousPeriodEndDate = new Date(previousPeriodStartDate)
-      previousPeriodEndDate.setHours(23, 59, 59, 999)
+      // Create a new date for two days ago
+      const twoDaysAgo = new Date();
+      twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+      
+      previousPeriodStartDate = new Date(twoDaysAgo);
+      previousPeriodStartDate.setHours(0, 0, 0, 0);
+      
+      previousPeriodEndDate = new Date(twoDaysAgo);
+      previousPeriodEndDate.setHours(23, 59, 59, 999);
     } else {
-      previousPeriodStartDate = new Date(new Date().getTime() - getTimeDifference(selectedPeriod) * 2)
-      previousPeriodEndDate = new Date(new Date().getTime() - getTimeDifference(selectedPeriod))
+      const timeDifference = getTimeDifference(selectedPeriod);
+      const now = new Date().getTime();
+      
+      previousPeriodStartDate = new Date(now - timeDifference * 2);
+      previousPeriodEndDate = new Date(now - timeDifference);
     }
 
     const previousPeriodSales = salesData
@@ -247,13 +260,21 @@ export default function Dashboard() {
     let startDate: Date, endDate: Date;
 
     if (period === 'Diario') {
-      startDate = new Date(currentDate.setHours(0, 0, 0, 0));
-      endDate = new Date(currentDate.setHours(23, 59, 59, 999));
+      // Create a fresh copy of the date to avoid modifying original
+      startDate = new Date(currentDate);
+      startDate.setHours(0, 0, 0, 0);
+      
+      endDate = new Date(currentDate);
+      endDate.setHours(23, 59, 59, 999);
     } else if (period === 'Ayer') {
       const yesterday = new Date(currentDate);
       yesterday.setDate(yesterday.getDate() - 1);
-      startDate = new Date(yesterday.setHours(0, 0, 0, 0));
-      endDate = new Date(yesterday.setHours(23, 59, 59, 999));
+      
+      startDate = new Date(yesterday);
+      startDate.setHours(0, 0, 0, 0);
+      
+      endDate = new Date(yesterday);
+      endDate.setHours(23, 59, 59, 999);
     } else if (period === 'Semanal') {
       const { weekStart, weekEnd } = getWeekDates(currentDate);
       startDate = weekStart;
