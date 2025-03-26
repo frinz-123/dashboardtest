@@ -55,98 +55,142 @@ export default function Dashboard() {
   const [searchTerm, setSearchTerm] = useState('')
   const [filteredClientNames, setFilteredClientNames] = useState<string[]>([])
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null)
+  const [chartError, setChartError] = useState<boolean>(false)
 
   const periods: TimePeriod[] = ['Diario', 'Ayer', 'Semanal', 'Mensual']
 
   const updateChartData = React.useCallback(() => {
-    const filteredSales = salesData
-      .filter((sale) => sale.email === selectedEmail)
-      .filter((sale) => filterSalesByDate([sale], selectedPeriod).length > 0)
+    console.log('DEBUG - updateChartData - Starting with period:', selectedPeriod, 'for email:', selectedEmail);
+    
+    try {
+      const filteredSales = salesData
+        .filter((sale: Sale) => sale.email === selectedEmail)
+        .filter((sale: Sale) => filterSalesByDate([sale], selectedPeriod).length > 0)
+      
+      console.log('DEBUG - updateChartData - Filtered sales count:', filteredSales.length);
+      
+      if (selectedEmail === 'ventasmochisproductoselrey@gmail.com') {
+        console.log('DEBUG - ventasmochis - Sales data sample:', 
+          salesData.filter((s: Sale) => s.email === selectedEmail).slice(0, 3)
+        );
+      }
 
-    if (selectedPeriod === 'Diario' || selectedPeriod === 'Ayer') {
-      const sortedSales = filteredSales.sort((a, b) => new Date(a.fechaSinHora).getTime() - new Date(b.fechaSinHora).getTime())
-      setChartData(sortedSales.map((sale, index) => ({ x: `${index + 1}`, venta: sale.venta })))
-    } else if (selectedPeriod === 'Semanal') {
-      const groupedData = filteredSales.reduce((acc, sale) => {
-        const date = new Date(sale.fechaSinHora)
-        const key = date.toLocaleDateString('es-ES', { month: 'short', day: 'numeric' })
-        if (!acc[key]) {
-          acc[key] = 0
+      if (selectedPeriod === 'Diario' || selectedPeriod === 'Ayer') {
+        try {
+          const sortedSales = filteredSales.sort((a: Sale, b: Sale) => {
+            const dateA = new Date(a.fechaSinHora).getTime();
+            const dateB = new Date(b.fechaSinHora).getTime();
+            return dateA - dateB;
+          });
+          
+          const chartDataPoints = sortedSales.map((sale: Sale, index: number) => ({ 
+            x: `${index + 1}`, 
+            venta: sale.venta 
+          }));
+          
+          console.log('DEBUG - updateChartData - Chart data points:', chartDataPoints.length);
+          
+          setChartData(chartDataPoints);
+        } catch (err) {
+          console.error('ERROR - updateChartData - Error processing Diario/Ayer data:', err);
+          // Fallback to empty chart data
+          setChartData([]);
         }
-        acc[key] += sale.venta
-        return acc
-      }, {} as Record<string, number>)
+      } else if (selectedPeriod === 'Semanal') {
+        const groupedData = filteredSales.reduce((acc: Record<string, number>, sale: Sale) => {
+          const date = new Date(sale.fechaSinHora)
+          const key = date.toLocaleDateString('es-ES', { month: 'short', day: 'numeric' })
+          if (!acc[key]) {
+            acc[key] = 0
+          }
+          acc[key] += sale.venta
+          return acc
+        }, {} as Record<string, number>)
 
-      const sortedData = Object.entries(groupedData)
-        .sort(([dateA], [dateB]) => new Date(dateA).getTime() - new Date(dateB).getTime())
-        .map(([date, venta]) => ({ x: date, venta }))
+        const sortedData = Object.entries(groupedData)
+          .sort(([dateA], [dateB]) => new Date(dateA).getTime() - new Date(dateB).getTime())
+          .map(([date, venta]) => ({ x: date, venta }))
 
-      setChartData(sortedData)
-    } else if (selectedPeriod === 'Mensual') {
-      const { periodStartDate } = getCurrentPeriodInfo();
-      const groupedData = filteredSales.reduce((acc, sale) => {
-        const saleDate = new Date(sale.fechaSinHora);
-        const weekNumber = Math.floor((saleDate.getTime() - periodStartDate.getTime()) / (7 * 24 * 60 * 60 * 1000)) + 1;
-        const key = `S${weekNumber}`;
-        if (!acc[key]) {
-          acc[key] = 0;
-        }
-        acc[key] += sale.venta;
-        return acc;
-      }, {} as Record<string, number>);
+        setChartData(sortedData)
+      } else if (selectedPeriod === 'Mensual') {
+        const { periodStartDate } = getCurrentPeriodInfo();
+        const groupedData = filteredSales.reduce((acc: Record<string, number>, sale: Sale) => {
+          const saleDate = new Date(sale.fechaSinHora);
+          const weekNumber = Math.floor((saleDate.getTime() - periodStartDate.getTime()) / (7 * 24 * 60 * 60 * 1000)) + 1;
+          const key = `S${weekNumber}`;
+          if (!acc[key]) {
+            acc[key] = 0;
+          }
+          acc[key] += sale.venta;
+          return acc;
+        }, {} as Record<string, number>);
 
-      const sortedData = Object.entries(groupedData)
-        .sort(([weekA], [weekB]) => weekA.localeCompare(weekB))
-        .map(([week, venta]) => ({ x: week, venta }));
+        const sortedData = Object.entries(groupedData)
+          .sort(([weekA], [weekB]) => weekA.localeCompare(weekB))
+          .map(([week, venta]) => ({ x: week, venta }));
 
-      setChartData(sortedData);
+        setChartData(sortedData);
+      }
+
+      // Calculate percentage difference
+      const currentPeriodTotal = filteredSales.reduce((sum: number, sale: Sale) => sum + sale.venta, 0)
+      let previousPeriodStartDate: Date
+      let previousPeriodEndDate: Date
+
+      if (selectedPeriod === 'Diario') {
+        // Create a new date for yesterday
+        const previousDay = new Date();
+        previousDay.setDate(previousDay.getDate() - 1);
+        
+        previousPeriodStartDate = new Date(previousDay);
+        previousPeriodStartDate.setHours(0, 0, 0, 0);
+        
+        previousPeriodEndDate = new Date(previousDay);
+        previousPeriodEndDate.setHours(23, 59, 59, 999);
+      } else if (selectedPeriod === 'Ayer') {
+        // Create a new date for two days ago
+        const twoDaysAgo = new Date();
+        twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+        
+        previousPeriodStartDate = new Date(twoDaysAgo);
+        previousPeriodStartDate.setHours(0, 0, 0, 0);
+        
+        previousPeriodEndDate = new Date(twoDaysAgo);
+        previousPeriodEndDate.setHours(23, 59, 59, 999);
+      } else {
+        const timeDifference = getTimeDifference(selectedPeriod);
+        const now = new Date().getTime();
+        
+        previousPeriodStartDate = new Date(now - timeDifference * 2);
+        previousPeriodEndDate = new Date(now - timeDifference);
+      }
+
+      const previousPeriodSales = salesData
+        .filter((sale: Sale) => sale.email === selectedEmail)
+        .filter((sale: Sale) => {
+          try {
+            // Use original date format instead of normalizeDate
+            const saleDate = new Date(sale.fechaSinHora);
+            return saleDate >= previousPeriodStartDate && saleDate <= previousPeriodEndDate;
+          } catch (err) {
+            console.error('ERROR - updateChartData - Error filtering previous period sale:', err, sale);
+            return false;
+          }
+        })
+      const previousPeriodTotal = previousPeriodSales.reduce((sum: number, sale: Sale) => sum + sale.venta, 0)
+
+      const difference = previousPeriodTotal !== 0 
+        ? ((currentPeriodTotal - previousPeriodTotal) / previousPeriodTotal) * 100 
+        : 0
+      setPercentageDifference(difference)
+      
+      console.log('DEBUG - updateChartData - Completed processing for', selectedPeriod);
+    } catch (error) {
+      console.error('ERROR - updateChartData - Unhandled error:', error);
+      // Reset chart data to prevent UI failures
+      setChartData([]);
+      setPercentageDifference(0);
     }
-
-    // Calculate percentage difference
-    const currentPeriodTotal = filteredSales.reduce((sum, sale) => sum + sale.venta, 0)
-    let previousPeriodStartDate: Date
-    let previousPeriodEndDate: Date
-
-    if (selectedPeriod === 'Diario') {
-      // Create a new date for yesterday
-      const previousDay = new Date();
-      previousDay.setDate(previousDay.getDate() - 1);
-      
-      previousPeriodStartDate = new Date(previousDay);
-      previousPeriodStartDate.setHours(0, 0, 0, 0);
-      
-      previousPeriodEndDate = new Date(previousDay);
-      previousPeriodEndDate.setHours(23, 59, 59, 999);
-    } else if (selectedPeriod === 'Ayer') {
-      // Create a new date for two days ago
-      const twoDaysAgo = new Date();
-      twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
-      
-      previousPeriodStartDate = new Date(twoDaysAgo);
-      previousPeriodStartDate.setHours(0, 0, 0, 0);
-      
-      previousPeriodEndDate = new Date(twoDaysAgo);
-      previousPeriodEndDate.setHours(23, 59, 59, 999);
-    } else {
-      const timeDifference = getTimeDifference(selectedPeriod);
-      const now = new Date().getTime();
-      
-      previousPeriodStartDate = new Date(now - timeDifference * 2);
-      previousPeriodEndDate = new Date(now - timeDifference);
-    }
-
-    const previousPeriodSales = salesData
-      .filter((sale) => sale.email === selectedEmail)
-      .filter((sale) => {
-        const saleDate = new Date(sale.fechaSinHora)
-        return saleDate >= previousPeriodStartDate && saleDate <= previousPeriodEndDate
-      })
-    const previousPeriodTotal = previousPeriodSales.reduce((sum, sale) => sum + sale.venta, 0)
-
-    const difference = previousPeriodTotal !== 0 
-      ? ((currentPeriodTotal - previousPeriodTotal) / previousPeriodTotal) * 100 
-      : 0
-    setPercentageDifference(difference)
   }, [salesData, selectedEmail, selectedPeriod])
 
   const updateGoalProgress = React.useCallback(() => {
@@ -215,44 +259,110 @@ export default function Dashboard() {
   }, [session])
 
   const fetchData = async () => {
-    const response = await fetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:AK?key=${googleApiKey}`
-    )
-    const data = await response.json()
-    const rows = data.values.slice(1) // Remove header row
-    const sales: Sale[] = rows.map((row: string[]) => {
-      const products: Record<string, number> = {}
-      for (let i = 8; i <= 31; i++) {
-        if (row[i] && row[i] !== '0') {
-          products[data.values[0][i]] = parseInt(row[i], 10)
+    console.log('DEBUG - fetchData - Starting data fetch');
+    try {
+      const response = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:AK?key=${googleApiKey}`
+      )
+      
+      if (!response.ok) {
+        console.error('ERROR - fetchData - Failed to fetch from Google Sheets:', response.status, response.statusText);
+        return;
+      }
+      
+      const data = await response.json()
+      
+      if (!data.values || !Array.isArray(data.values) || data.values.length <= 1) {
+        console.error('ERROR - fetchData - Invalid data format from Google Sheets:', data);
+        return;
+      }
+      
+      console.log('DEBUG - fetchData - Data fetched successfully, processing rows');
+      
+      // Try to identify specific problematic date patterns
+      const dateFormatLog: Record<string, number> = {};
+      
+      const rows = data.values.slice(1) // Remove header row
+      const sales: Sale[] = rows.map((row: string[], index: number) => {
+        try {
+          const products: Record<string, number> = {}
+          for (let i = 8; i <= 31; i++) {
+            if (row[i] && row[i] !== '0') {
+              products[data.values[0][i]] = parseInt(row[i], 10)
+            }
+          }
+          for (let i = 34; i <= 36; i++) {
+            if (row[i] && row[i] !== '0') {
+              products[data.values[0][i]] = parseInt(row[i], 10)
+            }
+          }
+          
+          // Extract the date - use original format
+          const rawDate = row[32];
+          
+          // Keep a log of different date formats observed
+          if (rawDate) {
+            const datePattern = rawDate.substring(0, 10); // First 10 chars are likely the date pattern
+            dateFormatLog[datePattern] = (dateFormatLog[datePattern] || 0) + 1;
+          }
+          
+          // Don't normalize the date - use it as is
+          return {
+            clientName: row[0] || 'Unknown',
+            venta: parseFloat(row[33]) || 0,
+            codigo: row[31] || '',
+            fechaSinHora: rawDate || '',
+            email: row[7] || '',
+            products: products
+          }
+        } catch (error) {
+          console.error('ERROR - fetchData - Error processing row:', error, row);
+          return {
+            clientName: 'Error',
+            venta: 0,
+            codigo: '',
+            fechaSinHora: '',
+            email: '',
+            products: {}
+          };
+        }
+      }).filter((sale: Sale) => sale.email && sale.fechaSinHora); // Fix linter error by adding type
+      
+      console.log('DEBUG - fetchData - Date formats observed:', dateFormatLog);
+      
+      // Log some stats about the data
+      const emailCounts: Record<string, number> = {};
+      sales.forEach(sale => {
+        emailCounts[sale.email] = (emailCounts[sale.email] || 0) + 1;
+      });
+      
+      console.log('DEBUG - fetchData - Sales per email:', emailCounts);
+      
+      if (emailCounts['ventasmochisproductoselrey@gmail.com']) {
+        const mochisData = sales.filter(s => s.email === 'ventasmochisproductoselrey@gmail.com');
+        console.log('DEBUG - ventasmochis - First few entries:', mochisData.slice(0, 3));
+      }
+      
+      setSalesData(sales)
+      const uniqueEmails = [...new Set(sales.map((sale) => sale.email))].filter(Boolean)
+      setEmails(uniqueEmails)
+      if (uniqueEmails.length > 0) {
+        // Try to set the email to the current user's email if available
+        if (session?.user?.email && uniqueEmails.includes(session.user.email)) {
+          setSelectedEmail(session.user.email);
+        } else {
+          setSelectedEmail(uniqueEmails[0]);
         }
       }
-      for (let i = 34; i <= 36; i++) {
-        if (row[i] && row[i] !== '0') {
-          products[data.values[0][i]] = parseInt(row[i], 10)
-        }
-      }
-      return {
-        clientName: row[0] || 'Unknown',
-        venta: parseFloat(row[33]),
-        codigo: row[31],
-        fechaSinHora: row[32],
-        email: row[7],
-        products: products
-      }
-    })
-    setSalesData(sales)
-    const uniqueEmails = [...new Set(sales.map((sale) => sale.email))]
-    setEmails(uniqueEmails)
-    if (uniqueEmails.length > 0) setSelectedEmail(uniqueEmails[0])
 
-    // Extract unique client names
-    const uniqueClientNames = Array.from(new Set(sales.map(sale => sale.clientName))).filter(Boolean)
-    setClientNames(uniqueClientNames)
-    // Remove or comment out the following lines:
-    // if (uniqueClientNames.length > 0) {
-    //   setSelectedClient(uniqueClientNames[0])
-    // }
+      // Extract unique client names
+      const uniqueClientNames = Array.from(new Set(sales.map(sale => sale.clientName))).filter(Boolean)
+      setClientNames(uniqueClientNames)
+      
+      console.log('DEBUG - fetchData - Completed processing data');
+    } catch (error) {
+      console.error('ERROR - fetchData - Unhandled error:', error);
+    }
   }
 
   const filterSalesByDate = (sales: Sale[], period: TimePeriod) => {
@@ -266,6 +376,15 @@ export default function Dashboard() {
       
       endDate = new Date(currentDate);
       endDate.setHours(23, 59, 59, 999);
+      
+      // Add debug logging
+      console.log('DEBUG - filterSalesByDate - Diario period:', { 
+        currentDateISO: currentDate.toISOString(),
+        startDateISO: startDate.toISOString(),
+        endDateISO: endDate.toISOString(),
+        currentUserEmail: selectedEmail,
+        browser: navigator.userAgent
+      });
     } else if (period === 'Ayer') {
       const yesterday = new Date(currentDate);
       yesterday.setDate(yesterday.getDate() - 1);
@@ -275,6 +394,12 @@ export default function Dashboard() {
       
       endDate = new Date(yesterday);
       endDate.setHours(23, 59, 59, 999);
+      
+      console.log('DEBUG - filterSalesByDate - Ayer period:', { 
+        yesterdayISO: yesterday.toISOString(),
+        startDateISO: startDate.toISOString(),
+        endDateISO: endDate.toISOString()
+      });
     } else if (period === 'Semanal') {
       const { weekStart, weekEnd } = getWeekDates(currentDate);
       startDate = weekStart;
@@ -285,10 +410,50 @@ export default function Dashboard() {
       endDate = periodEndDate;
     }
 
-    return sales.filter((sale) => {
-      const saleDate = new Date(sale.fechaSinHora);
-      return isDateInPeriod(saleDate, startDate, endDate);
+    const filteredSales = sales.filter((sale: Sale) => {
+      try {
+        // Use the original date string directly - normalizeDate is too aggressive
+        const saleDate = new Date(sale.fechaSinHora);
+        
+        // Basic validation
+        if (isNaN(saleDate.getTime())) {
+          console.error('Invalid date:', sale.fechaSinHora);
+          return false;
+        }
+        
+        // Check if date is in period using standard comparison
+        const isInPeriod = (
+          saleDate.getTime() >= startDate.getTime() && 
+          saleDate.getTime() <= endDate.getTime()
+        );
+        
+        // Log detailed information for the first few sales being filtered
+        if (period === 'Diario' && sales.length < 10) {
+          console.log('DEBUG - Sale filtering details:', { 
+            saleDateOriginal: sale.fechaSinHora,
+            saleDateTimestamp: saleDate.getTime(),
+            startDateTimestamp: startDate.getTime(),
+            endDateTimestamp: endDate.getTime(),
+            isInPeriod
+          });
+        }
+        
+        return isInPeriod;
+      } catch (error) {
+        console.error('Error filtering sale date:', error, sale);
+        return false;
+      }
     });
+    
+    if (period === 'Diario' && selectedEmail === 'ventasmochisproductoselrey@gmail.com') {
+      console.log('DEBUG - ventasmochis user - Filtered sales result:', { 
+        totalSales: sales.length,
+        filteredSales: filteredSales.length,
+        sampleDates: sales.slice(0, 3).map(s => s.fechaSinHora)
+      });
+    }
+    
+    return filteredSales;
   };
 
   const getTimeDifference = (period: TimePeriod) => {
@@ -305,8 +470,8 @@ export default function Dashboard() {
   }
 
   const filteredSales = salesData
-    .filter((sale) => sale.email === selectedEmail)
-    .filter((sale) => filterSalesByDate([sale], selectedPeriod).length > 0)
+    .filter((sale: Sale) => sale.email === selectedEmail)
+    .filter((sale: Sale) => filterSalesByDate([sale], selectedPeriod).length > 0);
 
   const totalSales = filteredSales.reduce((sum, sale) => sum + sale.venta, 0)
 
@@ -329,6 +494,100 @@ export default function Dashboard() {
 
   const currentPeriodNumber = getCurrentPeriodNumber()
   const currentGoal = getSellerGoal(selectedEmail, currentPeriodNumber as 11 | 12 | 13); // Añadido punto y coma
+
+  const handleChartError = () => {
+    console.error('ERROR - Chart rendering failed - Setting fallback state');
+    setChartError(true);
+  }
+  
+  // Reset chart error when period or email changes
+  useEffect(() => {
+    setChartError(false);
+  }, [selectedPeriod, selectedEmail]);
+
+  const renderChart = () => {
+    if (chartError) {
+      return (
+        <div className="flex flex-col items-center justify-center h-[160px] bg-gray-50 rounded-lg p-4">
+          <p className="text-sm text-gray-600 mb-2">No se pudieron cargar los datos del gráfico</p>
+          <button 
+            onClick={() => {
+              setChartError(false);
+              updateChartData();
+            }}
+            className="px-3 py-1 bg-blue-500 text-white text-xs rounded-md"
+          >
+            Intentar de nuevo
+          </button>
+        </div>
+      );
+    }
+    
+    // Use try/catch instead of onError prop
+    try {
+      return (
+        <div className="mt-3 h-[160px] w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={chartData}>
+              <XAxis 
+                dataKey="x" 
+                tickFormatter={(value) => value}
+                tick={{ fontSize: 8 }}
+              />
+              <YAxis hide />
+              <Tooltip 
+                formatter={(value: number) => [`$${value.toFixed(2)}`, 'Venta']}
+                labelFormatter={(label) => label}
+                contentStyle={{ fontSize: '10px' }}
+              />
+              <Line type="monotone" dataKey="venta" stroke="#3b82f6" strokeWidth={1.5} dot={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      );
+    } catch (error) {
+      console.error('ERROR - Chart rendering error:', error);
+      // If an error occurs during rendering, trigger the error state
+      setTimeout(() => handleChartError(), 0);
+      return (
+        <div className="flex items-center justify-center h-[160px]">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
+      );
+    }
+  };
+
+  // Fix the date normalization function
+  const normalizeDate = (dateString: string): string => {
+    if (!dateString) return '';
+    
+    try {
+      // First, handle the case where the date is already in the correct format
+      if (dateString.includes('T') && dateString.includes('Z')) {
+        // It's likely already an ISO string, just validate it
+        const testDate = new Date(dateString);
+        if (!isNaN(testDate.getTime())) {
+          return dateString;
+        }
+      }
+      
+      // Let original date strings pass through without excessive normalization
+      // This preserves the original format that was working before our changes
+      const testDate = new Date(dateString);
+      if (!isNaN(testDate.getTime())) {
+        return dateString;
+      }
+
+      // Only attempt to normalize if the date isn't already valid
+      console.warn('WARN - normalizeDate - Date needs normalization:', dateString);
+      
+      // If all else fails, return the original string
+      return dateString;
+    } catch (error) {
+      console.error('ERROR - normalizeDate - Failed to normalize date:', error, dateString);
+      return dateString;
+    }
+  };
 
   return (
     <div className="min-h-screen bg-white px-4 py-3 font-sans w-full" style={{ fontFamily: 'Inter, sans-serif', fontSize: '0.8rem' }}>
@@ -452,24 +711,7 @@ export default function Dashboard() {
             Periodo {getCurrentPeriodInfo().periodNumber}, Semana {getCurrentPeriodInfo().weekInPeriod}
           </p>
         )}
-        <div className="mt-3 h-[160px] w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chartData}>
-              <XAxis 
-                dataKey="x" 
-                tickFormatter={(value) => value}
-                tick={{ fontSize: 8 }}
-              />
-              <YAxis hide />
-              <Tooltip 
-                formatter={(value: number) => [`$${value.toFixed(2)}`, 'Venta']}
-                labelFormatter={(label) => label}
-                contentStyle={{ fontSize: '10px' }}
-              />
-              <Line type="monotone" dataKey="venta" stroke="#3b82f6" strokeWidth={1.5} dot={false} />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
+        {renderChart()}
       </div>
 
       {selectedPeriod === 'Mensual' && (
