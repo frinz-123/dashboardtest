@@ -34,39 +34,7 @@ export function getWeekDates(date = new Date()) {
 }
 
 export function isDateInPeriod(date: Date, periodStartDate: Date, periodEndDate: Date) {
-  // Add verbose debug logging for ventasmochis user
-  try {
-    // Convert to timestamps for easier comparison
-    const dateTimestamp = date.getTime();
-    const startTimestamp = periodStartDate.getTime();
-    const endTimestamp = periodEndDate.getTime();
-    
-    // Debug only a sample of calls to avoid console flooding
-    const shouldLog = Math.random() < 0.01; // Log approximately 1% of calls
-    
-    if (shouldLog) {
-      console.log('DEBUG - isDateInPeriod details:', {
-        dateISO: date.toISOString(),
-        periodStartISO: periodStartDate.toISOString(),
-        periodEndISO: periodEndDate.toISOString(),
-        dateTimestamp: dateTimestamp,
-        startTimestamp: startTimestamp, 
-        endTimestamp: endTimestamp,
-        isAfterStart: dateTimestamp >= startTimestamp,
-        isBeforeEnd: dateTimestamp <= endTimestamp,
-        isInPeriod: dateTimestamp >= startTimestamp && dateTimestamp <= endTimestamp
-      });
-    }
-    
-    return dateTimestamp >= startTimestamp && dateTimestamp <= endTimestamp;
-  } catch (error) {
-    console.error('ERROR in isDateInPeriod:', error, {
-      date: date,
-      periodStartDate: periodStartDate,
-      periodEndDate: periodEndDate
-    });
-    return false; // Default to excluding dates that cause errors
-  }
+  return date >= periodStartDate && date <= periodEndDate;
 }
 
 export function getCurrentPeriodNumber(date = new Date()): number {

@@ -1,5 +1,5 @@
 'use client'
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { ChevronDown, BarChart2, Users, Clock, ChevronRight, Target, Menu, Search } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { CircularProgressbar, buildStyles } from 'react-circular-progressbar'
@@ -55,153 +55,171 @@ export default function Dashboard() {
   const [searchTerm, setSearchTerm] = useState('')
   const [filteredClientNames, setFilteredClientNames] = useState<string[]>([])
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null)
-  const [chartError, setChartError] = useState<boolean>(false)
+  const [debugLogs, setDebugLogs] = useState<string[]>([])
+  const [showDebug, setShowDebug] = useState(false)
+  const debugRef = useRef<HTMLDivElement>(null)
+  const isLoggingRef = useRef(false)
 
   const periods: TimePeriod[] = ['Diario', 'Ayer', 'Semanal', 'Mensual']
-
-  const updateChartData = React.useCallback(() => {
-    console.log('DEBUG - updateChartData - Starting with period:', selectedPeriod, 'for email:', selectedEmail);
+  
+  // Add a simple logging function to add logs without console interception
+  const addLog = useCallback((message: string) => {
+    setDebugLogs(prev => {
+      const newLogs = [...prev, `${new Date().toLocaleTimeString()}: ${message}`];
+      return newLogs.slice(-100); // Keep only last 100 logs
+    });
+    
+    // Scroll to bottom
+    setTimeout(() => {
+      if (debugRef.current) {
+        debugRef.current.scrollTop = debugRef.current.scrollHeight;
+      }
+    }, 100);
+  }, []);
+  
+  // Function to get Mazatlan time - corrected timezone calculations
+  const getMazatlanTime = useCallback(() => {
+    const now = new Date();
+    
+    // Create a proper time string in the America/Mazatlan timezone
+    try {
+      // Use the native Intl API for timezone conversion
+      return now.toLocaleString('es-MX', { timeZone: 'America/Mazatlan' });
+    } catch (e) {
+      // Fallback method if the Intl API fails
+      addLog(`Error en timezone API: ${e}`);
+      return now.toLocaleString(); // Just use local time as fallback
+    }
+  }, [addLog]);
+  
+  // Function to get date with Mazatlan settings
+  const getMazatlanDate = useCallback(() => {
+    const now = new Date();
     
     try {
-      const filteredSales = salesData
-        .filter((sale: Sale) => sale.email === selectedEmail)
-        .filter((sale: Sale) => filterSalesByDate([sale], selectedPeriod).length > 0)
+      // Get current date components in Mazatlan timezone
+      const mazatlanDateString = now.toLocaleString('en-US', { 
+        timeZone: 'America/Mazatlan',
+        year: 'numeric', 
+        month: 'numeric', 
+        day: 'numeric',
+        hour: 'numeric',
+        minute: 'numeric',
+        second: 'numeric',
+        hour12: false
+      });
       
-      console.log('DEBUG - updateChartData - Filtered sales count:', filteredSales.length);
-      
-      if (selectedEmail === 'ventasmochisproductoselrey@gmail.com') {
-        console.log('DEBUG - ventasmochis - Sales data sample:', 
-          salesData.filter((s: Sale) => s.email === selectedEmail).slice(0, 3)
-        );
-      }
-
-      if (selectedPeriod === 'Diario' || selectedPeriod === 'Ayer') {
-        try {
-          const sortedSales = filteredSales.sort((a: Sale, b: Sale) => {
-            const dateA = new Date(a.fechaSinHora).getTime();
-            const dateB = new Date(b.fechaSinHora).getTime();
-            return dateA - dateB;
-          });
-          
-          const chartDataPoints = sortedSales.map((sale: Sale, index: number) => ({ 
-            x: `${index + 1}`, 
-            venta: sale.venta 
-          }));
-          
-          console.log('DEBUG - updateChartData - Chart data points:', chartDataPoints.length);
-          
-          setChartData(chartDataPoints);
-        } catch (err) {
-          console.error('ERROR - updateChartData - Error processing Diario/Ayer data:', err);
-          // Fallback to empty chart data
-          setChartData([]);
-        }
-      } else if (selectedPeriod === 'Semanal') {
-        const groupedData = filteredSales.reduce((acc: Record<string, number>, sale: Sale) => {
-          const date = new Date(sale.fechaSinHora)
-          const key = date.toLocaleDateString('es-ES', { month: 'short', day: 'numeric' })
-          if (!acc[key]) {
-            acc[key] = 0
-          }
-          acc[key] += sale.venta
-          return acc
-        }, {} as Record<string, number>)
-
-        const sortedData = Object.entries(groupedData)
-          .sort(([dateA], [dateB]) => new Date(dateA).getTime() - new Date(dateB).getTime())
-          .map(([date, venta]) => ({ x: date, venta }))
-
-        setChartData(sortedData)
-      } else if (selectedPeriod === 'Mensual') {
-        const { periodStartDate } = getCurrentPeriodInfo();
-        const groupedData = filteredSales.reduce((acc: Record<string, number>, sale: Sale) => {
-          const saleDate = new Date(sale.fechaSinHora);
-          const weekNumber = Math.floor((saleDate.getTime() - periodStartDate.getTime()) / (7 * 24 * 60 * 60 * 1000)) + 1;
-          const key = `S${weekNumber}`;
-          if (!acc[key]) {
-            acc[key] = 0;
-          }
-          acc[key] += sale.venta;
-          return acc;
-        }, {} as Record<string, number>);
-
-        const sortedData = Object.entries(groupedData)
-          .sort(([weekA], [weekB]) => weekA.localeCompare(weekB))
-          .map(([week, venta]) => ({ x: week, venta }));
-
-        setChartData(sortedData);
-      }
-
-      // Calculate percentage difference
-      const currentPeriodTotal = filteredSales.reduce((sum: number, sale: Sale) => sum + sale.venta, 0)
-      let previousPeriodStartDate: Date
-      let previousPeriodEndDate: Date
-
-      if (selectedPeriod === 'Diario') {
-        // Create a new date for yesterday
-        const previousDay = new Date();
-        previousDay.setDate(previousDay.getDate() - 1);
-        
-        previousPeriodStartDate = new Date(previousDay);
-        previousPeriodStartDate.setHours(0, 0, 0, 0);
-        
-        previousPeriodEndDate = new Date(previousDay);
-        previousPeriodEndDate.setHours(23, 59, 59, 999);
-      } else if (selectedPeriod === 'Ayer') {
-        // Create a new date for two days ago
-        const twoDaysAgo = new Date();
-        twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
-        
-        previousPeriodStartDate = new Date(twoDaysAgo);
-        previousPeriodStartDate.setHours(0, 0, 0, 0);
-        
-        previousPeriodEndDate = new Date(twoDaysAgo);
-        previousPeriodEndDate.setHours(23, 59, 59, 999);
-      } else {
-        const timeDifference = getTimeDifference(selectedPeriod);
-        const now = new Date().getTime();
-        
-        previousPeriodStartDate = new Date(now - timeDifference * 2);
-        previousPeriodEndDate = new Date(now - timeDifference);
-      }
-
-      const previousPeriodSales = salesData
-        .filter((sale: Sale) => sale.email === selectedEmail)
-        .filter((sale: Sale) => {
-          try {
-            // Use original date format instead of normalizeDate
-            const saleDate = new Date(sale.fechaSinHora);
-            return saleDate >= previousPeriodStartDate && saleDate <= previousPeriodEndDate;
-          } catch (err) {
-            console.error('ERROR - updateChartData - Error filtering previous period sale:', err, sale);
-            return false;
-          }
-        })
-      const previousPeriodTotal = previousPeriodSales.reduce((sum: number, sale: Sale) => sum + sale.venta, 0)
-
-      const difference = previousPeriodTotal !== 0 
-        ? ((currentPeriodTotal - previousPeriodTotal) / previousPeriodTotal) * 100 
-        : 0
-      setPercentageDifference(difference)
-      
-      console.log('DEBUG - updateChartData - Completed processing for', selectedPeriod);
-    } catch (error) {
-      console.error('ERROR - updateChartData - Unhandled error:', error);
-      // Reset chart data to prevent UI failures
-      setChartData([]);
-      setPercentageDifference(0);
+      // Parse the resulting date string back into a Date object
+      return new Date(mazatlanDateString);
+    } catch (e) {
+      // If Intl API fails, fall back to local date
+      addLog(`Error en timezone API: ${e}`);
+      return now;
     }
+  }, [addLog]);
+
+  const updateChartData = React.useCallback(() => {
+    const filteredSales = salesData
+      .filter((sale) => sale.email === selectedEmail)
+      .filter((sale) => filterSalesByDate([sale], selectedPeriod).length > 0)
+
+    if (selectedPeriod === 'Diario' || selectedPeriod === 'Ayer') {
+      const sortedSales = filteredSales.sort((a, b) => new Date(a.fechaSinHora).getTime() - new Date(b.fechaSinHora).getTime())
+      setChartData(sortedSales.map((sale, index) => ({ x: `${index + 1}`, venta: sale.venta })))
+    } else if (selectedPeriod === 'Semanal') {
+      const groupedData = filteredSales.reduce((acc, sale) => {
+        const date = new Date(sale.fechaSinHora)
+        const key = date.toLocaleDateString('es-ES', { month: 'short', day: 'numeric' })
+        if (!acc[key]) {
+          acc[key] = 0
+        }
+        acc[key] += sale.venta
+        return acc
+      }, {} as Record<string, number>)
+
+      const sortedData = Object.entries(groupedData)
+        .sort(([dateA], [dateB]) => new Date(dateA).getTime() - new Date(dateB).getTime())
+        .map(([date, venta]) => ({ x: date, venta }))
+
+      setChartData(sortedData)
+    } else if (selectedPeriod === 'Mensual') {
+      const { periodStartDate } = getCurrentPeriodInfo();
+      const groupedData = filteredSales.reduce((acc, sale) => {
+        const saleDate = new Date(sale.fechaSinHora);
+        const weekNumber = Math.floor((saleDate.getTime() - periodStartDate.getTime()) / (7 * 24 * 60 * 60 * 1000)) + 1;
+        const key = `S${weekNumber}`;
+        if (!acc[key]) {
+          acc[key] = 0;
+        }
+        acc[key] += sale.venta;
+        return acc;
+      }, {} as Record<string, number>);
+
+      const sortedData = Object.entries(groupedData)
+        .sort(([weekA], [weekB]) => weekA.localeCompare(weekB))
+        .map(([week, venta]) => ({ x: week, venta }));
+
+      setChartData(sortedData);
+    }
+
+    // Calculate percentage difference
+    const currentPeriodTotal = filteredSales.reduce((sum, sale) => sum + sale.venta, 0)
+    let previousPeriodStartDate: Date
+    let previousPeriodEndDate: Date
+
+    // Use the corrected Mazatlan date
+    const mazatlanDate = getMazatlanDate();
+
+    if (selectedPeriod === 'Diario') {
+      const yesterday = new Date(mazatlanDate);
+      yesterday.setDate(yesterday.getDate() - 1);
+      previousPeriodStartDate = new Date(yesterday);
+      previousPeriodStartDate.setHours(0, 0, 0, 0);
+      previousPeriodEndDate = new Date(yesterday);
+      previousPeriodEndDate.setHours(23, 59, 59, 999);
+      console.log('Previous period for Diario:', previousPeriodStartDate.toISOString(), 'to', previousPeriodEndDate.toISOString());
+    } else if (selectedPeriod === 'Ayer') {
+      const twoDaysAgo = new Date(mazatlanDate);
+      twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+      previousPeriodStartDate = new Date(twoDaysAgo);
+      previousPeriodStartDate.setHours(0, 0, 0, 0);
+      previousPeriodEndDate = new Date(twoDaysAgo);
+      previousPeriodEndDate.setHours(23, 59, 59, 999);
+      console.log('Previous period for Ayer:', previousPeriodStartDate.toISOString(), 'to', previousPeriodEndDate.toISOString());
+    } else {
+      previousPeriodStartDate = new Date(mazatlanDate.getTime() - getTimeDifference(selectedPeriod) * 2);
+      previousPeriodEndDate = new Date(mazatlanDate.getTime() - getTimeDifference(selectedPeriod));
+      console.log('Previous period for', selectedPeriod, ':', previousPeriodStartDate.toISOString(), 'to', previousPeriodEndDate.toISOString());
+    }
+
+    const previousPeriodSales = salesData
+      .filter((sale) => sale.email === selectedEmail)
+      .filter((sale) => {
+        const saleDate = new Date(sale.fechaSinHora)
+        return saleDate >= previousPeriodStartDate && saleDate <= previousPeriodEndDate
+      })
+    const previousPeriodTotal = previousPeriodSales.reduce((sum, sale) => sum + sale.venta, 0)
+
+    const difference = previousPeriodTotal !== 0 
+      ? ((currentPeriodTotal - previousPeriodTotal) / previousPeriodTotal) * 100 
+      : 0
+    setPercentageDifference(difference)
   }, [salesData, selectedEmail, selectedPeriod])
 
   const updateGoalProgress = React.useCallback(() => {
-    const currentPeriodNumber = getCurrentPeriodNumber()
+    // Use the corrected Mazatlan date
+    const mazatlanDate = getMazatlanDate();
+    
+    const currentPeriodNumber = getCurrentPeriodNumber(mazatlanDate)
     console.log('Current Period Number:', currentPeriodNumber)
 
-    const { periodStartDate, periodEndDate } = getCurrentPeriodInfo()
+    const { periodStartDate, periodEndDate } = getCurrentPeriodInfo(mazatlanDate)
+    console.log('Period Start Date:', periodStartDate.toISOString(), 'Period End Date:', periodEndDate.toISOString())
     
     const periodSales = salesData
       .filter((sale) => sale.email === selectedEmail)
       .filter((sale) => {
+        if (!sale.fechaSinHora) return false;
         const saleDate = new Date(sale.fechaSinHora)
         return isDateInPeriod(saleDate, periodStartDate, periodEndDate)
       })
@@ -217,7 +235,7 @@ export default function Dashboard() {
     console.log('Progress:', progress)
 
     setGoalProgress(isNaN(progress) ? 0 : progress)
-  }, [salesData, selectedEmail])
+  }, [salesData, selectedEmail, getMazatlanDate])
 
   useEffect(() => {
     fetchData()
@@ -259,201 +277,87 @@ export default function Dashboard() {
   }, [session])
 
   const fetchData = async () => {
-    console.log('DEBUG - fetchData - Starting data fetch');
-    try {
-      const response = await fetch(
-        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:AK?key=${googleApiKey}`
-      )
-      
-      if (!response.ok) {
-        console.error('ERROR - fetchData - Failed to fetch from Google Sheets:', response.status, response.statusText);
-        return;
-      }
-      
-      const data = await response.json()
-      
-      if (!data.values || !Array.isArray(data.values) || data.values.length <= 1) {
-        console.error('ERROR - fetchData - Invalid data format from Google Sheets:', data);
-        return;
-      }
-      
-      console.log('DEBUG - fetchData - Data fetched successfully, processing rows');
-      
-      // Try to identify specific problematic date patterns
-      const dateFormatLog: Record<string, number> = {};
-      
-      const rows = data.values.slice(1) // Remove header row
-      const sales: Sale[] = rows.map((row: string[], index: number) => {
-        try {
-          const products: Record<string, number> = {}
-          for (let i = 8; i <= 31; i++) {
-            if (row[i] && row[i] !== '0') {
-              products[data.values[0][i]] = parseInt(row[i], 10)
-            }
-          }
-          for (let i = 34; i <= 36; i++) {
-            if (row[i] && row[i] !== '0') {
-              products[data.values[0][i]] = parseInt(row[i], 10)
-            }
-          }
-          
-          // Extract the date - use original format
-          const rawDate = row[32];
-          
-          // Keep a log of different date formats observed
-          if (rawDate) {
-            const datePattern = rawDate.substring(0, 10); // First 10 chars are likely the date pattern
-            dateFormatLog[datePattern] = (dateFormatLog[datePattern] || 0) + 1;
-          }
-          
-          // Don't normalize the date - use it as is
-          return {
-            clientName: row[0] || 'Unknown',
-            venta: parseFloat(row[33]) || 0,
-            codigo: row[31] || '',
-            fechaSinHora: rawDate || '',
-            email: row[7] || '',
-            products: products
-          }
-        } catch (error) {
-          console.error('ERROR - fetchData - Error processing row:', error, row);
-          return {
-            clientName: 'Error',
-            venta: 0,
-            codigo: '',
-            fechaSinHora: '',
-            email: '',
-            products: {}
-          };
-        }
-      }).filter((sale: Sale) => sale.email && sale.fechaSinHora); // Fix linter error by adding type
-      
-      console.log('DEBUG - fetchData - Date formats observed:', dateFormatLog);
-      
-      // Log some stats about the data
-      const emailCounts: Record<string, number> = {};
-      sales.forEach(sale => {
-        emailCounts[sale.email] = (emailCounts[sale.email] || 0) + 1;
-      });
-      
-      console.log('DEBUG - fetchData - Sales per email:', emailCounts);
-      
-      if (emailCounts['ventasmochisproductoselrey@gmail.com']) {
-        const mochisData = sales.filter(s => s.email === 'ventasmochisproductoselrey@gmail.com');
-        console.log('DEBUG - ventasmochis - First few entries:', mochisData.slice(0, 3));
-      }
-      
-      setSalesData(sales)
-      const uniqueEmails = [...new Set(sales.map((sale) => sale.email))].filter(Boolean)
-      setEmails(uniqueEmails)
-      if (uniqueEmails.length > 0) {
-        // Try to set the email to the current user's email if available
-        if (session?.user?.email && uniqueEmails.includes(session.user.email)) {
-          setSelectedEmail(session.user.email);
-        } else {
-          setSelectedEmail(uniqueEmails[0]);
+    const response = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:AK?key=${googleApiKey}`
+    )
+    const data = await response.json()
+    const rows = data.values.slice(1) // Remove header row
+    const sales: Sale[] = rows.map((row: string[]) => {
+      const products: Record<string, number> = {}
+      for (let i = 8; i <= 31; i++) {
+        if (row[i] && row[i] !== '0') {
+          products[data.values[0][i]] = parseInt(row[i], 10)
         }
       }
+      for (let i = 34; i <= 36; i++) {
+        if (row[i] && row[i] !== '0') {
+          products[data.values[0][i]] = parseInt(row[i], 10)
+        }
+      }
+      return {
+        clientName: row[0] || 'Unknown',
+        venta: parseFloat(row[33]),
+        codigo: row[31],
+        fechaSinHora: row[32],
+        email: row[7],
+        products: products
+      }
+    })
+    setSalesData(sales)
+    const uniqueEmails = [...new Set(sales.map((sale) => sale.email))]
+    setEmails(uniqueEmails)
+    if (uniqueEmails.length > 0) setSelectedEmail(uniqueEmails[0])
 
-      // Extract unique client names
-      const uniqueClientNames = Array.from(new Set(sales.map(sale => sale.clientName))).filter(Boolean)
-      setClientNames(uniqueClientNames)
-      
-      console.log('DEBUG - fetchData - Completed processing data');
-    } catch (error) {
-      console.error('ERROR - fetchData - Unhandled error:', error);
-    }
+    // Extract unique client names
+    const uniqueClientNames = Array.from(new Set(sales.map(sale => sale.clientName))).filter(Boolean)
+    setClientNames(uniqueClientNames)
+    // Remove or comment out the following lines:
+    // if (uniqueClientNames.length > 0) {
+    //   setSelectedClient(uniqueClientNames[0])
+    // }
   }
 
   const filterSalesByDate = (sales: Sale[], period: TimePeriod) => {
-    const currentDate = new Date();
+    // Use the improved method to get Mazatlan date
+    const currentDate = getMazatlanDate();
+    console.log('Current date in Mazatlan:', currentDate.toISOString());
+    
     let startDate: Date, endDate: Date;
 
     if (period === 'Diario') {
-      // Create a fresh copy of the date to avoid modifying original
+      // Set hours using the Mazatlan-adjusted date
       startDate = new Date(currentDate);
       startDate.setHours(0, 0, 0, 0);
-      
       endDate = new Date(currentDate);
       endDate.setHours(23, 59, 59, 999);
-      
-      // Add debug logging
-      console.log('DEBUG - filterSalesByDate - Diario period:', { 
-        currentDateISO: currentDate.toISOString(),
-        startDateISO: startDate.toISOString(),
-        endDateISO: endDate.toISOString(),
-        currentUserEmail: selectedEmail,
-        browser: navigator.userAgent
-      });
+      console.log('Diario period - Start:', startDate.toISOString(), 'End:', endDate.toISOString());
     } else if (period === 'Ayer') {
       const yesterday = new Date(currentDate);
       yesterday.setDate(yesterday.getDate() - 1);
-      
       startDate = new Date(yesterday);
       startDate.setHours(0, 0, 0, 0);
-      
       endDate = new Date(yesterday);
       endDate.setHours(23, 59, 59, 999);
-      
-      console.log('DEBUG - filterSalesByDate - Ayer period:', { 
-        yesterdayISO: yesterday.toISOString(),
-        startDateISO: startDate.toISOString(),
-        endDateISO: endDate.toISOString()
-      });
+      console.log('Ayer period - Start:', startDate.toISOString(), 'End:', endDate.toISOString());
     } else if (period === 'Semanal') {
       const { weekStart, weekEnd } = getWeekDates(currentDate);
       startDate = weekStart;
       endDate = weekEnd;
+      console.log('Semanal period - Start:', startDate.toISOString(), 'End:', endDate.toISOString());
     } else if (period === 'Mensual') {
       const { periodStartDate, periodEndDate } = getCurrentPeriodInfo(currentDate);
       startDate = periodStartDate;
       endDate = periodEndDate;
+      console.log('Mensual period - Start:', startDate.toISOString(), 'End:', endDate.toISOString());
     }
 
-    const filteredSales = sales.filter((sale: Sale) => {
-      try {
-        // Use the original date string directly - normalizeDate is too aggressive
-        const saleDate = new Date(sale.fechaSinHora);
-        
-        // Basic validation
-        if (isNaN(saleDate.getTime())) {
-          console.error('Invalid date:', sale.fechaSinHora);
-          return false;
-        }
-        
-        // Check if date is in period using standard comparison
-        const isInPeriod = (
-          saleDate.getTime() >= startDate.getTime() && 
-          saleDate.getTime() <= endDate.getTime()
-        );
-        
-        // Log detailed information for the first few sales being filtered
-        if (period === 'Diario' && sales.length < 10) {
-          console.log('DEBUG - Sale filtering details:', { 
-            saleDateOriginal: sale.fechaSinHora,
-            saleDateTimestamp: saleDate.getTime(),
-            startDateTimestamp: startDate.getTime(),
-            endDateTimestamp: endDate.getTime(),
-            isInPeriod
-          });
-        }
-        
-        return isInPeriod;
-      } catch (error) {
-        console.error('Error filtering sale date:', error, sale);
-        return false;
-      }
+    return sales.filter((sale) => {
+      if (!sale.fechaSinHora) return false;
+      const saleDate = new Date(sale.fechaSinHora);
+      // Add debug logging to help diagnose issues
+      // console.log('Sale date:', sale.fechaSinHora, 'Parsed:', saleDate.toISOString(), 'In period:', saleDate >= startDate && saleDate <= endDate);
+      return isDateInPeriod(saleDate, startDate, endDate);
     });
-    
-    if (period === 'Diario' && selectedEmail === 'ventasmochisproductoselrey@gmail.com') {
-      console.log('DEBUG - ventasmochis user - Filtered sales result:', { 
-        totalSales: sales.length,
-        filteredSales: filteredSales.length,
-        sampleDates: sales.slice(0, 3).map(s => s.fechaSinHora)
-      });
-    }
-    
-    return filteredSales;
   };
 
   const getTimeDifference = (period: TimePeriod) => {
@@ -470,8 +374,8 @@ export default function Dashboard() {
   }
 
   const filteredSales = salesData
-    .filter((sale: Sale) => sale.email === selectedEmail)
-    .filter((sale: Sale) => filterSalesByDate([sale], selectedPeriod).length > 0);
+    .filter((sale) => sale.email === selectedEmail)
+    .filter((sale) => filterSalesByDate([sale], selectedPeriod).length > 0)
 
   const totalSales = filteredSales.reduce((sum, sale) => sum + sale.venta, 0)
 
@@ -495,99 +399,46 @@ export default function Dashboard() {
   const currentPeriodNumber = getCurrentPeriodNumber()
   const currentGoal = getSellerGoal(selectedEmail, currentPeriodNumber as 11 | 12 | 13); // Añadido punto y coma
 
-  const handleChartError = () => {
-    console.error('ERROR - Chart rendering failed - Setting fallback state');
-    setChartError(true);
-  }
-  
-  // Reset chart error when period or email changes
+  // Run diagnostics when period is changed
   useEffect(() => {
-    setChartError(false);
-  }, [selectedPeriod, selectedEmail]);
-
-  const renderChart = () => {
-    if (chartError) {
-      return (
-        <div className="flex flex-col items-center justify-center h-[160px] bg-gray-50 rounded-lg p-4">
-          <p className="text-sm text-gray-600 mb-2">No se pudieron cargar los datos del gráfico</p>
-          <button 
-            onClick={() => {
-              setChartError(false);
-              updateChartData();
-            }}
-            className="px-3 py-1 bg-blue-500 text-white text-xs rounded-md"
-          >
-            Intentar de nuevo
-          </button>
-        </div>
-      );
-    }
-    
-    // Use try/catch instead of onError prop
-    try {
-      return (
-        <div className="mt-3 h-[160px] w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chartData}>
-              <XAxis 
-                dataKey="x" 
-                tickFormatter={(value) => value}
-                tick={{ fontSize: 8 }}
-              />
-              <YAxis hide />
-              <Tooltip 
-                formatter={(value: number) => [`$${value.toFixed(2)}`, 'Venta']}
-                labelFormatter={(label) => label}
-                contentStyle={{ fontSize: '10px' }}
-              />
-              <Line type="monotone" dataKey="venta" stroke="#3b82f6" strokeWidth={1.5} dot={false} />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      );
-    } catch (error) {
-      console.error('ERROR - Chart rendering error:', error);
-      // If an error occurs during rendering, trigger the error state
-      setTimeout(() => handleChartError(), 0);
-      return (
-        <div className="flex items-center justify-center h-[160px]">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-        </div>
-      );
-    }
-  };
-
-  // Fix the date normalization function
-  const normalizeDate = (dateString: string): string => {
-    if (!dateString) return '';
+    if (!showDebug) return;
     
     try {
-      // First, handle the case where the date is already in the correct format
-      if (dateString.includes('T') && dateString.includes('Z')) {
-        // It's likely already an ISO string, just validate it
-        const testDate = new Date(dateString);
-        if (!isNaN(testDate.getTime())) {
-          return dateString;
-        }
+      addLog(`----- Periodo cambiado a: ${selectedPeriod} -----`);
+      
+      // Use the corrected Mazatlan time
+      const mazatlanDate = getMazatlanDate();
+      
+      let startDate, endDate;
+      
+      if (selectedPeriod === 'Diario') {
+        startDate = new Date(mazatlanDate);
+        startDate.setHours(0, 0, 0, 0);
+        endDate = new Date(mazatlanDate);
+        endDate.setHours(23, 59, 59, 999);
+      } else if (selectedPeriod === 'Ayer') {
+        const yesterday = new Date(mazatlanDate);
+        yesterday.setDate(yesterday.getDate() - 1);
+        startDate = new Date(yesterday);
+        startDate.setHours(0, 0, 0, 0);
+        endDate = new Date(yesterday);
+        endDate.setHours(23, 59, 59, 999);
+      } else if (selectedPeriod === 'Semanal') {
+        const { weekStart, weekEnd } = getWeekDates(mazatlanDate);
+        startDate = weekStart;
+        endDate = weekEnd;
+      } else if (selectedPeriod === 'Mensual') {
+        const { periodStartDate, periodEndDate } = getCurrentPeriodInfo(mazatlanDate);
+        startDate = periodStartDate;
+        endDate = periodEndDate;
       }
       
-      // Let original date strings pass through without excessive normalization
-      // This preserves the original format that was working before our changes
-      const testDate = new Date(dateString);
-      if (!isNaN(testDate.getTime())) {
-        return dateString;
-      }
-
-      // Only attempt to normalize if the date isn't already valid
-      console.warn('WARN - normalizeDate - Date needs normalization:', dateString);
-      
-      // If all else fails, return the original string
-      return dateString;
+      addLog(`Rango de filtro: ${startDate?.toLocaleString()} a ${endDate?.toLocaleString()}`);
+      addLog(`Ventas filtradas: ${filteredSales.length}`);
     } catch (error) {
-      console.error('ERROR - normalizeDate - Failed to normalize date:', error, dateString);
-      return dateString;
+      addLog(`Error en diagnóstico de periodo: ${error}`);
     }
-  };
+  }, [selectedPeriod, showDebug, addLog, filteredSales.length, getMazatlanDate]);
 
   return (
     <div className="min-h-screen bg-white px-4 py-3 font-sans w-full" style={{ fontFamily: 'Inter, sans-serif', fontSize: '0.8rem' }}>
@@ -711,7 +562,24 @@ export default function Dashboard() {
             Periodo {getCurrentPeriodInfo().periodNumber}, Semana {getCurrentPeriodInfo().weekInPeriod}
           </p>
         )}
-        {renderChart()}
+        <div className="mt-3 h-[160px] w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={chartData}>
+              <XAxis 
+                dataKey="x" 
+                tickFormatter={(value) => value}
+                tick={{ fontSize: 8 }}
+              />
+              <YAxis hide />
+              <Tooltip 
+                formatter={(value: number) => [`$${value.toFixed(2)}`, 'Venta']}
+                labelFormatter={(label) => label}
+                contentStyle={{ fontSize: '10px' }}
+              />
+              <Line type="monotone" dataKey="venta" stroke="#3b82f6" strokeWidth={1.5} dot={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
       </div>
 
       {selectedPeriod === 'Mensual' && (
@@ -900,6 +768,174 @@ export default function Dashboard() {
           onClose={() => setSelectedSale(null)} 
         />
       )}
+      
+      {/* Debug panel with logs and timezone info */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-300 p-2 z-10">
+        <button 
+          onClick={() => setShowDebug(!showDebug)}
+          className="w-full flex justify-between items-center text-xs text-gray-700 font-medium p-1 rounded bg-gray-100"
+        >
+          <span>Debug Panel {showDebug ? "▼" : "▲"}</span>
+          <span className="text-xs bg-blue-100 text-blue-800 px-1.5 rounded-full">{debugLogs.length} logs</span>
+        </button>
+        
+        {showDebug && (
+          <div className="mt-2 space-y-2">
+            {/* Basic status info */}
+            <div className="p-2 bg-gray-100 rounded text-xs">
+              <h4 className="font-medium mb-1">Estado Actual</h4>
+              <div className="grid grid-cols-2 gap-x-2 gap-y-1">
+                <div>Usuario:</div>
+                <div className="font-medium">{session?.user?.email || 'No disponible'}</div>
+                
+                <div>Zona horaria local:</div>
+                <div className="font-medium">UTC{new Date().getTimezoneOffset() > 0 ? '-' : '+'}{Math.abs(new Date().getTimezoneOffset() / 60)}</div>
+                
+                <div>Periodo:</div>
+                <div className="font-medium">{selectedPeriod}</div>
+                
+                <div>Fecha local:</div>
+                <div className="font-medium">{new Date().toLocaleString()}</div>
+                
+                <div>Fecha Mazatlán:</div>
+                <div className="font-medium">{getMazatlanTime()}</div>
+                
+                <div>Ventas filtradas:</div>
+                <div className="font-medium">{filteredSales.length}</div>
+              </div>
+            </div>
+            
+            {/* Show the filter dates for the selected period */}
+            <div className="p-2 bg-gray-100 rounded text-xs">
+              <h4 className="font-medium mb-1">Información de Filtro</h4>
+              <div className="grid grid-cols-2 gap-x-2 gap-y-1">
+                {(() => {
+                  // Get the same date range used by filterSalesByDate
+                  const now = new Date();
+                  const mazatlanOffset = -7 * 60;
+                  const userOffset = now.getTimezoneOffset();
+                  const offsetDiff = userOffset - mazatlanOffset;
+                  const currentDate = new Date(now.getTime() + offsetDiff * 60 * 1000);
+                  
+                  let startDate, endDate;
+                  
+                  if (selectedPeriod === 'Diario') {
+                    startDate = new Date(currentDate);
+                    startDate.setHours(0, 0, 0, 0);
+                    endDate = new Date(currentDate);
+                    endDate.setHours(23, 59, 59, 999);
+                  } else if (selectedPeriod === 'Ayer') {
+                    const yesterday = new Date(currentDate);
+                    yesterday.setDate(yesterday.getDate() - 1);
+                    startDate = new Date(yesterday);
+                    startDate.setHours(0, 0, 0, 0);
+                    endDate = new Date(yesterday);
+                    endDate.setHours(23, 59, 59, 999);
+                  } else if (selectedPeriod === 'Semanal') {
+                    const { weekStart, weekEnd } = getWeekDates(currentDate);
+                    startDate = weekStart;
+                    endDate = weekEnd;
+                  } else if (selectedPeriod === 'Mensual') {
+                    const { periodStartDate, periodEndDate } = getCurrentPeriodInfo(currentDate);
+                    startDate = periodStartDate;
+                    endDate = periodEndDate;
+                  }
+                  
+                  return (
+                    <>
+                      <div>Fecha Inicio:</div>
+                      <div className="font-medium">{startDate?.toLocaleString()}</div>
+                      
+                      <div>Fecha Fin:</div>
+                      <div className="font-medium">{endDate?.toLocaleString()}</div>
+                    </>
+                  );
+                })()}
+              </div>
+            </div>
+            
+            {/* Console logs */}
+            <div className="mt-2">
+              <h4 className="font-medium text-xs mb-1">Logs ({debugLogs.length})</h4>
+              <div 
+                ref={debugRef} 
+                className="bg-gray-900 text-green-400 p-2 rounded text-xs h-48 overflow-y-auto whitespace-pre-wrap font-mono"
+              >
+                {debugLogs.length === 0 ? (
+                  <div className="text-gray-500 italic">No hay logs disponibles</div>
+                ) : (
+                  debugLogs.map((log, index) => (
+                    <div key={`log-${index}`} className="mb-1 border-b border-gray-700 pb-1">{log}</div>
+                  ))
+                )}
+              </div>
+            </div>
+            
+            {/* Log controls */}
+            <div className="flex justify-between gap-2 mt-1">
+              <button 
+                onClick={() => {
+                  try {
+                    addLog("---- DIAGNÓSTICO MANUAL ----");
+                    addLog(`Email: ${session?.user?.email || 'No disponible'}`);
+                    addLog(`Periodo: ${selectedPeriod}`);
+                    addLog(`Número de ventas: ${salesData.length}`);
+                    addLog(`Ventas filtradas: ${filteredSales.length}`);
+                    
+                    // Log timezone info
+                    const now = new Date();
+                    const userOffset = now.getTimezoneOffset();
+                    addLog(`Zona horaria local: UTC${userOffset > 0 ? '-' : '+'}${Math.abs(userOffset / 60)}`);
+                    
+                    // Log dates with corrected timezone
+                    addLog(`Fecha local: ${now.toLocaleString()}`);
+                    addLog(`Fecha Mazatlán (API): ${getMazatlanTime()}`);
+                    
+                    // Show exact filter dates
+                    const mazatlanDate = getMazatlanDate();
+                    let startDate, endDate;
+                    
+                    if (selectedPeriod === 'Diario') {
+                      startDate = new Date(mazatlanDate);
+                      startDate.setHours(0, 0, 0, 0);
+                      endDate = new Date(mazatlanDate);
+                      endDate.setHours(23, 59, 59, 999);
+                    } else if (selectedPeriod === 'Ayer') {
+                      const yesterday = new Date(mazatlanDate);
+                      yesterday.setDate(yesterday.getDate() - 1);
+                      startDate = new Date(yesterday);
+                      startDate.setHours(0, 0, 0, 0);
+                      endDate = new Date(yesterday);
+                      endDate.setHours(23, 59, 59, 999);
+                    }
+                    
+                    addLog(`Filtro ${selectedPeriod}: ${startDate?.toLocaleString()} a ${endDate?.toLocaleString()}`);
+                    
+                    // Include some sample sales data
+                    if (filteredSales.length > 0) {
+                      const sampleSale = filteredSales[0];
+                      addLog(`Ejemplo venta: Cliente ${sampleSale.clientName}, Fecha ${sampleSale.fechaSinHora}, Monto $${sampleSale.venta.toFixed(2)}`);
+                    } else {
+                      addLog("No hay ventas en el periodo seleccionado");
+                    }
+                  } catch (error) {
+                    addLog(`Error en diagnóstico: ${error}`);
+                  }
+                }}
+                className="flex-1 bg-blue-100 text-blue-800 rounded py-1 text-xs font-medium"
+              >
+                Diagnóstico
+              </button>
+              <button 
+                onClick={() => setDebugLogs([])}
+                className="flex-1 bg-red-100 text-red-800 rounded py-1 text-xs font-medium"
+              >
+                Limpiar Logs
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
