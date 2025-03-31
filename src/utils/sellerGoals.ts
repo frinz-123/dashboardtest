@@ -57,6 +57,18 @@ const sellerGoals: SellerGoals = {
     19: 180000.00, //junio 2025
     20: 185000.00, //julio 2025
   },
+  'alopezelrey@gmail.com': { // Arlyn
+    11: 180000.00,
+    12: 190000.00,
+    13: 195000.00,
+    14: 200000.00, //enero 2025
+    15: 190000.00, //febrero 2025
+    16: 185000.00, //marzo 2025
+    17: 190000.00, //abril 2025
+    18: 195000.00, //mayo 2025
+    19: 175000.00, //junio 2025
+    20: 180000.00, //julio 2025
+  },
 };
 
 export function getSellerGoal(email: string, period: GoalPeriod): number {

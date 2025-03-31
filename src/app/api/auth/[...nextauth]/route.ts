@@ -23,6 +23,7 @@ export const authOptions: AuthOptions = {
         'cesar.reyes.ochoa@gmail.com',
         'arturo.elreychiltepin@gmail.com',
         'ventasmochisproductoselrey@gmail.com',
+        'alopezelrey@gmail.com',
         process.env.OVERRIDE_EMAIL
       ].filter(Boolean)
       

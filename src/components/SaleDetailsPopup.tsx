@@ -9,7 +9,8 @@ const EMAIL_TO_SELLER: Record<string, string> = {
   'ventasmochisproductoselrey@gmail.com': 'Mochis',
   'franzcharbell@gmail.com': 'Franz',
   'cesar.reyes.ochoa@gmail.com': 'Cesar',
-  'arturo.elreychiltepin@gmail.com': 'Arturo Mty'
+  'arturo.elreychiltepin@gmail.com': 'Arturo Mty',
+  'alopezelrey@gmail.com': 'Arlyn'
 };
 
 type Sale = {
