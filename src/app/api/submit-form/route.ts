@@ -1,5 +1,6 @@
 import { google } from 'googleapis'
 import { NextResponse } from 'next/server'
+import { getCurrentPeriodInfo } from '@/utils/dateUtils'
 
 const auth = new google.auth.GoogleAuth({
   credentials: {
@@ -45,14 +46,18 @@ export async function POST(req: Request) {
       })
 
       const lastRow = currentData.data.values ? currentData.data.values.length + 1 : 2
-      const range = `Form_Data!A${lastRow}:AK${lastRow}`
+      const range = `Form_Data!A${lastRow}:AL${lastRow}`
 
       // Format current date as MM/DD/YYYY
       const currentDate = new Date()
       const formattedDate = `${currentDate.getMonth() + 1}/${currentDate.getDate()}/${currentDate.getFullYear()}`
 
-      // Create an array with 37 elements (A to AK)
-      const rowData = new Array(37).fill('')
+      // Get current period and week for column AL
+      const { periodNumber, weekInPeriod } = getCurrentPeriodInfo(currentDate)
+      const periodWeekCode = `P${periodNumber}S${weekInPeriod}`
+
+      // Create an array with 38 elements (A to AL)
+      const rowData = new Array(38).fill('')
 
       // Set the values according to the mapping
       rowData[0] = clientName                                    // Column A
@@ -89,6 +94,7 @@ export async function POST(req: Request) {
       rowData[34] = products['Michela Mix Picafresa'] || ''    // Column AI
       rowData[35] = products['Habanero Molido 50 g'] || ''     // Column AJ
       rowData[36] = products['Habanero Molido 20 g'] || ''     // Column AK
+      rowData[37] = periodWeekCode                             // Column AL - Period and Week Code (e.g., P17S2)
 
       const response = await sheets.spreadsheets.values.update({
         spreadsheetId,
