@@ -9,6 +9,7 @@ import SearchInput from '@/components/ui/SearchInput'
 import Map from '@/components/ui/Map'
 import InputGray from '@/components/ui/InputGray'
 import { useSession } from "next-auth/react"
+import CleyOrderQuestion from '@/components/comp-166'
 
 const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY
 const spreadsheetId = process.env.NEXT_PUBLIC_SPREADSHEET_ID
@@ -574,6 +575,7 @@ export default function FormPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [key, setKey] = useState(0)
   const [isLoading, setIsLoading] = useState(true)
+  const [cleyOrderValue, setCleyOrderValue] = useState<string>("1")
   const [validationErrors, setValidationErrors] = useState<{
     client?: string;
     location?: string;
@@ -824,7 +826,8 @@ export default function FormPage() {
           total: parseFloat(total),
           location: currentLocation,
           userEmail: session?.user?.email || OVERRIDE_EMAILS[0],
-          date: new Date().toISOString()
+          date: new Date().toISOString(),
+          cleyOrderValue: clientCode === 'CLEY' ? cleyOrderValue : null
         }),
       });
 
@@ -843,6 +846,7 @@ export default function FormPage() {
         setQuantities({});
         setTotal('0.00');
         setFilteredClients([]);
+        setCleyOrderValue("1");
         setKey(prev => prev + 1);
       }
 
@@ -1020,6 +1024,17 @@ export default function FormPage() {
           />
         ))}
       </div>
+
+      {/* Add CLEY order question component */}
+      {selectedClient && getClientCode(selectedClient).toUpperCase() === 'CLEY' && (
+        <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
+          <CleyOrderQuestion 
+            key={`cley-question-${key}`}
+            onChange={(value) => setCleyOrderValue(value)}
+            value={cleyOrderValue}
+          />
+        </div>
+      )}
 
       <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
         {Object.values(quantities).some(q => q > 0) && (

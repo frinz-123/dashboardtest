@@ -19,7 +19,7 @@ const spreadsheetId = '1a0jZVdKFNWTHDsM-68LT5_OLPMGejAKs9wfCxYqqe_g'
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    const { clientName, products, total, location, clientCode, userEmail } = body
+    const { clientName, products, total, location, clientCode, userEmail, cleyOrderValue } = body
 
     const sheets = google.sheets({ version: 'v4', auth })
 
@@ -46,7 +46,7 @@ export async function POST(req: Request) {
       })
 
       const lastRow = currentData.data.values ? currentData.data.values.length + 1 : 2
-      const range = `Form_Data!A${lastRow}:AL${lastRow}`
+      const range = `Form_Data!A${lastRow}:AM${lastRow}`
 
       // Format current date as MM/DD/YYYY
       const currentDate = new Date()
@@ -56,8 +56,8 @@ export async function POST(req: Request) {
       const { periodNumber, weekInPeriod } = getCurrentPeriodInfo(currentDate)
       const periodWeekCode = `P${periodNumber}S${weekInPeriod}`
 
-      // Create an array with 38 elements (A to AL)
-      const rowData = new Array(38).fill('')
+      // Create an array with 39 elements (A to AM)
+      const rowData = new Array(39).fill('')
 
       // Set the values according to the mapping
       rowData[0] = clientName                                    // Column A
@@ -94,7 +94,12 @@ export async function POST(req: Request) {
       rowData[34] = products['Michela Mix Picafresa'] || ''    // Column AI
       rowData[35] = products['Habanero Molido 50 g'] || ''     // Column AJ
       rowData[36] = products['Habanero Molido 20 g'] || ''     // Column AK
-      rowData[37] = periodWeekCode                             // Column AL - Period and Week Code (e.g., P17S2)
+      rowData[37] = periodWeekCode                             // Column AL - Always use the period/week code here
+      
+      // Set AM based on client code and CLEY order value (for Casa Ley question)
+      if (clientCode.toUpperCase() === 'CLEY' && cleyOrderValue) {
+        rowData[38] = cleyOrderValue === "1" ? "No" : "Si"     // Column AM - CLEY Order value
+      }
 
       const response = await sheets.spreadsheets.values.update({
         spreadsheetId,
