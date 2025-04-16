@@ -813,6 +813,15 @@ export default function FormPage() {
       }
 
       const clientCode = getClientCode(selectedClient);
+      const isCley = clientCode.toUpperCase() === 'CLEY';
+      const cleyValue = isCley ? cleyOrderValue : null;
+      
+      console.log("Submitting form with CLEY data:", {
+        clientCode,
+        isCley,
+        cleyOrderValue,
+        cleyValue
+      });
       
       const response = await fetch('/api/submit-form', {
         method: 'POST',
@@ -827,7 +836,7 @@ export default function FormPage() {
           location: currentLocation,
           userEmail: session?.user?.email || OVERRIDE_EMAILS[0],
           date: new Date().toISOString(),
-          cleyOrderValue: clientCode === 'CLEY' ? cleyOrderValue : null
+          cleyOrderValue: cleyValue
         }),
       });
 
@@ -1030,7 +1039,10 @@ export default function FormPage() {
         <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
           <CleyOrderQuestion 
             key={`cley-question-${key}`}
-            onChange={(value) => setCleyOrderValue(value)}
+            onChange={(value) => {
+              console.log("CLEY Radio changed to:", value);
+              setCleyOrderValue(value);
+            }}
             value={cleyOrderValue}
           />
         </div>

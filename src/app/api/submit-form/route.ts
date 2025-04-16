@@ -21,6 +21,13 @@ export async function POST(req: Request) {
     const body = await req.json()
     const { clientName, products, total, location, clientCode, userEmail, cleyOrderValue } = body
 
+    console.log("Form submission data:", {
+      clientName,
+      clientCode,
+      cleyOrderValue,
+      cleyOrderValueType: typeof cleyOrderValue
+    });
+
     const sheets = google.sheets({ version: 'v4', auth })
 
     try {
@@ -46,6 +53,8 @@ export async function POST(req: Request) {
       })
 
       const lastRow = currentData.data.values ? currentData.data.values.length + 1 : 2
+      
+      // Ensure we're explicitly including column AM (the 39th column)
       const range = `Form_Data!A${lastRow}:AM${lastRow}`
 
       // Format current date as MM/DD/YYYY
@@ -96,15 +105,38 @@ export async function POST(req: Request) {
       rowData[36] = products['Habanero Molido 20 g'] || ''     // Column AK
       rowData[37] = periodWeekCode                             // Column AL - Always use the period/week code here
       
-      // Set AM based on client code and CLEY order value (for Casa Ley question)
+      // CLEY order value for Column AM (index 38)
+      // Always set a value for column AM to ensure it's included in the update
       if (clientCode.toUpperCase() === 'CLEY' && cleyOrderValue) {
-        rowData[38] = cleyOrderValue === "1" ? "No" : "Si"     // Column AM - CLEY Order value
+        const amValue = cleyOrderValue === "1" ? "No" : "Si";
+        console.log("Setting AM column for CLEY:", { 
+          clientCode, 
+          cleyOrderValue, 
+          amValue 
+        });
+        rowData[38] = amValue;     // Column AM - CLEY Order value
+      } else {
+        console.log("Not setting AM column:", { 
+          clientCode: clientCode.toUpperCase(), 
+          isCley: clientCode.toUpperCase() === 'CLEY',
+          hasCleyValue: !!cleyOrderValue,
+          cleyOrderValue
+        });
+        rowData[38] = ""; // Empty string but explicitly set to ensure column AM is included
       }
 
-      const response = await sheets.spreadsheets.values.update({
+      console.log("Final row data:", {
+        columnAL: rowData[37],
+        columnAM: rowData[38],
+        fullArrayLength: rowData.length
+      });
+
+      // Try using append instead of update to handle the column range better
+      const response = await sheets.spreadsheets.values.append({
         spreadsheetId,
-        range,
+        range: 'Form_Data!A:AM',
         valueInputOption: 'USER_ENTERED',
+        insertDataOption: 'INSERT_ROWS',
         requestBody: {
           values: [rowData],
         },
