@@ -9,7 +9,8 @@ const AUTHORIZED_EMAILS = [
   'franzcharbell@gmail.com',
   'inventarioelrey@gmail.com',
   'ventasmochisproductoselrey@gmail.com',
-  'alopezelrey@gmail.com'
+  'alopezelrey@gmail.com',
+  'promotoriaelrey@gmail.com'
 ]
 
 export default function InventarioPage() {

@@ -69,6 +69,18 @@ const sellerGoals: SellerGoals = {
     19: 175000.00, //junio 2025
     20: 180000.00, //julio 2025
   },
+  'promotoriaelrey@gmail.com': { // Brenda - Placeholder goals
+    11: 150000.00, 
+    12: 160000.00, 
+    13: 165000.00, 
+    14: 170000.00, //enero 2025
+    15: 160000.00, //febrero 2025
+    16: 155000.00, //marzo 2025
+    17: 160000.00, //abril 2025
+    18: 165000.00, //mayo 2025
+    19: 150000.00, //junio 2025
+    20: 155000.00  //julio 2025
+  },
 };
 
 export function getSellerGoal(email: string, period: GoalPeriod): number {

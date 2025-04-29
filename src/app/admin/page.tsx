@@ -46,7 +46,8 @@ export default function AdminPage() {
   const sellerEmails = {
     'ventas1productoselrey@gmail.com': 'Ernesto',
     'ventas2productoselrey@gmail.com': 'Roel',
-    'ventas3productoselrey@gmail.com': 'Lidia'
+    'ventas3productoselrey@gmail.com': 'Lidia',
+    'promotoriaelrey@gmail.com': 'Brenda'
   }
 
   const updateChartData = () => {
