@@ -1,0 +1,609 @@
+import { google } from 'googleapis';
+import { NextResponse } from 'next/server';
+
+// Force dynamic rendering for this API route
+export const dynamic = 'force-dynamic';
+
+const auth = new google.auth.GoogleAuth({
+  credentials: {
+    type: "service_account",
+    project_id: "light-legend-427200-q9",
+    private_key_id: "d6d5b9ed0d50c7df921a85d7823a0a6c0ad31c6c",
+    private_key: "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCL9FQTF3JAkzgU\nw8srlOOAdn2FKAF78Xa0XRdOYJmPs1LF+hzbO6P73zr9qHBLOZ/+Y3WFFrmLNnny\n3G+vlcPAtzsWj+CYRvKxeKpr4VtBTd/01btNZB32DRjW4MzazRm9tJmbqdTdF2tr\nYaRWohCpHJMBMsJ5moP++TgMA3I5nFfljkbr1Liso/yKJKG7Xm1UCnSvQfRkXSrV\nJaq0rApbY8/rA5TQF0NW28KtC++EIJnzL7WthRQGqw6bjuAHX70Q1tt/ntJ0K0Oc\nvXG3svTenwHrvyqWIFjgUiUI+3rGZdz08aZGMLFzEpGDHf2eLGp0x+dxx9ogoSdi\n9IXVA+6zAgMBAAECggEADBW16Mwefnr33bsmYQYDOwWAQy44KpaoFFzxdUAcIm9u\nl0/IjBmzSD13X43a3HQGX7YA4NQcg2vZzeHA9x1sgMiRnpof36ZIsJBlztjvw0zR\nKNgHy1/4wlVRLsTMi5woO9xLY0if69No4CXXRe/Kln+0JedXKZ7xBORKNadahqTb\nrotXOk5ucr20+f5kUBwVQLM1pnJtC2MwWpx4YEDag/tah/ZoH7cYaHcJ5mi9eusL\nVwvVwMx5b1ox8yNVA+i00imBNUULul1U67YREXL05U4u5ixgyej3raJmCZ56T0/9\ncGrne9KgN6ezOsvEvTwtoYejHp2K8oWu227Hut3amQKBgQDFSpKD9nuxAAwBb4xS\nniMA5mamskhCuCiOF33+oV1JAuytMaQHslKp9qTHo/5QmfykfDxvWKo8UTqtaEI8\n6pRBrVkGSm9Oc5546qvIb+Cq5nNdDOIXVG2RnNBI3lpca9Ewquo4wWOto3mbgbfs\n6zOx4t6WnmBy9jFQq30jmIUB7wKBgQC1meWPZ0WLLByV1IzlMKqZ8ntkPPAgbEYt\nGnIFV4QCrRxpMKr1YjPg03XMmeum+3zt/xACfdR0Gm0b4ZZeHTbvBadjt3VobxAa\nlVf4d+hwly1mJ68GZWbjX9KUMU0djI4IyCLYp2cXs+pwcQAHsleLkloExRQveaot\nnO2gribTfQKBgB3qBbcum2imGivpjvxD8AjF5pCl/aDoLXYGB9ug+fUFFX/ZRAbK\nug/9TtTaf8gW4SDLmZpEdmN46Y27fjegVeRzdUkn5iKeE0xAQNW+aPFgyeM0/d8N\ntSNcBJTX6hmTW3+mmqcKY6PDYr/6djndG9SAEsIBt5wWyjlyFyJbkOdPAoGBALKj\nlOIgIJTq66On1oGOAgQ2N5M/Lqd2WwH7RbZjhIRtbck8CrAfzhCXcwW1U86LDTXA\n9iq9RMSBSltm6dfivSsbULISwffdaOX9iu/sZEZ9MDeRSebs0O1SUX9dkBJFNWMG\nHOEqq4rxfOjm/7SShvPRH6QZieW5tOHxwP+S0LaxAoGAft9TEPSxzuplIZxTFpck\nVtgSkAqzy3co1PxOk3p1BgG0vMnrEZZOs6VW/qq1QYOm/4w935Pzl0cBQzBMYBnp\n58cH9OkbB0ao2mmeVHmvyhb0jggaTCfJ9QP+iF4GiLOFQm2fFWxKDAglQEtkBVHx\nNWkTHRHBD62hk+H2ffZ1TQo=\n-----END PRIVATE KEY-----\n",
+    client_email: "cesar-reyes@light-legend-427200-q9.iam.gserviceaccount.com",
+    client_id: "113188820672311170516",
+  },
+  scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+});
+
+const spreadsheetId = '1a0jZVdKFNWTHDsM-68LT5_OLPMGejAKs9wfCxYqqe_g';
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.json();
+    
+    // Handle different actions
+    if (body.action === 'update_visit_status') {
+      return await updateVisitStatus(body);
+    } else if (body.action === 'update_route_summary') {
+      return await updateRouteSummary(body);
+    } else if (body.action === 'update_weekly_schedule') {
+      return await updateWeeklySchedule(body);
+    } else {
+      return NextResponse.json({ 
+        error: 'Invalid action. Use "update_visit_status", "update_route_summary", or "update_weekly_schedule"' 
+      }, { status: 400 });
+    }
+
+  } catch (error) {
+    console.error('Error in update API:', error);
+    return NextResponse.json(
+      { error: 'Failed to update route data' },
+      { status: 500 }
+    );
+  }
+}
+
+// ✅ MODIFIED: Write individual visits to Metricas_Rutas sheet immediately
+async function updateVisitStatus(body: any) {
+  const { 
+    userEmail, 
+    clientName, 
+    routeDay,
+    visitType, // 'completed', 'skipped', 'postponed'
+    location, // Contains { lat: number, lng: number }
+    notes,
+    cleyVisitType, // 'Pedidos', 'Entrega', or 'Normal'
+    timestamp = new Date().toISOString()
+  } = body;
+
+  if (!userEmail || !clientName || !routeDay || !visitType) {
+    return NextResponse.json({ 
+      error: 'Required fields: userEmail, clientName, routeDay, visitType' 
+    }, { status: 400 });
+  }
+
+  const sheets = google.sheets({ version: 'v4', auth });
+
+  const emailLabels: Record<string, string> = {
+    'ventas1productoselrey@gmail.com': 'Ernesto',
+    'ventas2productoselrey@gmail.com': 'Roel',
+    'ventas3productoselrey@gmail.com': 'Lidia',
+    'ventasmztproductoselrey.com@gmail.com': 'Mazatlan',
+    'ventasmochisproductoselrey@gmail.com': 'Mochis',
+    'franzcharbell@gmail.com': 'Franz',
+    'cesar.reyes.ochoa@gmail.com': 'Cesar',
+    'arturo.elreychiltepin@gmail.com': 'Arturo Mty',
+    'alopezelrey@gmail.com': 'Arlyn',
+    'promotoriaelrey@gmail.com': 'Brenda'
+  };
+
+  const vendedor = emailLabels[userEmail] || userEmail;
+  const fecha = new Date().toISOString().split('T')[0];
+  const weekNumber = getWeekNumber(new Date());
+  
+  // ✅ Generate a unique ID for the visit
+  const id_visita = `visit_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const latitud = location?.lat || null;
+  const longitud = location?.lng || null;
+
+  // ✅ Updated data structure to match Metricas_Rutas headers:
+  // id_visita, vendedor, cliente, fecha, dia_ruta, tipo_visita, semana, timestamp, notas, latitud, longitud
+  const visitData = [
+    id_visita,
+    vendedor,
+    clientName,
+    fecha,
+    routeDay,
+    visitType,
+    weekNumber,
+    timestamp,
+    notes || '',
+    latitud,
+    longitud
+  ];
+
+  console.log('📊 Writing individual visit to Metricas_Rutas:', {
+    id_visita,
+    vendedor,
+    cliente: clientName,
+    fecha,
+    dia_ruta: routeDay,
+    tipo_visita: visitType,
+    semana: weekNumber,
+    latitud,
+    longitud
+  });
+
+  try {
+    // Write to Metricas_Rutas
+    await sheets.spreadsheets.values.append({
+      spreadsheetId,
+      range: `'Metricas_Rutas'!A:K`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: {
+        values: [visitData],
+      },
+    });
+
+    // ✅ ADDED: If visit is completed, schedule next visit in Programacion_Semanal
+    if (visitType === 'completed') {
+      await scheduleNextVisit(sheets, vendedor, clientName, routeDay, fecha, cleyVisitType);
+    }
+
+    return NextResponse.json({ 
+      success: true, 
+      message: 'Visit recorded successfully in Metricas_Rutas sheet',
+      data: {
+        cliente: clientName,
+        tipo_visita: visitType,
+        fecha,
+        vendedor
+      }
+    });
+  } catch (error) {
+    console.error('❌ Error writing visit to Metricas_Rutas:', error);
+    return NextResponse.json(
+      { error: 'Failed to record visit in sheet' },
+      { status: 500 }
+    );
+  }
+}
+
+// ✅ ADDED: Function to schedule next visit in Programacion_Semanal
+async function scheduleNextVisit(sheets: any, vendedor: string, clientName: string, routeDay: string, completedDate: string, cleyVisitType?: string) {
+  try {
+    // First, get client frequency from Clientes_Rutas sheet
+    const clientsResponse = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: `'Clientes_Rutas'!A:H`,
+    });
+
+    const clientsData = clientsResponse.data.values;
+    if (!clientsData || clientsData.length <= 1) {
+      console.warn('No client data found for scheduling next visit');
+      return;
+    }
+
+    // Find the client and get their frequency
+    const headers = clientsData[0];
+    const clientRow = clientsData.slice(1).find((row: any[]) => 
+      row[0] === clientName && (row[6] === vendedor || row[6] === getEmailFromLabel(vendedor))
+    );
+
+    if (!clientRow) {
+      console.warn(`Client ${clientName} not found for vendor ${vendedor}`);
+      return;
+    }
+
+    const frequencyIndex = headers.indexOf('Frecuencia');
+    const tipoClienteIndex = headers.indexOf('Tipo_Cliente');
+    const entregaIndex = headers.indexOf('Entrega');
+    const diaIndex = headers.indexOf('Dia');
+    
+    const frequency = frequencyIndex >= 0 ? parseInt(clientRow[frequencyIndex]) || 2 : 2;
+    const tipoCliente = tipoClienteIndex >= 0 ? clientRow[tipoClienteIndex] : '';
+    const entregaDay = entregaIndex >= 0 ? clientRow[entregaIndex] : '';
+    const pedidosDay = diaIndex >= 0 ? clientRow[diaIndex] : '';
+
+    // ✅ NEW: Handle CLEY dual-visit scheduling
+    if (tipoCliente?.toUpperCase() === 'CLEY' && entregaDay && cleyVisitType) {
+      // If this was a Pedidos visit, schedule the Entrega visit for the same week
+      if (cleyVisitType === 'Pedidos') {
+        const completedDateObj = new Date(completedDate);
+        const entregaDate = getNextDayOfWeek(completedDateObj, entregaDay);
+        const entregaDateStr = entregaDate.toISOString().split('T')[0];
+        
+        const entregaWeek = getWeekNumber(entregaDate);
+        const weekStart = new Date(entregaDate);
+        weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1); // Monday
+        const weekStartStr = weekStart.toISOString().split('T')[0];
+        
+        // Schedule Entrega visit
+        const entregaScheduleData = [
+          entregaWeek,
+          weekStartStr,
+          entregaDay,
+          `${clientName} (Entrega)`,
+          vendedor,
+          '',
+          entregaDateStr,
+          'Programado',
+          2 // Order 2 for Entrega
+        ];
+
+        await sheets.spreadsheets.values.append({
+          spreadsheetId,
+          range: `'Programacion_Semanal'!A:I`,
+          valueInputOption: 'USER_ENTERED',
+          requestBody: {
+            values: [entregaScheduleData],
+          },
+        });
+
+        console.log('📅 Scheduled CLEY Entrega visit:', entregaScheduleData);
+        return; // Don't schedule regular frequency-based visit
+      } 
+      // If this was an Entrega visit, schedule the next Pedidos visit based on frequency
+      else if (cleyVisitType === 'Entrega') {
+        const completedDateObj = new Date(completedDate);
+        const nextPedidosDate = new Date(completedDateObj);
+        nextPedidosDate.setDate(nextPedidosDate.getDate() + (frequency * 7));
+        
+        const nextPedidosWeek = getWeekNumber(nextPedidosDate);
+        const weekStart = new Date(nextPedidosDate);
+        weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1); // Monday
+        const weekStartStr = weekStart.toISOString().split('T')[0];
+        
+        // Schedule next Pedidos visit
+        const pedidosScheduleData = [
+          nextPedidosWeek,
+          weekStartStr,
+          pedidosDay,
+          `${clientName} (Pedidos)`,
+          vendedor,
+          completedDate,
+          nextPedidosDate.toISOString().split('T')[0],
+          'Programado',
+          1 // Order 1 for Pedidos
+        ];
+
+        await sheets.spreadsheets.values.append({
+          spreadsheetId,
+          range: `'Programacion_Semanal'!A:I`,
+          valueInputOption: 'USER_ENTERED',
+          requestBody: {
+            values: [pedidosScheduleData],
+          },
+        });
+
+        console.log('📅 Scheduled next CLEY Pedidos visit:', pedidosScheduleData);
+        return;
+      }
+    }
+
+    // ✅ REGULAR CLIENT: Calculate next visit date (add frequency weeks to completed date)
+    const completedDateObj = new Date(completedDate);
+    const nextVisitDate = new Date(completedDateObj);
+    nextVisitDate.setDate(nextVisitDate.getDate() + (frequency * 7));
+    const nextVisitDateStr = nextVisitDate.toISOString().split('T')[0];
+
+    // Calculate week number and week start date for the next visit
+    const nextVisitWeek = getWeekNumber(nextVisitDate);
+    const weekStart = new Date(nextVisitDate);
+    weekStart.setDate(weekStart.getDate() - weekStart.getDay() + 1); // Monday
+    const weekStartStr = weekStart.toISOString().split('T')[0];
+
+    // Get current visit order (could be enhanced to read existing orders and increment)
+    const visitOrder = 1; // Default order, could be made smarter
+
+    // ✅ CORRECTED: Data for Programacion_Semanal matching actual structure:
+    // semana_numero, fecha_inicio, dia_semana, cliente_nombre, vendedor, ultima_visita, proxima_visita_programada, estado, orden_visita
+    const scheduleData = [
+      nextVisitWeek,           // semana_numero
+      weekStartStr,            // fecha_inicio (Monday of the week)
+      routeDay,                // dia_semana
+      clientName,              // cliente_nombre
+      vendedor,                // vendedor
+      completedDate,           // ultima_visita
+      nextVisitDateStr,        // proxima_visita_programada
+      'Programado',            // estado
+      visitOrder              // orden_visita
+    ];
+
+    console.log('📅 Scheduling next visit in Programacion_Semanal:', {
+      semana_numero: nextVisitWeek,
+      fecha_inicio: weekStartStr,
+      dia_semana: routeDay,
+      cliente_nombre: clientName,
+      vendedor: vendedor,
+      ultima_visita: completedDate,
+      proxima_visita_programada: nextVisitDateStr,
+      estado: 'Programado',
+      orden_visita: visitOrder
+    });
+
+    await sheets.spreadsheets.values.append({
+      spreadsheetId,
+      range: `'Programacion_Semanal'!A:I`, // Updated range to A:I for 9 columns
+      valueInputOption: 'USER_ENTERED',
+      requestBody: {
+        values: [scheduleData],
+      },
+    });
+
+  } catch (error) {
+    console.error('❌ Error scheduling next visit:', error);
+    // Don't fail the main operation if scheduling fails
+  }
+}
+
+// ✅ ADDED: Helper function to get email from friendly label
+function getEmailFromLabel(label: string): string {
+  const labelToEmail: Record<string, string> = {
+    'Ernesto': 'ventas1productoselrey@gmail.com',
+    'Roel': 'ventas2productoselrey@gmail.com',
+    'Lidia': 'ventas3productoselrey@gmail.com',
+    'Mazatlan': 'ventasmztproductoselrey.com@gmail.com',
+    'Mochis': 'ventasmochisproductoselrey@gmail.com',
+    'Franz': 'franzcharbell@gmail.com',
+    'Cesar': 'cesar.reyes.ochoa@gmail.com',
+    'Arturo Mty': 'arturo.elreychiltepin@gmail.com',
+    'Arlyn': 'alopezelrey@gmail.com',
+    'Brenda': 'promotoriaelrey@gmail.com'
+  };
+  
+  return labelToEmail[label] || label;
+}
+
+// Helper function to get ISO week number
+function getWeekNumber(date: Date): number {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+}
+
+// Handle route summary updates (write to Rutas_Performance sheet)
+async function updateRouteSummary(body: any) {
+  const {
+    userEmail,
+    routeDay,
+    fecha, // Date in YYYY-MM-DD format
+    clientesProgramados,
+    clientesVisitados,
+    ventasTotales = 0,
+    tiempoInicio,
+    tiempoFin,
+    kilometrosRecorridos = 0,
+    combustibleGastado = 0,
+    observaciones = ''
+  } = body;
+
+  if (!userEmail || !routeDay || !fecha || clientesProgramados === undefined || clientesVisitados === undefined) {
+    return NextResponse.json({ 
+      error: 'Required fields: userEmail, routeDay, fecha, clientesProgramados, clientesVisitados' 
+    }, { status: 400 });
+  }
+
+  const sheets = google.sheets({ version: 'v4', auth });
+
+  // Get friendly name for vendedor
+  const emailLabels: Record<string, string> = {
+    'ventas1productoselrey@gmail.com': 'Ernesto',
+    'ventas2productoselrey@gmail.com': 'Roel',
+    'ventas3productoselrey@gmail.com': 'Lidia',
+    'ventasmztproductoselrey.com@gmail.com': 'Mazatlan',
+    'ventasmochisproductoselrey@gmail.com': 'Mochis',
+    'franzcharbell@gmail.com': 'Franz',
+    'cesar.reyes.ochoa@gmail.com': 'Cesar',
+    'arturo.elreychiltepin@gmail.com': 'Arturo Mty',
+    'alopezelrey@gmail.com': 'Arlyn',
+    'promotoriaelrey@gmail.com': 'Brenda'
+  };
+
+  const vendedor = emailLabels[userEmail] || userEmail;
+
+  // Data matching the exact sheet columns: 
+  // fecha,dia_ruta,vendedor,clientes_programados,clientes_visitados,ventas_totales,tiempo_inicio,tiempo_fin,kilometros_recorridos,combustible_gastado,observaciones
+  const performanceData = [
+    fecha,
+    routeDay,
+    vendedor,
+    clientesProgramados,
+    clientesVisitados,
+    ventasTotales,
+    tiempoInicio || '',
+    tiempoFin || '',
+    kilometrosRecorridos,
+    combustibleGastado,
+    observaciones
+  ];
+
+  console.log('📊 Writing to Rutas_Performance:', {
+    fecha,
+    dia_ruta: routeDay,
+    vendedor,
+    clientes_programados: clientesProgramados,
+    clientes_visitados: clientesVisitados,
+    ventas_totales: ventasTotales,
+    tiempo_inicio: tiempoInicio,
+    tiempo_fin: tiempoFin,
+    kilometros_recorridos: kilometrosRecorridos,
+    combustible_gastado: combustibleGastado,
+    observaciones
+  });
+
+  await sheets.spreadsheets.values.append({
+    spreadsheetId,
+    range: `'Rutas_Performance'!A:K`,
+    valueInputOption: 'USER_ENTERED',
+    requestBody: {
+      values: [performanceData],
+    },
+  });
+
+  // Also update weekly schedule with actual performance
+  try {
+    await updateWeeklyScheduleFromPerformance({
+      userEmail,
+      routeDay,
+      fecha,
+      clientesProgramados,
+      clientesVisitados,
+      vendedor
+    });
+  } catch (error) {
+    console.warn('Failed to update weekly schedule:', error);
+    // Don't fail the main operation if weekly schedule update fails
+  }
+
+  return NextResponse.json({ 
+    success: true, 
+    message: 'Route summary updated successfully in Rutas_Performance sheet',
+    data: {
+      fecha,
+      dia_ruta: routeDay,
+      vendedor,
+      clientes_programados: clientesProgramados,
+      clientes_visitados: clientesVisitados
+    }
+  });
+}
+
+// Handle weekly schedule updates (write to Programacion_Semanal sheet)
+async function updateWeeklySchedule(body: any) {
+  const {
+    userEmail,
+    semana, // Week number or date range
+    clientes, // Array of client objects with their scheduled days
+    vendedor
+  } = body;
+
+  if (!userEmail || !semana || !clientes || !Array.isArray(clientes)) {
+    return NextResponse.json({ 
+      error: 'Required fields: userEmail, semana, clientes (array)' 
+    }, { status: 400 });
+  }
+
+  const sheets = google.sheets({ version: 'v4', auth });
+
+  // Get friendly name for vendedor
+  const emailLabels: Record<string, string> = {
+    'ventas1productoselrey@gmail.com': 'Ernesto',
+    'ventas2productoselrey@gmail.com': 'Roel',
+    'ventas3productoselrey@gmail.com': 'Lidia',
+    'ventasmztproductoselrey.com@gmail.com': 'Mazatlan',
+    'ventasmochisproductoselrey@gmail.com': 'Mochis',
+    'franzcharbell@gmail.com': 'Franz',
+    'cesar.reyes.ochoa@gmail.com': 'Cesar',
+    'arturo.elreychiltepin@gmail.com': 'Arturo Mty',
+    'alopezelrey@gmail.com': 'Arlyn',
+    'promotoriaelrey@gmail.com': 'Brenda'
+  };
+
+  const vendedorName = vendedor || emailLabels[userEmail] || userEmail;
+
+  // Calculate week start date
+  const weekStartDate = new Date();
+  const weekNumber = typeof semana === 'number' ? semana : parseInt(semana) || getWeekNumber(new Date());
+  
+  // ✅ CORRECTED: Expected Programacion_Semanal columns:
+  // semana_numero, fecha_inicio, dia_semana, cliente_nombre, vendedor, ultima_visita, proxima_visita_programada, estado, orden_visita
+  const scheduleRows = clientes.map((client: any, index: number) => [
+    weekNumber,                           // semana_numero
+    weekStartDate.toISOString().split('T')[0], // fecha_inicio
+    client.dia,                          // dia_semana
+    client.nombre,                       // cliente_nombre
+    vendedorName,                        // vendedor
+    '',                                  // ultima_visita (empty for new schedules)
+    client.fechaProgramada || '',        // proxima_visita_programada
+    'Programado',                        // estado
+    index + 1                           // orden_visita
+  ]);
+
+  console.log('📅 Writing to Programacion_Semanal:', {
+    semana_numero: weekNumber,
+    vendedor: vendedorName,
+    clientCount: clientes.length,
+    scheduleRows: scheduleRows.slice(0, 3) // Log first 3 rows for debugging
+  });
+
+  await sheets.spreadsheets.values.append({
+    spreadsheetId,
+    range: `'Programacion_Semanal'!A:I`, // Updated range to A:I for 9 columns
+    valueInputOption: 'USER_ENTERED',
+    requestBody: {
+      values: scheduleRows,
+    },
+  });
+
+  return NextResponse.json({ 
+    success: true, 
+    message: 'Weekly schedule updated successfully in Programacion_Semanal sheet',
+    data: {
+      semana_numero: weekNumber,
+      vendedor: vendedorName,
+      clientes_programados: clientes.length
+    }
+  });
+}
+
+// Helper function to update weekly schedule from performance data
+async function updateWeeklyScheduleFromPerformance(performanceData: any) {
+  const { userEmail, routeDay, fecha, clientesProgramados, clientesVisitados, vendedor } = performanceData;
+  
+  const sheets = google.sheets({ version: 'v4', auth });
+
+  // Calculate week number and week start date
+  const date = new Date(fecha);
+  const weekNumber = getWeekNumber(date);
+  const weekStart = new Date(date.setDate(date.getDate() - date.getDay() + 1)); // Monday of that week
+  const weekStartStr = weekStart.toISOString().split('T')[0];
+
+  // ✅ CORRECTED: Update weekly schedule with actual performance using correct structure
+  // semana_numero, fecha_inicio, dia_semana, cliente_nombre, vendedor, ultima_visita, proxima_visita_programada, estado, orden_visita
+  const scheduleData = [
+    weekNumber,                                                    // semana_numero
+    weekStartStr,                                                  // fecha_inicio
+    routeDay,                                                      // dia_semana
+    `Resumen ${routeDay} (${clientesVisitados}/${clientesProgramados})`, // cliente_nombre (summary entry)
+    vendedor,                                                      // vendedor
+    fecha,                                                         // ultima_visita (route completion date)
+    '',                                                            // proxima_visita_programada (empty for summary)
+    clientesVisitados === clientesProgramados ? 'Completado' : 'Parcial', // estado
+    999                                                            // orden_visita (high number for summary entries)
+  ];
+
+  console.log('📅 Updating Programacion_Semanal with performance data:', {
+    semana_numero: weekNumber,
+    fecha_inicio: weekStartStr,
+    dia_semana: routeDay,
+    vendedor,
+    performance: `${clientesVisitados}/${clientesProgramados}`,
+    estado: clientesVisitados === clientesProgramados ? 'Completado' : 'Parcial'
+  });
+
+  await sheets.spreadsheets.values.append({
+    spreadsheetId,
+    range: `'Programacion_Semanal'!A:I`, // ✅ CORRECTED: Updated to A:I for 9 columns
+    valueInputOption: 'USER_ENTERED',
+    requestBody: {
+      values: [scheduleData],
+    },
+  });
+} 
+
+// Helper function to get the next occurrence of a specific day of the week
+function getNextDayOfWeek(currentDate: Date, targetDay: string): Date {
+  const dayMap: Record<string, number> = {
+    'Domingo': 0,
+    'Lunes': 1,
+    'Martes': 2,
+    'Miercoles': 3,
+    'Jueves': 4,
+    'Viernes': 5,
+    'Sabado': 6
+  };
+  
+  const targetDayNum = dayMap[targetDay];
+  if (targetDayNum === undefined) {
+    console.warn(`Unknown day: ${targetDay}, defaulting to next day`);
+    const nextDay = new Date(currentDate);
+    nextDay.setDate(nextDay.getDate() + 1);
+    return nextDay;
+  }
+  
+  const currentDayNum = currentDate.getDay();
+  let daysToAdd = targetDayNum - currentDayNum;
+  
+  // If target day is today or already passed this week, go to next week
+  if (daysToAdd <= 0) {
+    daysToAdd += 7;
+  }
+  
+  const nextDate = new Date(currentDate);
+  nextDate.setDate(nextDate.getDate() + daysToAdd);
+  return nextDate;
+} 
