@@ -34,7 +34,7 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
   return distance
 }
 
-const MIN_MOVEMENT_THRESHOLD = 10 // 10 meters
+const MIN_MOVEMENT_THRESHOLD = 5 // ✅ Reduced to 5 meters for more accurate updates
 
 const hasSignificantMovement = (
   oldLocation: { lat: number; lng: number } | null,
@@ -71,8 +71,8 @@ export default function Map({ onLocationUpdate, clientLocation }: MapProps) {
 
     const options = {
       enableHighAccuracy: true,
-      timeout: 10000,
-      maximumAge: 2000
+      timeout: 15000,
+      maximumAge: 0  // ✅ Force fresh location data, no caching
     }
 
     let timeoutId: NodeJS.Timeout
@@ -141,13 +141,10 @@ export default function Map({ onLocationUpdate, clientLocation }: MapProps) {
 
         setLocationError(errorMessage)
         
+        // ✅ Don't set default location automatically - let user know they need to fix location access
         if (error.code !== 3) {
-          const defaultLocation = {
-            lat: 29.07297,
-            lng: -110.95592
-          }
-          setLocation(defaultLocation)
-          onLocationUpdate?.(defaultLocation)
+          console.warn("⚠️ Location access failed, NOT setting default location");
+          // Don't call onLocationUpdate with default location to prevent form submission with wrong location
         }
         
         setIsRefreshing(false)
@@ -265,6 +262,17 @@ export default function Map({ onLocationUpdate, clientLocation }: MapProps) {
             }`}
           >
             {isAutoUpdating ? 'Auto' : 'Manual'}
+          </button>
+          <button
+            onClick={() => {
+              // ✅ Force clear any cached location and get fresh data
+              setLocation(null);
+              getCurrentLocation();
+            }}
+            className="text-xs px-2 py-1 rounded bg-red-100 text-red-600 hover:bg-red-200"
+            disabled={isRefreshing}
+          >
+            Reset
           </button>
           <button
             onClick={getCurrentLocation}

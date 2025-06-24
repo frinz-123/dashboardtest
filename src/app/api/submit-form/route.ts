@@ -21,12 +21,33 @@ export async function POST(req: Request) {
     const body = await req.json()
     const { clientName, products, total, location, clientCode, userEmail, cleyOrderValue } = body
 
-    console.log("Form submission data:", {
+    // ✅ VALIDATION: Enhanced logging for email tracking
+    console.log("🔍 FORM SUBMISSION RECEIVED:", {
+      timestamp: new Date().toISOString(),
       clientName,
       clientCode,
+      userEmail: userEmail,
+      userEmailType: typeof userEmail,
+      requestHeaders: {
+        'user-agent': req.headers.get('user-agent'),
+        'referer': req.headers.get('referer')
+      },
       cleyOrderValue,
-      cleyOrderValueType: typeof cleyOrderValue
+      cleyOrderValueType: typeof cleyOrderValue,
+      totalProducts: Object.keys(products).length,
+      hasLocation: !!location
     });
+
+    // ✅ VALIDATION: Alert if email looks suspicious
+    if (userEmail === 'arturo.elreychiltepin@gmail.com') {
+      console.error("🚨 SUSPICIOUS EMAIL DETECTED: Submission using arturo.elreychiltepin@gmail.com");
+      console.error("🚨 REQUEST DETAILS:", {
+        userAgent: req.headers.get('user-agent'),
+        referer: req.headers.get('referer'),
+        timestamp: new Date().toISOString(),
+        clientName: clientName
+      });
+    }
 
     const sheets = google.sheets({ version: 'v4', auth })
 

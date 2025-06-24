@@ -576,6 +576,7 @@ export default function FormPage() {
   const [key, setKey] = useState(0)
   const [isLoading, setIsLoading] = useState(true)
   const [cleyOrderValue, setCleyOrderValue] = useState<string>("1")
+  const [cachedEmail, setCachedEmail] = useState<string | null>(null)
   const [validationErrors, setValidationErrors] = useState<{
     client?: string;
     location?: string;
@@ -634,6 +635,41 @@ export default function FormPage() {
   useEffect(() => {
     fetchClientNames()
   }, [])
+
+  // Initialize cached email on component mount
+  useEffect(() => {
+    const storedEmail = localStorage.getItem('userEmail');
+    if (storedEmail) {
+      setCachedEmail(storedEmail);
+      console.log("📱 LOADED CACHED EMAIL:", storedEmail);
+    }
+  }, [])
+
+  // ✅ VALIDATION: Monitor session changes and cache email when available
+  useEffect(() => {
+    const sessionEmail = session?.user?.email;
+    
+    // Cache the email when we have a valid session
+    if (sessionEmail) {
+      localStorage.setItem('userEmail', sessionEmail);
+      setCachedEmail(sessionEmail);
+      console.log("💾 CACHED EMAIL:", sessionEmail);
+    }
+    
+    console.log("🔍 SESSION MONITOR:", {
+      timestamp: new Date().toISOString(),
+      sessionExists: !!session,
+      sessionEmail: sessionEmail,
+      cachedEmail: cachedEmail,
+      sessionStatus: session ? 'ACTIVE' : 'NULL',
+      pageUrl: window.location.href
+    });
+
+    // Alert if session becomes null but we have cached email
+    if (session === null && cachedEmail) {
+      console.log("📱 SESSION NULL BUT USING CACHED EMAIL:", cachedEmail);
+    }
+  }, [session, cachedEmail])
 
   // Update the search effect to use the debounced search term
   useEffect(() => {
@@ -812,6 +848,38 @@ export default function FormPage() {
         return;
       }
 
+      // ✅ VALIDATION: Use cached email if session email is not available
+      const sessionEmail = session?.user?.email;
+      const fallbackEmail = OVERRIDE_EMAILS[0];
+      const finalEmail = sessionEmail || cachedEmail || fallbackEmail;
+      
+      console.log("🔍 EMAIL VALIDATION:", {
+        sessionStatus: session ? 'EXISTS' : 'NULL',
+        sessionEmail: sessionEmail,
+        cachedEmail: cachedEmail,
+        fallbackEmail: fallbackEmail,
+        finalEmail: finalEmail,
+        usingCachedEmail: !sessionEmail && !!cachedEmail,
+        overrideEmailsArray: OVERRIDE_EMAILS,
+        timestamp: new Date().toISOString()
+      });
+
+      // ✅ VALIDATION: Only block if we have no email at all (neither session nor cached)
+      if (!finalEmail) {
+        console.error("⚠️ CRITICAL: No email available (session, cached, or override)");
+        setValidationErrors(prev => ({ 
+          ...prev, 
+          submit: 'No se pudo determinar el usuario. Por favor, recarga la página e inicia sesión.' 
+        }));
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Log if we're using cached email due to offline/session issues
+      if (!sessionEmail && cachedEmail) {
+        console.log("📱 OFFLINE MODE: Using cached email for submission:", cachedEmail);
+      }
+
       const clientCode = getClientCode(selectedClient);
       const isCley = clientCode.toUpperCase() === 'CLEY';
       const cleyValue = isCley ? cleyOrderValue : null;
@@ -820,7 +888,8 @@ export default function FormPage() {
         clientCode,
         isCley,
         cleyOrderValue,
-        cleyValue
+        cleyValue,
+        submittingAs: finalEmail
       });
       
       const response = await fetch('/api/submit-form', {
@@ -834,7 +903,7 @@ export default function FormPage() {
           products: quantities,
           total: parseFloat(total),
           location: currentLocation,
-          userEmail: session?.user?.email || OVERRIDE_EMAILS[0],
+          userEmail: finalEmail,
           date: new Date().toISOString(),
           cleyOrderValue: cleyValue
         }),
@@ -1078,7 +1147,8 @@ export default function FormPage() {
           !selectedClient || 
           !currentLocation || 
           isSubmitting || 
-          (locationAlert !== null && !isOverrideEmail(session?.user?.email))
+          (!session?.user?.email && !cachedEmail) ||  // ✅ UPDATED: Allow if we have cached email
+          (locationAlert !== null && !isOverrideEmail(session?.user?.email || cachedEmail))
         }
       >
         {isSubmitting ? (
@@ -1086,15 +1156,14 @@ export default function FormPage() {
             <div className="w-5 h-5 border-t-2 border-white border-solid rounded-full animate-spin mr-2"></div>
             Enviando...
           </div>
+        ) : (!session?.user?.email && !cachedEmail) ? (
+          '🔒 Sesión Requerida'
         ) : (
           'Enviar Pedido'
         )}
       </button>
 
-      {/* Add debug info */}
-      <div className="text-xs text-gray-500 mb-2">
-        Debug: Current email: {session?.user?.email || 'No email'}, Override allowed: {isOverrideEmail(session?.user?.email) ? 'Yes' : 'No'}
-      </div>
+
 
       {/* Add validation error messages */}
       {Object.entries(validationErrors).map(([key, error]) => (
