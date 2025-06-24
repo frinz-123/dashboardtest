@@ -372,14 +372,7 @@ export default function Dashboard() {
                     className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                     role="menuitem"
                   >
-                    Form
-                  </Link>
-                  <Link
-                    href="/rutas"
-                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                    role="menuitem"
-                  >
-                    Rutas
+                    Ventas
                   </Link>
                   <Link
                     href="/recorridos"

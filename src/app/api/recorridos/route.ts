@@ -135,19 +135,10 @@ export async function GET(request: NextRequest) {
         console.log('🔍 API DEBUG: First row sample:', data[0]);
         console.log('🔍 API DEBUG: Unique vendedores in sheet:', [...new Set(data.map(item => item.Vendedor))]);
         
-        // CLEY-specific debugging in API
+        // Basic data validation for clients sheet
         if (sheet === 'clientes') {
           const cleyData = data.filter(item => item.Tipo_Cliente?.toUpperCase() === 'CLEY');
-          console.log('🔍 API CLEY DEBUG: Total CLEY clients in raw data:', cleyData.length);
-          cleyData.forEach((item, index) => {
-            console.log(`🔍 API CLEY DEBUG: CLEY Client ${index + 1}:`, {
-              nombre: item.Nombre,
-              tipo_cliente: item.Tipo_Cliente,
-              dia: item.Dia,
-              entrega: item.Entrega,
-              vendedor: item.Vendedor
-            });
-          });
+          console.log('🔍 API DEBUG: CLEY clients found:', cleyData.length);
         }
       }
 
@@ -158,13 +149,6 @@ export async function GET(request: NextRequest) {
         
         filteredData = data.filter(item => {
           const vendedor = item.Vendedor;
-          const isCley = item.Tipo_Cliente?.toUpperCase() === 'CLEY';
-          
-          // Temporarily include ALL CLEY clients for debugging, regardless of vendor
-          if (isCley) {
-            console.log(`🔍 CLEY BYPASS DEBUG: Including CLEY client ${item.Nombre} (vendedor: ${vendedor}) for debugging`);
-            return true;
-          }
           
           // Match if vendedor is either the email OR the friendly label
           return vendedor === email || vendedor === userLabel;
@@ -175,18 +159,9 @@ export async function GET(request: NextRequest) {
         if (filteredData.length > 0) {
           console.log('🔍 API DEBUG: Filtered sample:', filteredData[0]);
           
-          // Check CLEY clients after filtering
+          // Basic filtering validation
           const filteredCleyData = filteredData.filter(item => item.Tipo_Cliente?.toUpperCase() === 'CLEY');
-          console.log('🔍 API CLEY DEBUG: CLEY clients after filtering:', filteredCleyData.length);
-          filteredCleyData.forEach((item, index) => {
-            console.log(`🔍 API CLEY DEBUG: Filtered CLEY Client ${index + 1}:`, {
-              nombre: item.Nombre,
-              tipo_cliente: item.Tipo_Cliente,
-              dia: item.Dia,
-              entrega: item.Entrega,
-              vendedor: item.Vendedor
-            });
-          });
+          console.log('🔍 API DEBUG: CLEY clients after filtering:', filteredCleyData.length);
         }
       } else if (sheet === 'metricas' || sheet === 'performance' || sheet === 'visitas') {
         // For visit tracking sheets, filter by vendedor (seller name/email)

@@ -1932,14 +1932,14 @@ export function PanelDeInventarioComponent() {
                       className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                       role="menuitem"
                     >
-                      Form
+                      Ventas
                     </Link>
                     <Link
-                      href="/rutas"
+                      href="/recorridos"
                       className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                       role="menuitem"
                     >
-                      Rutas
+                      Recorridos
                     </Link>
                     <Link
                       href="/inventario"

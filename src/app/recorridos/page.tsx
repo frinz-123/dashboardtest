@@ -409,22 +409,9 @@ export default function RecorridosPage() {
   // ✅ NEW: Function to expand CLEY clients into dual visits (Pedidos + Entrega) and apply reschedules
   const expandCleyClients = (clients: Client[]): Client[] => {
     const expandedClients: Client[] = [];
-
-    console.log('🔍 CLEY DEBUG: Starting expandCleyClients with', clients.length, 'clients');
     
     clients.forEach((client, index) => {
-      console.log(`🔍 CLEY DEBUG: Processing client ${index + 1}:`, {
-        nombre: client.Nombre,
-        tipo_cliente: client.Tipo_Cliente,
-        dia: client.Dia,
-        entrega: client.Entrega,
-        isCley: client.Tipo_Cliente?.toUpperCase() === 'CLEY',
-        hasEntrega: !!client.Entrega
-      });
-
       if (client.Tipo_Cliente?.toUpperCase() === 'CLEY' && client.Entrega) {
-        console.log(`✅ CLEY DEBUG: Expanding CLEY client: ${client.Nombre}`);
-        
         // Create Pedidos visit (using original Dia)
         let pedidosDay = client.Dia;
         const pedidosKey = `${client.Nombre} (Pedidos)`;
@@ -453,9 +440,6 @@ export default function RecorridosPage() {
           Dia: entregaDay,
         };
 
-        console.log(`📅 CLEY DEBUG: Created Pedidos visit for ${pedidosDay}:`, pedidosVisit);
-        console.log(`📅 CLEY DEBUG: Created Entrega visit for ${entregaDay}:`, entregaVisit);
-
         expandedClients.push(pedidosVisit, entregaVisit);
       } else {
         // Regular client (including non-CLEY clients)
@@ -472,14 +456,8 @@ export default function RecorridosPage() {
         };
 
         expandedClients.push(regularClient);
-        
-        if (client.Tipo_Cliente?.toUpperCase() === 'CLEY') {
-          console.log(`⚠️ CLEY DEBUG: CLEY client without Entrega day:`, client);
-        }
       }
     });
-
-    console.log('🔍 CLEY DEBUG: Expansion complete. Original:', clients.length, 'Expanded:', expandedClients.length);
     
     return expandedClients;
   };
@@ -983,21 +961,11 @@ export default function RecorridosPage() {
   // ✅ NEW: Expand CLEY clients into dual visits
   const expandedClients = expandCleyClients(clients);
   
-  // ✅ VALIDATION: Log expansion results for rescheduled clients
+  // ✅ Basic validation for rescheduled clients
   useEffect(() => {
-    const rescheduledOriginalNames = Object.keys(postponePool).map(name => getOriginalClientName(name));
-    if (rescheduledOriginalNames.length > 0) {
-      console.log('🔍 EXPANSION VALIDATION: Checking rescheduled clients in expanded list:');
-      rescheduledOriginalNames.forEach(originalName => {
-        const expandedVersions = expandedClients.filter(c => 
-          getOriginalClientName(c.Nombre) === originalName
-        );
-        console.log(`  - ${originalName}:`, expandedVersions.map(c => ({ 
-          name: c.Nombre, 
-          day: c.Dia,
-          type: c.Tipo_Cliente 
-        })));
-      });
+    const rescheduledCount = Object.keys(postponePool).length;
+    if (rescheduledCount > 0) {
+      console.log(`🔄 VALIDATION: ${rescheduledCount} clients in postpone pool`);
     }
   }, [expandedClients, postponePool]);
 
@@ -1020,15 +988,6 @@ export default function RecorridosPage() {
     const normalizedSelectedDay = normalizeDay(selectedDay);
     const matches = normalizedClientDay === normalizedSelectedDay;
     
-         // Enhanced logging for rescheduled clients
-     const originalName = getOriginalClientName(client.Nombre);
-     const wasRescheduled = Object.keys(postponePool).some(poolClientName => 
-       getOriginalClientName(poolClientName) === originalName
-     );
-     
-     if (wasRescheduled) {
-       console.log(`📅 RESCHEDULE FILTER: ${client.Nombre} - Original Dia: "${client.Dia}" | Normalized: "${normalizedClientDay}" | Selected: "${normalizedSelectedDay}" | Matches: ${matches} | WasRescheduled: ${wasRescheduled}`);
-     }
     return matches;
   });
 
@@ -1044,9 +1003,10 @@ export default function RecorridosPage() {
   // ✅ NEW: Combine regular clients with postponed clients for this day
   const allClientsForSelectedDay = [...clientsForSelectedDay, ...postponedClientsForToday];
 
-  console.log(`🔍 CLEY POSTPONE DEBUG: Regular clients for ${selectedDay}:`, clientsForSelectedDay.length);
-  console.log(`🔍 CLEY POSTPONE DEBUG: Postponed clients for ${selectedDay}:`, postponedClientsForToday.length);
-  console.log(`🔍 CLEY POSTPONE DEBUG: Total clients for ${selectedDay}:`, allClientsForSelectedDay.length);
+  // Debug client counts for selected day
+  if (postponedClientsForToday.length > 0) {
+    console.log(`📅 DEBUG: ${selectedDay} - Regular: ${clientsForSelectedDay.length}, Postponed: ${postponedClientsForToday.length}, Total: ${allClientsForSelectedDay.length}`);
+  }
 
   // ✅ REVISED: Clients considered for today based on their schedule and history (frequency, first visit)
   const clientsConsideredForVisitToday = allClientsForSelectedDay.filter(client => {
@@ -1168,9 +1128,6 @@ export default function RecorridosPage() {
                   </Link>
                   <Link href="/form" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" role="menuitem">
                     Ventas
-                  </Link>
-                  <Link href="/rutas" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" role="menuitem">
-                    Rutas Anteriores
                   </Link>
                   <Link href="/inventario" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" role="menuitem">
                     Inventario
