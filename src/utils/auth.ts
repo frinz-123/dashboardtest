@@ -2,7 +2,8 @@
 
 export const MASTER_ACCOUNTS = [
   'alopezelrey@gmail.com',
-  'franzcharbell@gmail.com'
+  'franzcharbell@gmail.com',
+  'cesar.reyes.ochoa@gmail.com',
 ];
 
 export const isMasterAccount = (email: string | null | undefined): boolean => {
