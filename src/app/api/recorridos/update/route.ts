@@ -54,7 +54,8 @@ async function updateVisitStatus(body: any) {
     location, // Contains { lat: number, lng: number }
     notes,
     cleyVisitType, // 'Pedidos', 'Entrega', or 'Normal'
-    timestamp = new Date().toISOString()
+    timestamp = new Date().toISOString(),
+    masterEmail // For master account audit trail
   } = body;
 
   if (!userEmail || !clientName || !routeDay || !visitType) {
@@ -65,20 +66,15 @@ async function updateVisitStatus(body: any) {
 
   const sheets = google.sheets({ version: 'v4', auth });
 
-  const emailLabels: Record<string, string> = {
-    'ventas1productoselrey@gmail.com': 'Ernesto',
-    'ventas2productoselrey@gmail.com': 'Roel',
-    'ventas3productoselrey@gmail.com': 'Lidia',
-    'ventasmztproductoselrey.com@gmail.com': 'Mazatlan',
-    'ventasmochisproductoselrey@gmail.com': 'Mochis',
-    'franzcharbell@gmail.com': 'Franz',
-    'cesar.reyes.ochoa@gmail.com': 'Cesar',
-    'arturo.elreychiltepin@gmail.com': 'Arturo Mty',
-    'alopezelrey@gmail.com': 'Arlyn',
-    'promotoriaelrey@gmail.com': 'Brenda'
-  };
+  // Import master account utilities
+  const { isMasterAccount, EMAIL_TO_VENDOR_LABELS } = await import('../../../../utils/auth');
+  
+  // Handle master account audit trail
+  const isMaster = isMasterAccount(masterEmail || userEmail);
+  const effectiveVendor = EMAIL_TO_VENDOR_LABELS[userEmail] || userEmail;
+  const auditInfo = isMaster ? `${effectiveVendor} (via ${masterEmail})` : effectiveVendor;
 
-  const vendedor = emailLabels[userEmail] || userEmail;
+  const vendedor = effectiveVendor;
   const fecha = new Date().toISOString().split('T')[0];
   const weekNumber = getWeekNumber(new Date());
   

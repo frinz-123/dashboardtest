@@ -30,9 +30,10 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const email = searchParams.get('email');
+    const viewAsEmail = searchParams.get('viewAsEmail'); // New parameter for master accounts
     const sheet = searchParams.get('sheet') || 'clientes';
     
-    console.log('🔍 API DEBUG: Request params - email:', email, 'sheet:', sheet);
+    console.log('🔍 API DEBUG: Request params - email:', email, 'viewAsEmail:', viewAsEmail, 'sheet:', sheet);
     
     if (!email) {
       return NextResponse.json({ error: 'Email parameter is required' }, { status: 400 });
@@ -115,19 +116,14 @@ export async function GET(request: NextRequest) {
         return item;
       });
 
-      // Email to label mapping for flexible filtering
-      const emailLabels: Record<string, string> = {
-        'ventas1productoselrey@gmail.com': 'Ernesto',
-        'ventas2productoselrey@gmail.com': 'Roel',
-        'ventas3productoselrey@gmail.com': 'Lidia',
-        'ventasmztproductoselrey.com@gmail.com': 'Mazatlan',
-        'ventasmochisproductoselrey@gmail.com': 'Mochis',
-        'franzcharbell@gmail.com': 'Franz',
-        'cesar.reyes.ochoa@gmail.com': 'Cesar',
-        'arturo.elreychiltepin@gmail.com': 'Arturo Mty',
-        'alopezelrey@gmail.com': 'Arlyn',
-        'promotoriaelrey@gmail.com': 'Brenda'
-      };
+      // Import master account utilities
+      const { isMasterAccount, EMAIL_TO_VENDOR_LABELS } = await import('../../../utils/auth');
+      
+      // Check if this is a master account request
+      const isMaster = isMasterAccount(email);
+      const effectiveEmail = viewAsEmail && isMaster ? viewAsEmail : email;
+      
+      console.log('🔍 API DEBUG: Master account check - isMaster:', isMaster, 'effectiveEmail:', effectiveEmail);
 
       console.log('🔍 API DEBUG: Total rows processed:', data.length);
       console.log('🔍 API DEBUG: Headers found:', headers);
@@ -145,27 +141,34 @@ export async function GET(request: NextRequest) {
       // Filter by vendedor (seller) based on sheet type
       let filteredData = data;
       if (sheet === 'clientes') {
-        const userLabel = emailLabels[email]; // Get the friendly label for this email
-        
-        filteredData = data.filter(item => {
-          const vendedor = item.Vendedor;
+        if (isMaster && !viewAsEmail) {
+          // Master account without viewAsEmail - return ALL clients
+          console.log('🔍 API DEBUG: Master account - returning ALL clients');
+          filteredData = data;
+        } else {
+          // Regular filtering or master account viewing as specific vendor
+          const userLabel = EMAIL_TO_VENDOR_LABELS[effectiveEmail];
           
-          // Match if vendedor is either the email OR the friendly label
-          return vendedor === email || vendedor === userLabel;
-        });
-        
-        console.log('🔍 API DEBUG: Looking for email:', email, 'or label:', userLabel);
-        console.log('🔍 API DEBUG: Filtered data for user:', filteredData.length);
-        if (filteredData.length > 0) {
-          console.log('🔍 API DEBUG: Filtered sample:', filteredData[0]);
+          filteredData = data.filter(item => {
+            const vendedor = item.Vendedor;
+            
+            // Match if vendedor is either the email OR the friendly label
+            return vendedor === effectiveEmail || vendedor === userLabel;
+          });
           
-          // Basic filtering validation
-          const filteredCleyData = filteredData.filter(item => item.Tipo_Cliente?.toUpperCase() === 'CLEY');
-          console.log('🔍 API DEBUG: CLEY clients after filtering:', filteredCleyData.length);
+          console.log('🔍 API DEBUG: Looking for email:', effectiveEmail, 'or label:', userLabel);
+          console.log('🔍 API DEBUG: Filtered data for user:', filteredData.length);
+          if (filteredData.length > 0) {
+            console.log('🔍 API DEBUG: Filtered sample:', filteredData[0]);
+            
+            // Basic filtering validation
+            const filteredCleyData = filteredData.filter(item => item.Tipo_Cliente?.toUpperCase() === 'CLEY');
+            console.log('🔍 API DEBUG: CLEY clients after filtering:', filteredCleyData.length);
+          }
         }
       } else if (sheet === 'metricas' || sheet === 'performance' || sheet === 'visitas') {
         // For visit tracking sheets, filter by vendedor (seller name/email)
-        const userLabel = emailLabels[email] || email;
+        const userLabel = EMAIL_TO_VENDOR_LABELS[effectiveEmail] || effectiveEmail;
         
         // ✅ ADDED: Debug logging for vendedor field mapping
         if (data.length > 0) {
@@ -177,24 +180,24 @@ export async function GET(request: NextRequest) {
         
         filteredData = data.filter(item => {
           const vendedor = item.vendedor || item.Vendedor;
-          const matches = vendedor === email || vendedor === userLabel;
+          const matches = vendedor === effectiveEmail || vendedor === userLabel;
           
           // ✅ ADDED: Log each record's vendedor value for debugging
           if (!matches) {
-            console.log(`🔍 API DEBUG: Record excluded - vendedor: "${vendedor}", looking for: "${email}" or "${userLabel}"`);
+            console.log(`🔍 API DEBUG: Record excluded - vendedor: "${vendedor}", looking for: "${effectiveEmail}" or "${userLabel}"`);
           }
           
           return matches;
         });
         
-        console.log('🔍 API DEBUG: Filtering visits for:', email, 'or label:', userLabel);
+        console.log('🔍 API DEBUG: Filtering visits for:', effectiveEmail, 'or label:', userLabel);
         console.log('🔍 API DEBUG: Filtered visit data:', filteredData.length);
       } else if (sheet === 'programacion') {
         // Filter programacion by vendedor
-        const userLabel = emailLabels[email] || email;
+        const userLabel = EMAIL_TO_VENDOR_LABELS[effectiveEmail] || effectiveEmail;
         filteredData = data.filter(item => {
           const vendedor = item.vendedor || item.Vendedor;
-          return vendedor === email || vendedor === userLabel;
+          return vendedor === effectiveEmail || vendedor === userLabel;
         });
       }
 

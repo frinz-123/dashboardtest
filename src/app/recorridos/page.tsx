@@ -18,6 +18,8 @@ import {
   Timer
 } from 'lucide-react'
 import BlurIn from '@/components/ui/blur-in'
+import VendorSelector from '@/components/VendorSelector'
+import { isMasterAccount, getVendorEmails, getVendorLabel } from '@/utils/auth'
 
 type Client = {
   Nombre: string;
@@ -109,6 +111,12 @@ export default function RecorridosPage() {
   }>>([])
   const [savingReschedules, setSavingReschedules] = useState(false)
   const [rescheduledClients, setRescheduledClients] = useState<Record<string, { originalDay: string, newDay: string, visitType: string }>>({}) // Active reschedules from sheet
+  
+  // ✅ NEW: Master account state
+  const [isMaster, setIsMaster] = useState(false)
+  const [selectedVendorEmail, setSelectedVendorEmail] = useState<string | null>(null)
+  const [availableVendors, setAvailableVendors] = useState<Array<{email: string, label: string, clientCount?: number}>>([])
+  const [viewingAsVendor, setViewingAsVendor] = useState<string>('')
 
   // ✅ VALIDATION: Log when postpone pool changes
   useEffect(() => {
@@ -126,6 +134,29 @@ export default function RecorridosPage() {
 
   useEffect(() => {
     if (session?.user?.email) {
+      // Check if user is master account
+      const masterStatus = isMasterAccount(session.user.email);
+      setIsMaster(masterStatus);
+      
+      if (masterStatus) {
+        // Initialize available vendors for master accounts
+        const vendors = getVendorEmails().map(email => ({
+          email,
+          label: getVendorLabel(email)
+        }));
+        setAvailableVendors(vendors);
+        
+        // Default to user's own routes if they have any, otherwise show all
+        const userHasOwnRoutes = vendors.some(v => v.email === session.user?.email);
+        if (userHasOwnRoutes && session.user?.email) {
+          setSelectedVendorEmail(session.user.email);
+          setViewingAsVendor(getVendorLabel(session.user.email));
+        } else {
+          setSelectedVendorEmail(null);
+          setViewingAsVendor('Todas las Rutas');
+        }
+      }
+      
       setDataLoaded(false); // Reset data loaded state
       Promise.all([
         fetchClients(),
@@ -143,13 +174,38 @@ export default function RecorridosPage() {
     }
   }, [session])
 
+  // ✅ NEW: Refetch data when vendor selection changes for master accounts
+  useEffect(() => {
+    if (isMaster && dataLoaded) {
+      console.log('🔍 MASTER DEBUG: Vendor selection changed, refetching data for:', selectedVendorEmail || 'all vendors')
+      Promise.all([
+        fetchClients(),
+        fetchVisitHistory(),
+        fetchScheduledVisits(),
+        fetchRescheduledVisits()
+      ]).catch((error) => {
+        console.error('Error refetching data for vendor change:', error)
+      })
+    }
+  }, [selectedVendorEmail, isMaster])
+
 
 
   const fetchClients = async () => {
     try {
       setLoading(true)
       
-      const response = await fetch(`/api/recorridos?email=${encodeURIComponent(session?.user?.email || '')}&sheet=clientes`)
+      // Determine which email to use for the API call
+      let apiUrl = `/api/recorridos?email=${encodeURIComponent(session?.user?.email || '')}&sheet=clientes`
+      
+      // For master accounts, add viewAsEmail parameter if viewing specific vendor
+      if (isMaster && selectedVendorEmail) {
+        apiUrl += `&viewAsEmail=${encodeURIComponent(selectedVendorEmail)}`
+      }
+      
+      console.log('🔍 MASTER DEBUG: Fetching clients with URL:', apiUrl)
+      
+      const response = await fetch(apiUrl)
       
       if (!response.ok) {
         throw new Error('Failed to fetch clients')
@@ -157,6 +213,8 @@ export default function RecorridosPage() {
       
       const data = await response.json()
       setClients(data.data || [])
+      
+      console.log('🔍 MASTER DEBUG: Received clients:', data.data?.length || 0)
     } catch (error) {
       console.error('❌ Error fetching clients:', error)
     } finally {
@@ -199,7 +257,14 @@ export default function RecorridosPage() {
 
   const fetchVisitHistory = async () => {
     try {
-      const response = await fetch(`/api/recorridos?email=${encodeURIComponent(session?.user?.email || '')}&sheet=metricas`)
+      let apiUrl = `/api/recorridos?email=${encodeURIComponent(session?.user?.email || '')}&sheet=metricas`
+      
+      // For master accounts, add viewAsEmail parameter if viewing specific vendor
+      if (isMaster && selectedVendorEmail) {
+        apiUrl += `&viewAsEmail=${encodeURIComponent(selectedVendorEmail)}`
+      }
+      
+      const response = await fetch(apiUrl)
       
       if (!response.ok) {
         console.warn('❌ Failed to fetch visit history, treating all as first-time visits')
@@ -242,7 +307,14 @@ export default function RecorridosPage() {
 
   const fetchScheduledVisits = async () => {
     try {
-      const response = await fetch(`/api/recorridos?email=${encodeURIComponent(session?.user?.email || '')}&sheet=programacion`)
+      let apiUrl = `/api/recorridos?email=${encodeURIComponent(session?.user?.email || '')}&sheet=programacion`
+      
+      // For master accounts, add viewAsEmail parameter if viewing specific vendor
+      if (isMaster && selectedVendorEmail) {
+        apiUrl += `&viewAsEmail=${encodeURIComponent(selectedVendorEmail)}`
+      }
+      
+      const response = await fetch(apiUrl)
       
       if (!response.ok) {
         console.warn('❌ Failed to fetch scheduled visits')
@@ -284,7 +356,14 @@ export default function RecorridosPage() {
 
   const fetchRescheduledVisits = async () => {
     try {
-      const response = await fetch(`/api/recorridos?email=${encodeURIComponent(session?.user?.email || '')}&sheet=reprogramadas`)
+      let apiUrl = `/api/recorridos?email=${encodeURIComponent(session?.user?.email || '')}&sheet=reprogramadas`
+      
+      // For master accounts, add viewAsEmail parameter if viewing specific vendor
+      if (isMaster && selectedVendorEmail) {
+        apiUrl += `&viewAsEmail=${encodeURIComponent(selectedVendorEmail)}`
+      }
+      
+      const response = await fetch(apiUrl)
       
       if (!response.ok) {
         console.warn('❌ Failed to fetch rescheduled visits')
@@ -585,8 +664,9 @@ export default function RecorridosPage() {
         },
         body: JSON.stringify({
           action: 'batch_reschedule',
-          userEmail: session?.user?.email,
-          reschedules: pendingReschedules
+          userEmail: selectedVendorEmail || session?.user?.email, // Use selected vendor for master accounts
+          reschedules: pendingReschedules,
+          masterEmail: isMaster ? session?.user?.email : undefined, // Audit trail for master accounts
         }),
       });
 
@@ -684,9 +764,10 @@ export default function RecorridosPage() {
         },
         body: JSON.stringify({
           action: 'deactivate_reschedule',
-          userEmail: session?.user?.email,
+          userEmail: selectedVendorEmail || session?.user?.email, // Use selected vendor for master accounts
           clientName: clientName,
-          visitType: visitType
+          visitType: visitType,
+          masterEmail: isMaster ? session?.user?.email : undefined, // Audit trail for master accounts
         }),
       });
 
@@ -730,13 +811,14 @@ export default function RecorridosPage() {
         },
         body: JSON.stringify({
           action: 'update_visit_status',
-          userEmail: session?.user?.email,
+          userEmail: selectedVendorEmail || session?.user?.email, // Use selected vendor for master accounts
           clientName: originalClientName, // Use original name for sheet recording
           routeDay: client.Dia,
           visitType: status,
           location: currentLocation,
           notes: notesWithVisitType,
           cleyVisitType: visitTypeForCley, // Additional field for CLEY visit type
+          masterEmail: isMaster ? session?.user?.email : undefined, // Audit trail for master accounts
         }),
       });
       
@@ -833,7 +915,7 @@ export default function RecorridosPage() {
         },
         body: JSON.stringify({
           action: 'update_route_summary',
-          userEmail: session?.user?.email,
+          userEmail: selectedVendorEmail || session?.user?.email, // Use selected vendor for master accounts
           routeDay: selectedDay,
           fecha,
           clientesProgramados,
@@ -843,7 +925,8 @@ export default function RecorridosPage() {
           tiempoFin: endTime,
           kilometrosRecorridos: totalDistanceKm,
           combustibleGastado: fuelCost,
-          observaciones: observaciones.slice(0, 500) // Limit to 500 chars
+          observaciones: observaciones.slice(0, 500), // Limit to 500 chars
+          masterEmail: isMaster ? session?.user?.email : undefined, // Audit trail for master accounts
         }),
       })
 
@@ -1142,12 +1225,31 @@ export default function RecorridosPage() {
         </div>
       </header>
 
+      {/* Vendor Selector for Master Accounts */}
+      <VendorSelector
+        currentVendor={selectedVendorEmail}
+        vendors={availableVendors}
+        onVendorChange={(vendorEmail) => {
+          setSelectedVendorEmail(vendorEmail)
+          setViewingAsVendor(vendorEmail ? getVendorLabel(vendorEmail) : 'Todas las Rutas')
+          console.log('🔍 MASTER DEBUG: Switching to vendor:', vendorEmail || 'all vendors')
+        }}
+        isVisible={isMaster}
+      />
+
       {/* Progress Summary */}
       <div className="bg-white rounded-lg mb-4 p-4 border border-[#E2E4E9]">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center">
             <Calendar className="h-5 w-5 text-blue-600 mr-2" />
-            <h2 className="text-lg font-semibold text-gray-900">Progreso del Día</h2>
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">Progreso del Día</h2>
+              {isMaster && (
+                <p className="text-xs text-blue-600">
+                  Viendo: {viewingAsVendor}
+                </p>
+              )}
+            </div>
           </div>
           <div className="text-sm text-gray-500">
             {completedCount} / {completedCount + pendingCount} completados 
