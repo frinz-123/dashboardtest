@@ -88,14 +88,29 @@ export default function RecorridosPage() {
   const [loading, setLoading] = useState(true)
   const [dataLoaded, setDataLoaded] = useState(false)
   const [selectedDay, setSelectedDay] = useState<RouteDay>(() => {
-    const today = new Date()
+    // ✅ FIX: Use Mazatlán timezone for day selection
+    const utcNow = new Date();
+    const mazatlanOffset = -7; // GMT-7
+    const mazatlanTime = new Date(utcNow.getTime() + (mazatlanOffset * 60 * 60 * 1000));
     const dayNames: RouteDay[] = ['Domingo', 'Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado']
-    return dayNames[today.getDay()]
+    const mazatlanDay = dayNames[mazatlanTime.getDay()];
+    
+    console.log('🕐 DAY SELECTION INIT:', {
+      utcTime: utcNow.toISOString(),
+      mazatlanTime: mazatlanTime.toISOString(),
+      utcDay: dayNames[utcNow.getDay()],
+      mazatlanDay: mazatlanDay,
+      selectedDay: mazatlanDay
+    });
+    
+    return mazatlanDay;
   })
   const [visitStatus, setVisitStatus] = useState<Record<string, VisitStatus>>({})
   const [currentLocation, setCurrentLocation] = useState<{lat: number, lng: number} | null>(null)
   const [routeStartTime, setRouteStartTime] = useState<string | null>(null)
   const [savingRoute, setSavingRoute] = useState(false)
+  const [routeInProgress, setRouteInProgress] = useState(false) // Track if route is active
+  const [routeFinishedToday, setRouteFinishedToday] = useState(false) // Track if route was already finished today
   
   // ✅ NEW: Postpone pool state for CLEY clients
   const [postponePool, setPostponePool] = useState<Record<string, { client: Client, originalDay: string, postponedOn: string }>>({})
@@ -111,6 +126,7 @@ export default function RecorridosPage() {
   }>>([])
   const [savingReschedules, setSavingReschedules] = useState(false)
   const [rescheduledClients, setRescheduledClients] = useState<Record<string, { originalDay: string, newDay: string, visitType: string }>>({}) // Active reschedules from sheet
+  const [routePerformanceData, setRoutePerformanceData] = useState<Array<any>>([]) // Route performance records
   
   // ✅ NEW: Master account state
   const [isMaster, setIsMaster] = useState(false)
@@ -131,6 +147,13 @@ export default function RecorridosPage() {
       }))
     });
   }, [postponePool]);
+
+  // ✅ NEW: Check route progress when visit history or pending clients change
+  useEffect(() => {
+    if (dataLoaded) {
+      checkRouteInProgress();
+    }
+  }, [visitHistory, dataLoaded]);
 
   useEffect(() => {
     if (session?.user?.email) {
@@ -157,17 +180,28 @@ export default function RecorridosPage() {
         }
       }
       
+      // ✅ NEW: Load persisted route state from localStorage
+      loadPersistedRouteState();
+      
       setDataLoaded(false); // Reset data loaded state
+      console.log('🔄 DATA LOADING: Starting Promise.all with all fetch functions');
       Promise.all([
         fetchClients(),
         fetchConfiguration(),
         fetchVisitHistory(),
         fetchScheduledVisits(),
-        fetchRescheduledVisits()
+        fetchRescheduledVisits(),
+        fetchRoutePerformance()
       ]).then(() => {
+        console.log('✅ DATA LOADING: All Promise.all functions completed successfully');
         setDataLoaded(true);
+        // ✅ NEW: Load route state after all data is available
+        loadPersistedRouteState();
+        // ✅ NEW: Check if route is in progress after data loads
+        checkRouteInProgress();
       }).catch((error) => {
-        console.error('Error in data fetching:', error);
+        console.error('❌ DATA LOADING ERROR: Promise.all failed:', error);
+        console.error('❌ DATA LOADING ERROR: Error stack:', error?.stack);
         setDataLoaded(true); // Set to true even on error to prevent infinite loading
       });
       getCurrentLocation()
@@ -178,16 +212,273 @@ export default function RecorridosPage() {
   useEffect(() => {
     if (isMaster && dataLoaded) {
       console.log('🔍 MASTER DEBUG: Vendor selection changed, refetching data for:', selectedVendorEmail || 'all vendors')
+      console.log('🔄 VENDOR REFETCH: Starting Promise.all for vendor change');
       Promise.all([
         fetchClients(),
         fetchVisitHistory(),
         fetchScheduledVisits(),
-        fetchRescheduledVisits()
-      ]).catch((error) => {
+        fetchRescheduledVisits(),
+        fetchRoutePerformance()
+      ]).then(() => {
+        console.log('✅ VENDOR REFETCH: All functions completed successfully');
+        // ✅ NEW: Load route state after vendor data refresh
+        loadPersistedRouteState();
+        // ✅ NEW: Recheck route progress after vendor data refresh
+        checkRouteInProgress();
+      }).catch((error) => {
         console.error('Error refetching data for vendor change:', error)
       })
     }
   }, [selectedVendorEmail, isMaster])
+
+  // ✅ NEW: Dedicated effect to ALWAYS fetch route performance when session or vendor changes (for debugging)
+  useEffect(() => {
+    if (session?.user?.email) {
+      console.log('🔄 PERFORMANCE EFFECT: Triggering fetchRoutePerformance due to email/vendor change');
+      fetchRoutePerformance();
+    }
+  }, [session?.user?.email, selectedVendorEmail]);
+
+  // ✅ NEW: Load persisted route state and check Rutas_Performance
+  const loadPersistedRouteState = (dayToCheck?: RouteDay) => {
+    console.log('🔄 ROUTE STATE: Starting loadPersistedRouteState function');
+    try {
+      const userEmail = selectedVendorEmail || session?.user?.email;
+      if (!userEmail) return;
+
+      const utcNow = new Date();
+      const mazatlanOffset = -7; // GMT-7
+      const mazatlanTime = new Date(utcNow.getTime() + (mazatlanOffset * 60 * 60 * 1000));
+      const mazatlanToday = mazatlanTime.toISOString().split('T')[0];
+      
+      // ✅ FIXED: Use the dayToCheck parameter if provided, otherwise use selectedDay
+      const dayToSearch = dayToCheck || selectedDay;
+      
+      // ✅ NEW: Check Rutas_Performance sheet for completed routes today
+      console.log('🔍 PERFORMANCE SEARCH: Looking for completed route with criteria:', {
+        userEmail,
+        selectedVendorEmail,
+        mazatlanToday,
+        dayToSearch: dayToSearch.toLowerCase(),
+        selectedDay: selectedDay.toLowerCase(),
+        totalRecords: routePerformanceData.length,
+        isMaster,
+        searchingForTodayAndDay: `date:${mazatlanToday} AND day:${dayToSearch.toLowerCase()}`
+      });
+      
+      const todayRouteRecord = routePerformanceData.find(record => {
+        const recordDate = record.fecha;
+        const recordDay = record.dia_ruta?.toLowerCase();
+        const recordVendor = record.vendedor;
+        
+        const isToday = recordDate === mazatlanToday;
+        const isCorrectDay = recordDay === dayToSearch.toLowerCase();
+        
+        // 🔄 NEW: Build a set of acceptable vendor identifiers (email + friendly label)
+        const vendorAliases = new Set<string>();
+        if (userEmail) {
+          vendorAliases.add(userEmail);
+          vendorAliases.add(getVendorLabel(userEmail));
+        }
+        if (isMaster && selectedVendorEmail) {
+          vendorAliases.add(selectedVendorEmail);
+          vendorAliases.add(getVendorLabel(selectedVendorEmail));
+        }
+        
+        const isCorrectVendor = vendorAliases.has(recordVendor);
+        
+        console.log('🔍 PERFORMANCE RECORD CHECK:', {
+          recordDate,
+          recordDay,
+          recordVendor,
+          isToday: `${isToday} (${recordDate} === ${mazatlanToday})`,
+          isCorrectDay: `${isCorrectDay} (${recordDay} === ${dayToSearch.toLowerCase()})`,
+          isCorrectVendor,
+          matches: isToday && isCorrectDay && isCorrectVendor,
+          reason: !isToday ? 'Date mismatch' : !isCorrectDay ? 'Day mismatch' : !isCorrectVendor ? 'Vendor mismatch' : 'All match'
+        });
+        
+        return isToday && isCorrectDay && isCorrectVendor;
+      });
+      
+      if (todayRouteRecord) {
+        console.log('📊 PERFORMANCE CHECK: Found completed route in Rutas_Performance:', {
+          fecha: todayRouteRecord.fecha,
+          dia_ruta: todayRouteRecord.dia_ruta,
+          vendedor: todayRouteRecord.vendedor,
+          tiempo_inicio: todayRouteRecord.tiempo_inicio,
+          tiempo_fin: todayRouteRecord.tiempo_fin,
+          clientes_visitados: todayRouteRecord.clientes_visitados
+        });
+        
+        setRouteFinishedToday(true);
+        setRouteStartTime(todayRouteRecord.tiempo_inicio || '08:00');
+        setRouteInProgress(false);
+        
+        // Also save to localStorage for consistency
+        saveRouteState(todayRouteRecord.tiempo_inicio, true, todayRouteRecord.tiempo_fin);
+        return;
+      }
+      
+      // ✅ FALLBACK: Check localStorage if no performance record found
+      const storageKey = `routeState_${userEmail}_${mazatlanToday}`;
+      const savedState = localStorage.getItem(storageKey);
+      
+      if (savedState) {
+        const { 
+          routeStartTime: savedStartTime, 
+          selectedDay: savedDay, 
+          routeFinished: savedFinished,
+          finishedAt: savedFinishedAt
+        } = JSON.parse(savedState);
+        
+        console.log('🔄 ROUTE PERSISTENCE: Loading saved route state from localStorage:', {
+          savedStartTime,
+          savedDay,
+          savedFinished,
+          savedFinishedAt,
+          currentDay: dayToSearch,
+          selectedDay
+        });
+        
+        if (savedDay === dayToSearch) {
+          // ✅ ADDITIONAL CHECK: Only restore state if we're viewing today's tab
+          const dayNames: RouteDay[] = ['Domingo', 'Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado'];
+          const actualDayName = dayNames[mazatlanTime.getDay()];
+          const isViewingToday = dayToSearch === actualDayName;
+          
+          if (isViewingToday) {
+            if (savedStartTime) {
+              setRouteStartTime(savedStartTime);
+              setRouteInProgress(true);
+            }
+            if (savedFinished) {
+              setRouteFinishedToday(true);
+              console.log('✅ ROUTE PERSISTENCE: Route was already finished today at', savedFinishedAt);
+            }
+            console.log('✅ ROUTE PERSISTENCE: Restored route session from localStorage for today');
+          } else {
+            console.log('🔄 ROUTE PERSISTENCE: Skipping state restoration - viewing different day than today');
+            // Clear any stale state when viewing past/future days
+            setRouteStartTime(null);
+            setRouteInProgress(false);
+            setRouteFinishedToday(false);
+          }
+        } else {
+          console.log('🔄 ROUTE PERSISTENCE: Saved day mismatch - clearing states');
+          // Clear states if saved day doesn't match
+          setRouteStartTime(null);
+          setRouteInProgress(false);
+          setRouteFinishedToday(false);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error loading persisted route state:', error);
+    }
+  };
+
+  // ✅ NEW: Save route state to localStorage
+  const saveRouteState = (startTime: string | null, finished: boolean = false, finishedAt?: string, dayToSave?: RouteDay) => {
+    try {
+      const userEmail = selectedVendorEmail || session?.user?.email;
+      if (!userEmail) return;
+
+      const utcNow = new Date();
+      const mazatlanOffset = -7; // GMT-7
+      const mazatlanTime = new Date(utcNow.getTime() + (mazatlanOffset * 60 * 60 * 1000));
+      const mazatlanToday = mazatlanTime.toISOString().split('T')[0];
+      
+      const storageKey = `routeState_${userEmail}_${mazatlanToday}`;
+      const dayForState = dayToSave || selectedDay;
+      
+      if (startTime || finished) {
+        const stateToSave = {
+          routeStartTime: startTime,
+          selectedDay: dayForState,
+          routeFinished: finished,
+          finishedAt: finishedAt,
+          timestamp: new Date().toISOString()
+        };
+        localStorage.setItem(storageKey, JSON.stringify(stateToSave));
+        console.log('💾 ROUTE PERSISTENCE: Saved route state to localStorage', { startTime, finished, finishedAt, day: dayForState });
+      } else {
+        localStorage.removeItem(storageKey);
+        console.log('🗑️ ROUTE PERSISTENCE: Cleared route state from localStorage');
+      }
+    } catch (error) {
+      console.error('❌ Error saving route state:', error);
+    }
+  };
+
+  // ✅ NEW: Check if route is in progress based on completed visits today - FIXED TIMEZONE & DAY-AWARE
+  const checkRouteInProgress = () => {
+    try {
+      // ✅ FIX: Use Mazatlán timezone consistently
+      const utcNow = new Date();
+      const mazatlanOffset = -7; // GMT-7
+      const mazatlanTime = new Date(utcNow.getTime() + (mazatlanOffset * 60 * 60 * 1000));
+      const mazatlanToday = mazatlanTime.toISOString().split('T')[0];
+      
+      const userEmail = selectedVendorEmail || session?.user?.email;
+      
+      if (!userEmail) return;
+
+      const dayNames: RouteDay[] = ['Domingo', 'Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado'];
+      const actualDayName = dayNames[mazatlanTime.getDay()];
+
+      // ✅ FIXED: Only check for completed visits that are relevant to the current context
+      // If the selected day is TODAY, check for completed visits today
+      // If the selected day is NOT today, don't consider completed visits (they're for a different day)
+      const isSelectedDayToday = selectedDay === actualDayName;
+      
+      const hasCompletedVisitsToday = isSelectedDayToday && Object.values(visitHistory).some(history => {
+        return history.lastVisitDate === mazatlanToday;
+      });
+
+      // ✅ REMOVED: Auto-switch logic that was causing interference
+      // Let users manually control day selection without automatic switching
+
+      // ✅ FIXED: Only check pending visits for the selected day, not all days
+      // Note: We can't use actuallyPendingClients here as it's defined later in the component
+      // Instead, we'll rely on the other conditions
+      
+      // ✅ FIXED: Only show finish button if we're on the correct day AND have valid reason
+      const shouldShowFinishButton = isSelectedDayToday && (
+        hasCompletedVisitsToday || 
+        (!!routeStartTime && !routeFinishedToday) // Only consider routeStartTime if route not finished
+      );
+      
+      console.log('🔍 ROUTE PROGRESS CHECK (DAY-AWARE):', {
+        userEmail,
+        mazatlanToday,
+        selectedDay,
+        actualDayName,
+        isSelectedDayToday,
+        hasCompletedVisitsToday,
+        routeStartTime,
+        routeFinishedToday,
+        shouldShowFinishButton,
+        completedTodayCount: Object.values(visitHistory).filter(h => h.lastVisitDate === mazatlanToday).length,
+        reason: !isSelectedDayToday ? 'Not today\'s tab' : 
+                !hasCompletedVisitsToday && !routeStartTime ? 'No completed visits and no start time' :
+                routeFinishedToday && !!routeStartTime ? 'Route already finished' : 
+                'Should show button'
+      });
+
+      setRouteInProgress(shouldShowFinishButton);
+      
+      // ✅ FIXED: Only set default start time if we're on today's tab and have completed visits
+      if (isSelectedDayToday && hasCompletedVisitsToday && !routeStartTime) {
+        const defaultStartTime = '08:00'; // Default morning start
+        setRouteStartTime(defaultStartTime);
+        saveRouteState(defaultStartTime);
+        console.log('🔄 ROUTE PROGRESS: Set default start time for existing completed visits on correct day');
+      }
+      
+    } catch (error) {
+      console.error('❌ Error checking route progress:', error);
+    }
+  };
 
 
 
@@ -392,6 +683,55 @@ export default function RecorridosPage() {
       }
     } catch (error) {
       console.error('❌ Error fetching rescheduled visits:', error)
+    }
+  }
+
+  const fetchRoutePerformance = async () => {
+    console.log('🚀 PERFORMANCE FETCH: Starting fetchRoutePerformance function');
+    console.log('🚀 PERFORMANCE FETCH: Session email:', session?.user?.email);
+    console.log('🚀 PERFORMANCE FETCH: Selected vendor email:', selectedVendorEmail);
+    console.log('🚀 PERFORMANCE FETCH: Is master:', isMaster);
+    try {
+      let apiUrl = `/api/recorridos?email=${encodeURIComponent(session?.user?.email || '')}&sheet=performance`
+      
+      // For master accounts, add viewAsEmail parameter if viewing specific vendor
+      if (isMaster && selectedVendorEmail) {
+        apiUrl += `&viewAsEmail=${encodeURIComponent(selectedVendorEmail)}`
+      }
+      
+      console.log('📊 PERFORMANCE API: Making request to:', apiUrl);
+      
+      const response = await fetch(apiUrl).catch(fetchError => {
+        console.error('❌ PERFORMANCE FETCH NETWORK ERROR:', fetchError);
+        throw fetchError;
+      });
+      
+      console.log('📊 PERFORMANCE API: Response status:', response.status, response.statusText);
+      
+      if (!response.ok) {
+        console.warn('❌ Failed to fetch route performance data - Status:', response.status);
+        const errorText = await response.text();
+        console.warn('❌ Error response:', errorText);
+        return
+      }
+      
+      const data = await response.json()
+      
+      console.log('📊 PERFORMANCE API: Raw response data:', data);
+      
+      if (data.data && data.data.length > 0) {
+        console.log('📊 PERFORMANCE FETCH: Loaded route performance data:', data.data.length, 'records');
+        console.log('📊 PERFORMANCE FETCH: Sample records:', data.data.slice(0, 3));
+        setRoutePerformanceData(data.data)
+      } else {
+        console.log('📊 PERFORMANCE FETCH: No performance data returned');
+        setRoutePerformanceData([]);
+      }
+    } catch (error: any) {
+      console.error('❌ PERFORMANCE FETCH ERROR:', error)
+      console.error('❌ PERFORMANCE ERROR STACK:', error?.stack)
+      // Set empty array on error so the logic still works
+      setRoutePerformanceData([]);
     }
   }
 
@@ -693,15 +1033,20 @@ export default function RecorridosPage() {
     }
   };
 
-  // ✅ REVISED: Determines if a client is generally scheduled for a visit today or is due.
+  // ✅ REVISED: Determines if a client is generally scheduled for a visit today or is due - FIXED TIMEZONE
   const shouldBeConsideredForVisitToday = (client: Client): boolean => {
     const originalName = getOriginalClientName(client.Nombre);
     const clientHistory = visitHistory[originalName];
     const scheduledVisit = scheduledVisits[originalName] || scheduledVisits[client.Nombre];
-    const today = new Date().toISOString().split('T')[0];
+    
+    // ✅ FIX: Use Mazatlán timezone consistently
+    const utcNow = new Date();
+    const mazatlanOffset = -7; // GMT-7
+    const mazatlanTime = new Date(utcNow.getTime() + (mazatlanOffset * 60 * 60 * 1000));
+    const mazatlanToday = mazatlanTime.toISOString().split('T')[0];
 
     // ✅ PRIORITY 1: Check if client has a scheduled visit for today
-    if (scheduledVisit && scheduledVisit.scheduledDate === today && scheduledVisit.status === 'Programado') {
+    if (scheduledVisit && scheduledVisit.scheduledDate === mazatlanToday && scheduledVisit.status === 'Programado') {
       console.log(`👍 ${client.Nombre} (${originalName}): YES (scheduled for today)`);
       return true;
     }
@@ -709,7 +1054,7 @@ export default function RecorridosPage() {
     // ✅ PRIORITY 2: Check if client has a scheduled visit that's overdue
     if (scheduledVisit && scheduledVisit.status === 'Programado') {
       const scheduledDate = new Date(scheduledVisit.scheduledDate);
-      const todayDate = new Date(today);
+      const todayDate = new Date(mazatlanToday);
       if (scheduledDate <= todayDate) {
         console.log(`👍 ${client.Nombre} (${originalName}): YES (overdue scheduled visit from ${scheduledVisit.scheduledDate})`);
         return true;
@@ -725,7 +1070,7 @@ export default function RecorridosPage() {
     // If completed today (in a previous route or this one), they are part of today's general consideration
     // but will be filtered out from "pending" list later if visitStatus is 'completed'.
     // This ensures they are available for the "Completados Hoy" list.
-    if (clientHistory.lastVisitDate === today) {
+    if (clientHistory.lastVisitDate === mazatlanToday) {
       console.log(`👍 ${client.Nombre} (${originalName}): YES (last visit was today)`);
       return true; 
     }
@@ -743,13 +1088,28 @@ export default function RecorridosPage() {
     const weeksSinceLastVisit = currentWeek - lastVisitWeek;
     const isDue = weeksSinceLastVisit >= client.Frecuencia;
 
-    console.log(`👍 ${client.Nombre} (${originalName}): ${isDue ? 'YES' : 'NO'} (due: ${isDue}, weeksSinceLast: ${weeksSinceLastVisit}, freq: ${client.Frecuencia})`);
+    // ✅ ENHANCED DEBUG: Show detailed week calculation
+    console.log(`📅 WEEK CALCULATION: ${client.Nombre} (${originalName}):`, {
+      currentWeek,
+      lastVisitWeek,
+      lastVisitDate: clientHistory.lastVisitDate,
+      weeksSinceLastVisit,
+      frequency: client.Frecuencia,
+      isDue,
+      decision: isDue ? 'YES - include for visit' : 'NO - not due yet',
+      mazatlanToday
+    });
+
     return isDue;
   };
 
   const startRoute = () => {
     const now = new Date()
-    setRouteStartTime(now.toTimeString().slice(0, 5)) // HH:MM format
+    const startTime = now.toTimeString().slice(0, 5) // HH:MM format
+    setRouteStartTime(startTime)
+    setRouteInProgress(true)
+    saveRouteState(startTime) // ✅ NEW: Persist route state
+    console.log('🚀 ROUTE START: Route started at', startTime)
   }
 
   // ✅ NEW: Deactivate a temporary reschedule after the visit is completed
@@ -871,9 +1231,17 @@ export default function RecorridosPage() {
   };
 
   const finishRoute = async () => {
-    if (!routeStartTime) {
+    // ✅ UPDATED: Allow finishing route if there's progress, even without explicit start time
+    if (!routeStartTime && !routeInProgress) {
       alert('No se ha iniciado ninguna ruta. Completa al menos una visita primero.');
       return;
+    }
+
+    // ✅ NEW: If no start time but route is in progress, use default start time
+    let actualStartTime = routeStartTime;
+    if (!actualStartTime && routeInProgress) {
+      actualStartTime = '08:00'; // Default start time for routes with completed visits
+      console.log('🔄 ROUTE FINISH: Using default start time for route with completed visits');
     }
 
     try {
@@ -921,7 +1289,7 @@ export default function RecorridosPage() {
           clientesProgramados,
           clientesVisitados,
           ventasTotales: 0, // TODO: integrate with sales data if needed
-          tiempoInicio: routeStartTime,
+          tiempoInicio: actualStartTime,
           tiempoFin: endTime,
           kilometrosRecorridos: totalDistanceKm,
           combustibleGastado: fuelCost,
@@ -931,11 +1299,16 @@ export default function RecorridosPage() {
       })
 
       if (response.ok) {
-        alert(`✅ Ruta del ${selectedDay} finalizada exitosamente!\n\n📊 Resumen:\n• ${clientesVisitados}/${clientesProgramados} clientes visitados\n• Tiempo: ${routeStartTime} - ${endTime}\n• Distancia: ${totalDistanceKm} km\n• Combustible: $${fuelCost}`)
+        // ✅ NEW: Mark route as finished and save to localStorage
+        setRouteFinishedToday(true);
+        saveRouteState(actualStartTime, true, endTime);
         
-        // Reset route state
+        alert(`✅ Ruta del ${selectedDay} finalizada exitosamente!\n\n📊 Resumen:\n• ${clientesVisitados}/${clientesProgramados} clientes visitados\n• Tiempo: ${actualStartTime} - ${endTime}\n• Distancia: ${totalDistanceKm} km\n• Combustible: $${fuelCost}`)
+        
+        // Reset route state but keep finished status
         setVisitStatus({})
         setRouteStartTime(null)
+        setRouteInProgress(false)
         
         // ✅ Refresh visit history from sheets to ensure consistency
         await fetchVisitHistory()
@@ -1003,17 +1376,22 @@ export default function RecorridosPage() {
     window.open(url, '_blank');
   };
 
-  // Helper function to get visit status text
+  // Helper function to get visit status text - FIXED TIMEZONE
   const getVisitStatusText = (client: Client): string => {
     const originalName = getOriginalClientName(client.Nombre);
     const history = visitHistory[originalName]
     const scheduledVisit = scheduledVisits[originalName] || scheduledVisits[client.Nombre]
-    const today = new Date().toISOString().split('T')[0]
+    
+    // ✅ FIX: Use Mazatlán timezone consistently
+    const utcNow = new Date();
+    const mazatlanOffset = -7; // GMT-7
+    const mazatlanTime = new Date(utcNow.getTime() + (mazatlanOffset * 60 * 60 * 1000));
+    const mazatlanToday = mazatlanTime.toISOString().split('T')[0];
 
     // ✅ PRIORITY: Show scheduled visit info if available
     if (scheduledVisit && scheduledVisit.status === 'Programado') {
       const scheduledDate = new Date(scheduledVisit.scheduledDate)
-      const todayDate = new Date(today)
+      const todayDate = new Date(mazatlanToday)
       const daysDiff = Math.floor((scheduledDate.getTime() - todayDate.getTime()) / (1000 * 60 * 60 * 24))
       
       if (daysDiff === 0) {
@@ -1103,31 +1481,50 @@ export default function RecorridosPage() {
     !visitStatus[client.Nombre] || visitStatus[client.Nombre] === 'pending'
   );
   
-  // ✅ REVISED: Properly exclude clients who were already visited today (even in previous sessions)
-  const today = new Date().toISOString().split('T')[0];
+  // ✅ REVISED: Properly exclude clients who were already visited today (even in previous sessions) - FIXED TIMEZONE
+  const utcNow = new Date();
+  const mazatlanOffset = -7; // GMT-7
+  const mazatlanTime = new Date(utcNow.getTime() + (mazatlanOffset * 60 * 60 * 1000));
+  const mazatlanToday = mazatlanTime.toISOString().split('T')[0];
+  
   const actuallyPendingClients = clientsConsideredForVisitToday.filter(client => {
     const originalName = getOriginalClientName(client.Nombre);
     const history = visitHistory[originalName];
     const status = visitStatus[client.Nombre];
-    const wasVisitedToday = history?.lastVisitDate === today;
+    const wasVisitedToday = history?.lastVisitDate === mazatlanToday;
     const isPostponedClient = postponedClientsForToday.some(p => p.Nombre === client.Nombre);
     
-    // Postponed clients that were rescheduled to today should appear as pending
-    if (isPostponedClient && status !== 'completed') {
+    // ✅ DEBUG: Log detailed filtering logic for each client
+    const shouldInclude = (() => {
+      // Postponed clients that were rescheduled to today should appear as pending
+      if (isPostponedClient && status !== 'completed') {
+        console.log(`📋 PENDING FILTER: ${client.Nombre} - INCLUDED (postponed client rescheduled to today)`);
+        return true;
+      }
+      
+      // If visited today in a previous session, they shouldn't be pending
+      if (wasVisitedToday && !routeStartTime) {
+        console.log(`📋 PENDING FILTER: ${client.Nombre} - EXCLUDED (visited today in previous session, no active route)`);
+        return false;
+      }
+      
+      // If visited today in current session and marked as completed, they shouldn't be pending
+      if (status === 'completed' || status === 'skipped' || status === 'postponed') {
+        console.log(`📋 PENDING FILTER: ${client.Nombre} - EXCLUDED (status: ${status})`);
+        return false;
+      }
+      
+      // ✅ NEW: If client was completed today, they should NOT appear as pending
+      if (wasVisitedToday) {
+        console.log(`📋 PENDING FILTER: ${client.Nombre} - EXCLUDED (already completed today: ${history?.lastVisitDate})`);
+        return false;
+      }
+      
+      console.log(`📋 PENDING FILTER: ${client.Nombre} - INCLUDED (genuinely pending)`);
       return true;
-    }
+    })();
     
-    // If visited today in a previous session, they shouldn't be pending
-    if (wasVisitedToday && !routeStartTime) {
-      return false;
-    }
-    
-    // If visited today in current session and marked as completed, they shouldn't be pending
-    if (status === 'completed' || status === 'skipped' || status === 'postponed') {
-      return false;
-    }
-    
-    return true;
+    return shouldInclude;
   });
   
   // ✅ ADDED: Optimize the route for pending clients
@@ -1136,25 +1533,44 @@ export default function RecorridosPage() {
   
 
 
-  // ✅ REVISED: Clients actually completed during THIS active route session for the "Completados Hoy" card
+  // ✅ REVISED: Clients actually completed during THIS active route session for the "Completados Hoy" card - FIXED TIMEZONE
   const completedThisSessionClients = allClientsForSelectedDay.filter(client => {
     const originalName = getOriginalClientName(client.Nombre);
     const history = visitHistory[originalName];
-    const today = new Date().toISOString().split('T')[0];
+    
+    // ✅ FIX: Use Mazatlán timezone consistently
+    const utcNow = new Date();
+    const mazatlanOffset = -7; // GMT-7
+    const mazatlanTime = new Date(utcNow.getTime() + (mazatlanOffset * 60 * 60 * 1000));
+    const mazatlanToday = mazatlanTime.toISOString().split('T')[0];
+    
     // Ensure they were marked 'completed' in visitStatus, 
     // their last recorded visit in history is today, 
     // and a route is currently active (or was active when they were completed).
     return visitStatus[client.Nombre] === 'completed' && 
-           history?.lastVisitDate === today && 
+           history?.lastVisitDate === mazatlanToday && 
            !!routeStartTime; // routeStartTime ensures it's part of the current active session
   });
   
-  // ✅ REVISED: All clients completed today (including previous sessions)
+  // ✅ REVISED: All clients completed today (including previous sessions) - FIXED TIMEZONE
   const allCompletedTodayClients = allClientsForSelectedDay.filter(client => {
     const originalName = getOriginalClientName(client.Nombre);
     const history = visitHistory[originalName];
-    const today = new Date().toISOString().split('T')[0];
-    return history?.lastVisitDate === today;
+    
+    // ✅ FIX: Use Mazatlán timezone for date comparison
+    const utcNow = new Date();
+    const mazatlanOffset = -7; // GMT-7
+    const mazatlanTime = new Date(utcNow.getTime() + (mazatlanOffset * 60 * 60 * 1000));
+    const mazatlanToday = mazatlanTime.toISOString().split('T')[0];
+    
+    const wasCompletedToday = history?.lastVisitDate === mazatlanToday;
+    
+    // ✅ DEBUG: Log completed client filtering with timezone info
+    if (wasCompletedToday) {
+      console.log(`✅ COMPLETED TODAY (MAZATLAN TIME): ${client.Nombre} (${originalName}) - last visit: ${history?.lastVisitDate}, mazatlanToday: ${mazatlanToday}, selectedDay: ${selectedDay}`);
+    }
+    
+    return wasCompletedToday;
   });
   
 
@@ -1162,6 +1578,152 @@ export default function RecorridosPage() {
   // ✅ REVISED: Use corrected counts
   const completedCount = allCompletedTodayClients.length; // All completed today (any session)
   const pendingCount = optimizedPendingClients.length; // Actually pending clients (optimized)
+
+  // ✅ DEBUG: Check for duplicate clients (same client in both completed and pending)
+  useEffect(() => {
+    const completedNames = allCompletedTodayClients.map(c => getOriginalClientName(c.Nombre));
+    const pendingNames = optimizedPendingClients.map(c => getOriginalClientName(c.Nombre));
+    const duplicates = completedNames.filter(name => pendingNames.includes(name));
+    
+    if (duplicates.length > 0) {
+      console.error('🚨 DUPLICATE CLIENTS DETECTED:', {
+        duplicateClients: duplicates,
+        completedClients: completedNames,
+        pendingClients: pendingNames,
+        selectedDay,
+        mazatlanToday
+      });
+      
+      // Show details for each duplicate
+      duplicates.forEach(duplicateName => {
+        const completedClient = allCompletedTodayClients.find(c => getOriginalClientName(c.Nombre) === duplicateName);
+        const pendingClient = optimizedPendingClients.find(c => getOriginalClientName(c.Nombre) === duplicateName);
+        const history = visitHistory[duplicateName];
+        
+        console.error(`🚨 DUPLICATE DETAILS for ${duplicateName}:`, {
+          completedClient: completedClient ? {
+            name: completedClient.Nombre,
+            day: completedClient.Dia,
+            type: completedClient.Tipo_Cliente
+          } : 'Not found',
+          pendingClient: pendingClient ? {
+            name: pendingClient.Nombre,
+            day: pendingClient.Dia,
+            type: pendingClient.Tipo_Cliente
+          } : 'Not found',
+          visitHistory: history,
+          visitStatus: visitStatus[pendingClient?.Nombre || ''] || 'none'
+        });
+      });
+    } else {
+      console.log('✅ NO DUPLICATES: All clients properly separated between completed and pending');
+    }
+  }, [allCompletedTodayClients, optimizedPendingClients, selectedDay]);
+
+  // ✅ DEBUG: Log finish button visibility logic
+  useEffect(() => {
+    // ✅ TIMEZONE DEBUG: Check all date calculations
+    const utcNow = new Date();
+    const mazatlanOffset = -7; // GMT-7
+    const mazatlanTime = new Date(utcNow.getTime() + (mazatlanOffset * 60 * 60 * 1000));
+    const utcToday = utcNow.toISOString().split('T')[0];
+    const mazatlanToday = mazatlanTime.toISOString().split('T')[0];
+    
+    const dayNames = ['Domingo', 'Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado'];
+    const utcDayName = dayNames[utcNow.getDay()];
+    const mazatlanDayName = dayNames[mazatlanTime.getDay()];
+    
+    console.log('🕐 TIMEZONE DEBUG:', {
+      utcTime: utcNow.toISOString(),
+      mazatlanTime: mazatlanTime.toISOString(),
+      utcToday,
+      mazatlanToday,
+      utcDayName: utcDayName as string,
+      mazatlanDayName: mazatlanDayName as string,
+      selectedDay,
+      timezoneMatch: mazatlanDayName === selectedDay,
+      utcMatch: utcDayName === selectedDay,
+      dateComparisonForVisitHistory: {
+        usingUtcToday: utcToday,
+        usingMazatlanToday: mazatlanToday,
+        shouldUseMazatlanTime: true
+      }
+    });
+    
+    console.log('🔍 FINISH BUTTON DEBUG:', {
+      routeInProgress,
+      routeStartTime,
+      routeFinishedToday,
+      completedCount,
+      pendingCount,
+      shouldShowButton: routeInProgress || !!routeStartTime || routeFinishedToday,
+      hasCompletedToday: completedCount > 0,
+      selectedDay,
+      actualDayName: mazatlanDayName as string,
+      today: mazatlanToday,
+      allClientsForSelectedDayCount: allClientsForSelectedDay.length,
+      totalVisitHistoryEntries: Object.keys(visitHistory).length,
+      routePerformanceRecords: routePerformanceData.length
+    });
+    
+    // ✅ DEBUG: Show recent performance records for current user/vendor
+    const userEmail = selectedVendorEmail || session?.user?.email;
+    if (routePerformanceData.length > 0 && userEmail) {
+      const userRecords = routePerformanceData.filter(record => {
+        const recordVendor = record.vendedor;
+        return recordVendor === userEmail || 
+               (isMaster && selectedVendorEmail && recordVendor === selectedVendorEmail);
+      }).slice(0, 3); // Show last 3 records
+      
+      console.log('📊 PERFORMANCE RECORDS for current user:', userRecords.map(record => ({
+        fecha: record.fecha,
+        dia_ruta: record.dia_ruta,
+        vendedor: record.vendedor,
+        tiempo_inicio: record.tiempo_inicio,
+        tiempo_fin: record.tiempo_fin,
+        clientes_visitados: record.clientes_visitados,
+        isToday: record.fecha === mazatlanToday,
+        isSelectedDay: record.dia_ruta?.toLowerCase() === selectedDay.toLowerCase()
+      })));
+    }
+    
+    // ✅ DEBUG: Log visit history with today's date (using both UTC and Mazatlan time)
+    const utcTodayVisits = Object.entries(visitHistory).filter(([name, history]) => history.lastVisitDate === utcToday);
+    const mazatlanTodayVisits = Object.entries(visitHistory).filter(([name, history]) => history.lastVisitDate === mazatlanToday);
+    
+    if (utcTodayVisits.length > 0) {
+      console.log('📅 VISITS COMPLETED TODAY (UTC):', utcTodayVisits.map(([name, history]) => ({
+        clientName: name,
+        lastVisitDate: history.lastVisitDate,
+        lastVisitWeek: history.lastVisitWeek
+      })));
+    }
+    
+    if (mazatlanTodayVisits.length > 0) {
+      console.log('📅 VISITS COMPLETED TODAY (MAZATLAN):', mazatlanTodayVisits.map(([name, history]) => ({
+        clientName: name,
+        lastVisitDate: history.lastVisitDate,
+        lastVisitWeek: history.lastVisitWeek
+      })));
+    }
+    
+    if (utcTodayVisits.length === 0 && mazatlanTodayVisits.length === 0) {
+      console.log('📅 NO VISITS FOUND FOR TODAY - Checking recent visits:');
+      const recentVisits = Object.entries(visitHistory)
+        .filter(([name, history]) => {
+          const visitDate = new Date(history.lastVisitDate);
+          const daysDiff = Math.floor((utcNow.getTime() - visitDate.getTime()) / (1000 * 60 * 60 * 24));
+          return daysDiff <= 7; // Last 7 days
+        })
+        .sort(([,a], [,b]) => new Date(b.lastVisitDate).getTime() - new Date(a.lastVisitDate).getTime());
+      
+      console.log('🔍 RECENT VISITS (last 7 days):', recentVisits.slice(0, 5).map(([name, history]) => ({
+        clientName: name,
+        lastVisitDate: history.lastVisitDate,
+        daysAgo: Math.floor((utcNow.getTime() - new Date(history.lastVisitDate).getTime()) / (1000 * 60 * 60 * 24))
+      })));
+    }
+  }, [routeInProgress, routeStartTime, completedCount, pendingCount, selectedDay, allClientsForSelectedDay.length, visitHistory]);
 
 
 
@@ -1362,12 +1924,33 @@ export default function RecorridosPage() {
           </div>
         )}
 
+        {/* Route Finished Indicator */}
+        {routeFinishedToday && (
+          <div className="mb-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+            <div className="flex items-center">
+              <CheckCircle className="h-5 w-5 text-green-600 mr-2" />
+              <div className="flex-1">
+                <div className="text-sm font-medium text-green-800">
+                  ✅ Ruta del {selectedDay} ya finalizada
+                </div>
+                <div className="text-xs text-green-600">
+                  Puedes finalizar nuevamente si tienes clientes adicionales
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Finish Route Button */}
-        {routeStartTime && (
+        {(routeInProgress || routeStartTime || routeFinishedToday) && (
           <button
             onClick={finishRoute}
             disabled={savingRoute}
-            className="w-full py-2 px-4 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+            className={`w-full py-2 px-4 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center ${
+              routeFinishedToday 
+                ? 'bg-blue-600 text-white hover:bg-blue-700' 
+                : 'bg-green-600 text-white hover:bg-green-700'
+            }`}
           >
             {savingRoute ? (
               <>
@@ -1377,7 +1960,10 @@ export default function RecorridosPage() {
             ) : (
               <>
                 <Save className="h-4 w-4 mr-2" />
-                Finalizar Ruta del {selectedDay}
+                {routeFinishedToday 
+                  ? `Re-Finalizar Ruta del ${selectedDay}` 
+                  : `Finalizar Ruta del ${selectedDay}`
+                }
               </>
             )}
           </button>
@@ -1395,7 +1981,32 @@ export default function RecorridosPage() {
                   ? 'bg-white text-gray-900 shadow-sm'
                   : 'bg-gray-100 text-gray-500 hover:text-gray-700'
               }`}
-              onClick={() => setSelectedDay(day)}
+              onClick={() => {
+                console.log('🔄 DAY SWITCH: Switching to day:', day, 'from:', selectedDay);
+                
+                // ✅ ENHANCED: More explicit state reset with detailed logging
+                console.log('🔄 DAY SWITCH: Resetting route states before switch');
+                setSelectedDay(day);
+                setRouteFinishedToday(false);
+                setRouteStartTime(null);
+                setRouteInProgress(false);
+                
+                // ✅ ENHANCED: Clear any session-specific visit status when switching days
+                setVisitStatus({});
+                
+                console.log('🔄 DAY SWITCH: States reset, loading persisted state for:', day);
+                
+                // ✅ FIXED: Load persisted state for the new day after a brief delay to ensure state is updated
+                setTimeout(() => {
+                  console.log('🔄 DAY SWITCH: Loading persisted state for:', day);
+                  loadPersistedRouteState(day);
+                  // ✅ NEW: Force a route progress check after loading state
+                  setTimeout(() => {
+                    console.log('🔄 DAY SWITCH: Checking route progress after state load for:', day);
+                    checkRouteInProgress();
+                  }, 50);
+                }, 150);
+              }}
             >
               {day.slice(0, 3)}
             </button>
