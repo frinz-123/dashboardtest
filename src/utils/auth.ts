@@ -18,7 +18,7 @@ export const EMAIL_TO_VENDOR_LABELS: Record<string, string> = {
   'ventas3productoselrey@gmail.com': 'Lidia',
   'ventasmztproductoselrey.com@gmail.com': 'Mazatlan',
   'ventasmochisproductoselrey@gmail.com': 'Mochis',
-  'franzcharbell@gmail.com': 'Franz',
+  'franzcharbell@gmail.com': 'Franz', // ✅ REVERTED: Franz has his own data with his email
   'cesar.reyes.ochoa@gmail.com': 'Cesar',
   'arturo.elreychiltepin@gmail.com': 'Arturo Mty',
   'alopezelrey@gmail.com': 'Arlyn',

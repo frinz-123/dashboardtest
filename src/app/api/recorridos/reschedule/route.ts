@@ -41,6 +41,10 @@ export async function POST(request: NextRequest) {
       const sheets = google.sheets({ version: 'v4', auth })
       const spreadsheetId = '1a0jZVdKFNWTHDsM-68LT5_OLPMGejAKs9wfCxYqqe_g'
 
+      // ✅ FIXED: Use email directly to match client data vendor field
+      // Don't convert to friendly labels - use the actual email as it appears in the client data
+      const vendorLabel = userEmail;
+      
       // Prepare rows for batch insert
       const currentDate = new Date().toISOString().split('T')[0]
       const values = reschedules.map((reschedule: RescheduleRequest) => [
@@ -49,7 +53,7 @@ export async function POST(request: NextRequest) {
         reschedule.originalDay,       // dia_original (C)
         reschedule.newDay,           // dia_nuevo (D)
         currentDate,                 // fecha_reprogramacion (E)
-        userEmail,                   // vendedor (F)
+        vendorLabel,                 // vendedor (F) - ✅ FIXED: Use consistent vendor label
         'Si'                         // activo (G)
       ])
 
@@ -77,7 +81,7 @@ export async function POST(request: NextRequest) {
           originalDay: reschedules[index].originalDay,
           newDay: reschedules[index].newDay,
           date: currentDate,
-          vendedor: userEmail,
+          vendedor: vendorLabel, // ✅ FIXED: Use consistent vendor label
           activo: 'Si'
         }))
       })
@@ -109,6 +113,10 @@ export async function POST(request: NextRequest) {
 
       console.log(`📝 DEACTIVATE RESCHEDULE: Looking for ${clientName} (${visitType}) to deactivate`)
 
+      // ✅ FIXED: Use email directly to match client data vendor field
+      // Don't convert to friendly labels - use the actual email as it appears in the client data
+      const vendorLabel = userEmail;
+
       // First, get all rows from the sheet to find the matching reschedule
       const getResponse = await sheets.spreadsheets.values.get({
         spreadsheetId,
@@ -123,7 +131,7 @@ export async function POST(request: NextRequest) {
         const [rowClient, rowVisitType, , , , rowVendedor, rowActivo] = rows[i]
         if (rowClient === clientName && 
             rowVisitType === visitType && 
-            rowVendedor === userEmail && 
+            rowVendedor === vendorLabel && // ✅ FIXED: Use consistent vendor label
             rowActivo === 'Si') {
           rowIndexToUpdate = i + 1 // Google Sheets is 1-indexed
           break

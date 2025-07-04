@@ -141,12 +141,14 @@ export async function GET(request: NextRequest) {
       // Filter by vendedor (seller) based on sheet type
       let filteredData = data;
       if (sheet === 'clientes') {
-        if (isMaster && !viewAsEmail) {
-          // Master account without viewAsEmail - return ALL clients
-          console.log('🔍 API DEBUG: Master account - returning ALL clients');
+        // ✅ FIXED: Always filter for specific vendor, even for master accounts
+        // Only show ALL clients if master explicitly requests it with viewAsEmail=null
+        if (isMaster && (viewAsEmail === null || viewAsEmail === 'null')) {
+          // Master account explicitly requesting ALL clients
+          console.log('🔍 API DEBUG: Master account - returning ALL clients (explicit request)');
           filteredData = data;
         } else {
-          // Regular filtering or master account viewing as specific vendor
+          // Regular filtering or master account viewing as specific vendor (including themselves)
           const userLabel = EMAIL_TO_VENDOR_LABELS[effectiveEmail];
           
           filteredData = data.filter(item => {

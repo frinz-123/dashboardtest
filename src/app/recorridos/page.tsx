@@ -95,7 +95,7 @@ export default function RecorridosPage() {
     const dayNames: RouteDay[] = ['Domingo', 'Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado']
     const mazatlanDay = dayNames[mazatlanTime.getDay()];
     
-    console.log('🕐 DAY SELECTION INIT:', {
+    console.log(' DAY SELECTION INIT:', {
       utcTime: utcNow.toISOString(),
       mazatlanTime: mazatlanTime.toISOString(),
       utcDay: dayNames[utcNow.getDay()],
@@ -116,6 +116,7 @@ export default function RecorridosPage() {
   const [postponePool, setPostponePool] = useState<Record<string, { client: Client, originalDay: string, postponedOn: string }>>({})
   const [showPostponePool, setShowPostponePool] = useState(false)
   const [cleyDaySelector, setCleyDaySelector] = useState<string | null>(null) // Track which client is showing day selector
+  const [completingClient, setCompletingClient] = useState<string | null>(null) // Track which client is being completed for animation
   
   // ✅ NEW: Pending reschedules state
   const [pendingReschedules, setPendingReschedules] = useState<Array<{
@@ -134,9 +135,27 @@ export default function RecorridosPage() {
   const [availableVendors, setAvailableVendors] = useState<Array<{email: string, label: string, clientCount?: number}>>([])
   const [viewingAsVendor, setViewingAsVendor] = useState<string>('')
 
+  // ✅ HELPER: Calculate the actual date for the selected day in the current week
+  const getSelectedDayDate = (selectedDay: RouteDay): string => {
+    const utcNow = new Date();
+    const mazatlanOffset = -7; // GMT-7
+    const mazatlanTime = new Date(utcNow.getTime() + (mazatlanOffset * 60 * 60 * 1000));
+    
+    const dayNames: RouteDay[] = ['Domingo', 'Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado'];
+    const currentDayIndex = mazatlanTime.getDay();
+    const selectedDayIndex = dayNames.indexOf(selectedDay);
+    
+    // Calculate the date for the selected day in the current week
+    const selectedDayDate = new Date(mazatlanTime);
+    const dayDifference = selectedDayIndex - currentDayIndex;
+    selectedDayDate.setDate(mazatlanTime.getDate() + dayDifference);
+    
+    return selectedDayDate.toISOString().split('T')[0];
+  };
+
   // ✅ VALIDATION: Log when postpone pool changes
   useEffect(() => {
-    console.log('🔄 POSTPONE POOL CHANGED:', {
+    console.log(' POSTPONE POOL CHANGED:', {
       count: Object.keys(postponePool).length,
       clients: Object.keys(postponePool),
       details: Object.entries(postponePool).map(([name, data]) => ({
@@ -167,15 +186,25 @@ export default function RecorridosPage() {
           email,
           label: getVendorLabel(email)
         }));
-        setAvailableVendors(vendors);
         
-        // Default to user's own routes if they have any, otherwise show all
+        // ✅ FIXED: Add "All Routes" option explicitly for master accounts
+        const vendorsWithAllOption = [
+          { email: 'ALL_ROUTES', label: 'Todas las Rutas' },
+          ...vendors
+        ];
+        
+        setAvailableVendors(vendorsWithAllOption);
+        
+        // ✅ FIXED: Default to user's own routes if they exist, otherwise default to first vendor
         const userHasOwnRoutes = vendors.some(v => v.email === session.user?.email);
         if (userHasOwnRoutes && session.user?.email) {
           setSelectedVendorEmail(session.user.email);
           setViewingAsVendor(getVendorLabel(session.user.email));
+        } else if (vendors.length > 0) {
+          setSelectedVendorEmail(vendors[0].email);
+          setViewingAsVendor(vendors[0].label);
         } else {
-          setSelectedVendorEmail(null);
+          setSelectedVendorEmail('ALL_ROUTES');
           setViewingAsVendor('Todas las Rutas');
         }
       }
@@ -184,7 +213,7 @@ export default function RecorridosPage() {
       loadPersistedRouteState();
       
       setDataLoaded(false); // Reset data loaded state
-      console.log('🔄 DATA LOADING: Starting Promise.all with all fetch functions');
+      console.log(' DATA LOADING: Starting Promise.all with all fetch functions');
       Promise.all([
         fetchClients(),
         fetchConfiguration(),
@@ -211,8 +240,8 @@ export default function RecorridosPage() {
   // ✅ NEW: Refetch data when vendor selection changes for master accounts
   useEffect(() => {
     if (isMaster && dataLoaded) {
-      console.log('🔍 MASTER DEBUG: Vendor selection changed, refetching data for:', selectedVendorEmail || 'all vendors')
-      console.log('🔄 VENDOR REFETCH: Starting Promise.all for vendor change');
+      console.log(' MASTER DEBUG: Vendor selection changed, refetching data for:', selectedVendorEmail || 'all vendors')
+      console.log(' VENDOR REFETCH: Starting Promise.all for vendor change');
       Promise.all([
         fetchClients(),
         fetchVisitHistory(),
@@ -234,14 +263,13 @@ export default function RecorridosPage() {
   // ✅ NEW: Dedicated effect to ALWAYS fetch route performance when session or vendor changes (for debugging)
   useEffect(() => {
     if (session?.user?.email) {
-      console.log('🔄 PERFORMANCE EFFECT: Triggering fetchRoutePerformance due to email/vendor change');
+      console.log(' PERFORMANCE EFFECT: Triggering fetchRoutePerformance due to email/vendor change');
       fetchRoutePerformance();
     }
   }, [session?.user?.email, selectedVendorEmail]);
 
-  // ✅ NEW: Load persisted route state and check Rutas_Performance
-  const loadPersistedRouteState = (dayToCheck?: RouteDay) => {
-    console.log('🔄 ROUTE STATE: Starting loadPersistedRouteState function');
+  // ✅ NEW: Save route state to localStorage
+  const saveRouteState = (startTime: string | null, finished: boolean = false, finishedAt?: string, dayToSave?: RouteDay) => {
     try {
       const userEmail = selectedVendorEmail || session?.user?.email;
       if (!userEmail) return;
@@ -251,21 +279,290 @@ export default function RecorridosPage() {
       const mazatlanTime = new Date(utcNow.getTime() + (mazatlanOffset * 60 * 60 * 1000));
       const mazatlanToday = mazatlanTime.toISOString().split('T')[0];
       
+      const storageKey = `routeState_${userEmail}_${mazatlanToday}`;
+      const dayForState = dayToSave || selectedDay;
+      
+      if (startTime || finished) {
+        const stateToSave = {
+          routeStartTime: startTime,
+          selectedDay: dayForState,
+          routeFinished: finished,
+          finishedAt: finishedAt,
+          timestamp: new Date().toISOString()
+        };
+        localStorage.setItem(storageKey, JSON.stringify(stateToSave));
+        console.log(' ROUTE PERSISTENCE: Saved route state to localStorage', { startTime, finished, finishedAt, day: dayForState });
+      } else {
+        localStorage.removeItem(storageKey);
+        console.log('️ ROUTE PERSISTENCE: Cleared route state from localStorage');
+      }
+    } catch (error) {
+      console.error('❌ Error saving route state:', error);
+    }
+  };
+
+  // ✅ NEW: Load persisted route state and check Rutas_Performance
+  const loadPersistedRouteState = (dayToCheck?: RouteDay) => {
+    console.log('🔍 ROUTE STATE: Starting loadPersistedRouteState function');
+    console.log('🔍 ROUTE STATE DEBUG:', {
+      dayToCheck,
+      selectedDay,
+      routePerformanceDataLength: routePerformanceData.length,
+      userEmail: selectedVendorEmail || session?.user?.email,
+      isMaster,
+      selectedVendorEmail
+    });
+    
+    try {
+      const userEmail = selectedVendorEmail || session?.user?.email;
+      if (!userEmail) {
+        console.log('❌ ROUTE STATE: No user email available');
+        return;
+      }
+
+      const utcNow = new Date();
+      const mazatlanOffset = -7; // GMT-7
+      const mazatlanTime = new Date(utcNow.getTime() + (mazatlanOffset * 60 * 60 * 1000));
+      const mazatlanToday = mazatlanTime.toISOString().split('T')[0];
+      
       // ✅ FIXED: Use the dayToCheck parameter if provided, otherwise use selectedDay
       const dayToSearch = dayToCheck || selectedDay;
       
-      // ✅ NEW: Check Rutas_Performance sheet for completed routes today
-      console.log('🔍 PERFORMANCE SEARCH: Looking for completed route with criteria:', {
+      console.log('🔍 ROUTE STATE: Search parameters:', {
+        userEmail,
+        mazatlanToday,
+        dayToSearch,
+        searchingForToday: mazatlanToday,
+        dayToSearchLower: dayToSearch.toLowerCase()
+      });
+      
+      // ✅ VALIDATION: Log all available performance records for debugging
+      console.log('🔍 PERFORMANCE RECORDS ANALYSIS:');
+      console.log('📊 Total performance records:', routePerformanceData.length);
+      
+      if (routePerformanceData.length > 0) {
+        console.log('📊 Sample performance records:');
+        routePerformanceData.slice(0, 5).forEach((record, index) => {
+          console.log(`  Record ${index + 1}:`, {
+            fecha: record.fecha,
+            dia_ruta: record.dia_ruta,
+            vendedor: record.vendedor,
+            tiempo_inicio: record.tiempo_inicio,
+            tiempo_fin: record.tiempo_fin,
+            matchesDate: record.fecha === mazatlanToday,
+            matchesDay: record.dia_ruta?.toLowerCase() === dayToSearch.toLowerCase(),
+            vendorCheck: {
+              recordVendor: record.vendedor,
+              userEmail,
+              directMatch: record.vendedor === userEmail,
+              labelMatch: record.vendedor === 'Franz',
+              shouldMatch: record.vendedor === userEmail || record.vendedor === 'Franz'
+            }
+          });
+        });
+        
+        // ✅ VALIDATION: Check for finished routes on the selected day (any date)
+        console.log('🔍 SEARCHING FOR FINISHED ROUTES ON SELECTED DAY (ANY DATE):');
+        const dayRouteRecords = routePerformanceData.filter(record => {
+          const recordDay = record.dia_ruta?.toLowerCase();
+          const searchDay = dayToSearch.toLowerCase();
+          const dayMatch = recordDay === searchDay;
+          
+          console.log(`  Day filter: ${record.dia_ruta} (${recordDay}) vs ${dayToSearch} (${searchDay}) = ${dayMatch}`);
+          return dayMatch;
+        });
+        
+        console.log(`📊 Found ${dayRouteRecords.length} records for ${dayToSearch}:`, dayRouteRecords.map(r => ({
+          fecha: r.fecha,
+          vendedor: r.vendedor,
+          tiempo_inicio: r.tiempo_inicio,
+          tiempo_fin: r.tiempo_fin
+        })));
+        
+        // ✅ VALIDATION: Check vendor matching for each record
+        dayRouteRecords.forEach((record, index) => {
+          const vendorAliases = new Set<string>();
+          if (userEmail) {
+            vendorAliases.add(userEmail);
+            vendorAliases.add('Franz'); // Franz is the friendly label for franzcharbell@gmail.com
+          }
+          if (isMaster) {
+            if (selectedVendorEmail === 'ALL_ROUTES') {
+              vendorAliases.add('*'); // Special marker for all vendors
+            } else if (selectedVendorEmail) {
+              vendorAliases.add(selectedVendorEmail);
+              vendorAliases.add(getVendorLabel(selectedVendorEmail));
+            }
+          }
+          
+          const isCorrectVendor = vendorAliases.has('*') || vendorAliases.has(record.vendedor);
+          
+          console.log(`  Record ${index + 1} vendor check:`, {
+            recordVendor: record.vendedor,
+            vendorAliases: Array.from(vendorAliases),
+            isCorrectVendor,
+            wouldShowRefinalizar: isCorrectVendor
+          });
+        });
+      }
+      
+      // ✅ ENHANCED: Check for ANY completed route on the selected day (not just today)
+      console.log('🔍 PERFORMANCE CHECK: Looking for completed route with criteria:', {
         userEmail,
         selectedVendorEmail,
-        mazatlanToday,
         dayToSearch: dayToSearch.toLowerCase(),
         selectedDay: selectedDay.toLowerCase(),
         totalRecords: routePerformanceData.length,
         isMaster,
-        searchingForTodayAndDay: `date:${mazatlanToday} AND day:${dayToSearch.toLowerCase()}`
+        searchCriteria: `ANY date AND day:${dayToSearch.toLowerCase()}`,
+        masterAccountContext: {
+          isMaster,
+          selectedVendorEmail,
+          hasOwnRoutes: userEmail === session?.user?.email,
+          viewingOwnRoutes: selectedVendorEmail === session?.user?.email,
+          viewingAllRoutes: selectedVendorEmail === 'ALL_ROUTES',
+          viewingSpecificVendor: selectedVendorEmail && selectedVendorEmail !== 'ALL_ROUTES' && selectedVendorEmail !== session?.user?.email
+        }
       });
       
+      const anyDayRouteRecord = routePerformanceData.find(record => {
+        const recordDay = record.dia_ruta?.toLowerCase();
+        const recordVendor = record.vendedor;
+        
+        const isCorrectDay = recordDay === dayToSearch.toLowerCase();
+        
+        // ✅ FIXED: Build vendor aliases based on the SELECTED VENDOR, not the master account
+        const vendorAliases = new Set<string>();
+        
+        if (isMaster && selectedVendorEmail && selectedVendorEmail !== 'ALL_ROUTES') {
+          // ✅ FIXED: When master is viewing a specific vendor, check THAT vendor's routes
+          if (selectedVendorEmail === session?.user?.email) {
+            // Master viewing their own routes
+            vendorAliases.add(selectedVendorEmail);
+            vendorAliases.add('Franz'); // Add Franz label for franzcharbell@gmail.com
+            console.log(`🔍 MASTER VIEWING OWN ROUTES: Checking ${selectedVendorEmail} (Franz) routes`);
+          } else {
+            // Master viewing another vendor's routes - check ONLY that vendor
+            vendorAliases.add(selectedVendorEmail);
+            vendorAliases.add(getVendorLabel(selectedVendorEmail));
+            console.log(`🔍 MASTER VIEWING OTHER VENDOR: Checking ${selectedVendorEmail} (${getVendorLabel(selectedVendorEmail)}) routes, NOT Franz routes`);
+          }
+        } else if (isMaster && selectedVendorEmail === 'ALL_ROUTES') {
+          // For ALL_ROUTES, accept any vendor
+          vendorAliases.add('*'); // Special marker for all vendors
+          console.log(`🔍 MASTER VIEWING ALL ROUTES: Accepting any vendor`);
+        } else {
+          // Regular user or master without vendor selection - use their own identifiers
+          if (userEmail) {
+            vendorAliases.add(userEmail);
+            vendorAliases.add('Franz'); // Add the friendly label mapping for franzcharbell@gmail.com
+            console.log(`🔍 REGULAR USER OR DEFAULT: Checking ${userEmail} (Franz) routes`);
+          }
+        }
+        
+        const isCorrectVendor = vendorAliases.has('*') || vendorAliases.has(recordVendor);
+        
+        console.log('🔍 PERFORMANCE RECORD CHECK (ANY DATE):', {
+          recordDate: record.fecha,
+          recordDay,
+          recordVendor,
+          isCorrectDay: `${isCorrectDay} (${recordDay} === ${dayToSearch.toLowerCase()})`,
+          isCorrectVendor,
+          vendorAliases: Array.from(vendorAliases),
+          matches: isCorrectDay && isCorrectVendor,
+          reason: !isCorrectDay ? 'Day mismatch' : !isCorrectVendor ? 'Vendor mismatch' : 'All match',
+          masterAccountDebug: {
+            isMaster,
+            selectedVendorEmail,
+            sessionUserEmail: session?.user?.email,
+            isViewingOwnRoutes: selectedVendorEmail === session?.user?.email,
+            isViewingAllRoutes: selectedVendorEmail === 'ALL_ROUTES',
+            isViewingOtherVendor: selectedVendorEmail && selectedVendorEmail !== session?.user?.email && selectedVendorEmail !== 'ALL_ROUTES',
+            recordBelongsToSelectedVendor: vendorAliases.has(recordVendor),
+            shouldShowRefinalizar: isCorrectDay && isCorrectVendor
+          }
+        });
+        
+        return isCorrectDay && isCorrectVendor;
+      });
+      
+      if (anyDayRouteRecord) {
+        console.log('✅ PERFORMANCE CHECK: Found completed route for selected day (any date):', {
+          fecha: anyDayRouteRecord.fecha,
+          dia_ruta: anyDayRouteRecord.dia_ruta,
+          vendedor: anyDayRouteRecord.vendedor,
+          tiempo_inicio: anyDayRouteRecord.tiempo_inicio,
+          tiempo_fin: anyDayRouteRecord.tiempo_fin,
+          selectedDay: dayToSearch,
+          shouldShowRefinalizar: true,
+          masterAccountContext: {
+            isMaster,
+            selectedVendorEmail,
+            isViewingOwnRoute: anyDayRouteRecord.vendedor === userEmail || anyDayRouteRecord.vendedor === 'Franz',
+            isViewingOtherVendorRoute: anyDayRouteRecord.vendedor !== userEmail && anyDayRouteRecord.vendedor !== 'Franz'
+          }
+        });
+        
+        // ✅ FIXED: Always set route as finished if there's a completed route for this day
+        setRouteFinishedToday(true);
+        setRouteStartTime(anyDayRouteRecord.tiempo_inicio || '08:00');
+        setRouteInProgress(false);
+        
+        // Also save to localStorage for consistency
+        saveRouteState(anyDayRouteRecord.tiempo_inicio, true, anyDayRouteRecord.tiempo_fin, dayToSearch);
+        
+        console.log('✅ ROUTE STATE: Set finished state for selected day with re-finalizar capability');
+        return;
+      } else {
+        console.log('❌ PERFORMANCE CHECK: No completed route found for selected day:', {
+          dayToSearch,
+          totalRecordsChecked: routePerformanceData.length,
+          userEmail,
+          selectedVendorEmail,
+          masterAccountAnalysis: {
+            isMaster,
+            totalRecords: routePerformanceData.length,
+            franzRecords: routePerformanceData.filter(r => r.vendedor === userEmail || r.vendedor === 'Franz').length,
+            mazatlanRecords: routePerformanceData.filter(r => r.vendedor === 'Mazatlan').length,
+            brendaRecords: routePerformanceData.filter(r => r.vendedor === 'Brenda').length,
+            lidiaRecords: routePerformanceData.filter(r => r.vendedor === 'Lidia').length,
+            arlynRecords: routePerformanceData.filter(r => r.vendedor === 'Arlyn').length,
+            recordsForSelectedDay: routePerformanceData.filter(r => r.dia_ruta?.toLowerCase() === dayToSearch.toLowerCase()).map(r => ({
+              fecha: r.fecha,
+              vendedor: r.vendedor,
+              tiempo_inicio: r.tiempo_inicio
+            }))
+          },
+          vendorMatches: routePerformanceData.filter(r => {
+            // ✅ FIXED: Use same vendor alias logic as the main check
+            const vendorAliases = new Set<string>();
+            
+            if (isMaster && selectedVendorEmail && selectedVendorEmail !== 'ALL_ROUTES') {
+              if (selectedVendorEmail === session?.user?.email) {
+                // Master viewing their own routes
+                vendorAliases.add(selectedVendorEmail);
+                vendorAliases.add('Franz');
+              } else {
+                // Master viewing another vendor's routes
+                vendorAliases.add(selectedVendorEmail);
+                vendorAliases.add(getVendorLabel(selectedVendorEmail));
+              }
+            } else if (isMaster && selectedVendorEmail === 'ALL_ROUTES') {
+              vendorAliases.add('*');
+            } else {
+              if (userEmail) {
+                vendorAliases.add(userEmail);
+                vendorAliases.add('Franz');
+              }
+            }
+            
+            return vendorAliases.has('*') || vendorAliases.has(r.vendedor);
+          }).length,
+          dayMatches: routePerformanceData.filter(r => r.dia_ruta?.toLowerCase() === dayToSearch.toLowerCase()).length
+        });
+      }
+      
+      // ✅ ENHANCED: Check for today's specific route record  
       const todayRouteRecord = routePerformanceData.find(record => {
         const recordDate = record.fecha;
         const recordDay = record.dia_ruta?.toLowerCase();
@@ -274,41 +571,61 @@ export default function RecorridosPage() {
         const isToday = recordDate === mazatlanToday;
         const isCorrectDay = recordDay === dayToSearch.toLowerCase();
         
-        // 🔄 NEW: Build a set of acceptable vendor identifiers (email + friendly label)
+        // ✅ FIXED: Build vendor aliases based on the SELECTED VENDOR, not the master account
         const vendorAliases = new Set<string>();
-        if (userEmail) {
-          vendorAliases.add(userEmail);
-          vendorAliases.add(getVendorLabel(userEmail));
-        }
-        if (isMaster && selectedVendorEmail) {
-          vendorAliases.add(selectedVendorEmail);
-          vendorAliases.add(getVendorLabel(selectedVendorEmail));
+        
+        if (isMaster && selectedVendorEmail && selectedVendorEmail !== 'ALL_ROUTES') {
+          // ✅ FIXED: When master is viewing a specific vendor, check THAT vendor's routes
+          if (selectedVendorEmail === session?.user?.email) {
+            // Master viewing their own routes
+            vendorAliases.add(selectedVendorEmail);
+            vendorAliases.add('Franz'); // Add Franz label for franzcharbell@gmail.com
+          } else {
+            // Master viewing another vendor's routes - check ONLY that vendor
+            vendorAliases.add(selectedVendorEmail);
+            vendorAliases.add(getVendorLabel(selectedVendorEmail));
+          }
+        } else if (isMaster && selectedVendorEmail === 'ALL_ROUTES') {
+          // For ALL_ROUTES, accept any vendor
+          vendorAliases.add('*'); // Special marker for all vendors
+        } else {
+          // Regular user or master without vendor selection - use their own identifiers
+          if (userEmail) {
+            vendorAliases.add(userEmail);
+            vendorAliases.add('Franz'); // Add Franz label for franzcharbell@gmail.com
+          }
         }
         
-        const isCorrectVendor = vendorAliases.has(recordVendor);
+        const isCorrectVendor = vendorAliases.has('*') || vendorAliases.has(recordVendor);
         
-        console.log('🔍 PERFORMANCE RECORD CHECK:', {
+        console.log('🔍 TODAY PERFORMANCE RECORD CHECK:', {
           recordDate,
           recordDay,
           recordVendor,
           isToday: `${isToday} (${recordDate} === ${mazatlanToday})`,
           isCorrectDay: `${isCorrectDay} (${recordDay} === ${dayToSearch.toLowerCase()})`,
           isCorrectVendor,
+          vendorAliases: Array.from(vendorAliases),
           matches: isToday && isCorrectDay && isCorrectVendor,
-          reason: !isToday ? 'Date mismatch' : !isCorrectDay ? 'Day mismatch' : !isCorrectVendor ? 'Vendor mismatch' : 'All match'
+          reason: !isToday ? 'Date mismatch' : !isCorrectDay ? 'Day mismatch' : !isCorrectVendor ? 'Vendor mismatch' : 'All match',
+          selectedVendorContext: {
+            isMaster,
+            selectedVendorEmail,
+            isViewingOwnRoutes: selectedVendorEmail === session?.user?.email,
+            isViewingOtherVendor: selectedVendorEmail && selectedVendorEmail !== session?.user?.email && selectedVendorEmail !== 'ALL_ROUTES'
+          }
         });
         
         return isToday && isCorrectDay && isCorrectVendor;
       });
       
       if (todayRouteRecord) {
-        console.log('📊 PERFORMANCE CHECK: Found completed route in Rutas_Performance:', {
+        console.log('✅ PERFORMANCE CHECK: Found completed route in Rutas_Performance for TODAY:', {
           fecha: todayRouteRecord.fecha,
           dia_ruta: todayRouteRecord.dia_ruta,
           vendedor: todayRouteRecord.vendedor,
           tiempo_inicio: todayRouteRecord.tiempo_inicio,
-          tiempo_fin: todayRouteRecord.tiempo_fin,
-          clientes_visitados: todayRouteRecord.clientes_visitados
+          tiempo_fin: todayRouteRecord.tiempo_fin
         });
         
         setRouteFinishedToday(true);
@@ -332,7 +649,7 @@ export default function RecorridosPage() {
           finishedAt: savedFinishedAt
         } = JSON.parse(savedState);
         
-        console.log('🔄 ROUTE PERSISTENCE: Loading saved route state from localStorage:', {
+        console.log('🔍 ROUTE PERSISTENCE: Loading saved route state from localStorage:', {
           savedStartTime,
           savedDay,
           savedFinished,
@@ -358,55 +675,28 @@ export default function RecorridosPage() {
             }
             console.log('✅ ROUTE PERSISTENCE: Restored route session from localStorage for today');
           } else {
-            console.log('🔄 ROUTE PERSISTENCE: Skipping state restoration - viewing different day than today');
-            // Clear any stale state when viewing past/future days
-            setRouteStartTime(null);
-            setRouteInProgress(false);
-            setRouteFinishedToday(false);
+            console.log('🔍 ROUTE PERSISTENCE: Skipping state restoration - viewing different day than today');
+            // ✅ FIXED: Don't clear states when viewing other days - let them show re-finalizar if they have completed routes
+            // setRouteStartTime(null);
+            // setRouteInProgress(false);
+            // setRouteFinishedToday(false);
           }
         } else {
-          console.log('🔄 ROUTE PERSISTENCE: Saved day mismatch - clearing states');
+          console.log('🔍 ROUTE PERSISTENCE: Saved day mismatch - clearing states');
           // Clear states if saved day doesn't match
           setRouteStartTime(null);
           setRouteInProgress(false);
           setRouteFinishedToday(false);
         }
+      } else {
+        console.log('🔍 ROUTE PERSISTENCE: No localStorage state found for today');
+        // ✅ FIXED: Don't clear states if no localStorage - let performance records determine state
+        // setRouteStartTime(null);
+        // setRouteInProgress(false);
+        // setRouteFinishedToday(false);
       }
     } catch (error) {
       console.error('❌ Error loading persisted route state:', error);
-    }
-  };
-
-  // ✅ NEW: Save route state to localStorage
-  const saveRouteState = (startTime: string | null, finished: boolean = false, finishedAt?: string, dayToSave?: RouteDay) => {
-    try {
-      const userEmail = selectedVendorEmail || session?.user?.email;
-      if (!userEmail) return;
-
-      const utcNow = new Date();
-      const mazatlanOffset = -7; // GMT-7
-      const mazatlanTime = new Date(utcNow.getTime() + (mazatlanOffset * 60 * 60 * 1000));
-      const mazatlanToday = mazatlanTime.toISOString().split('T')[0];
-      
-      const storageKey = `routeState_${userEmail}_${mazatlanToday}`;
-      const dayForState = dayToSave || selectedDay;
-      
-      if (startTime || finished) {
-        const stateToSave = {
-          routeStartTime: startTime,
-          selectedDay: dayForState,
-          routeFinished: finished,
-          finishedAt: finishedAt,
-          timestamp: new Date().toISOString()
-        };
-        localStorage.setItem(storageKey, JSON.stringify(stateToSave));
-        console.log('💾 ROUTE PERSISTENCE: Saved route state to localStorage', { startTime, finished, finishedAt, day: dayForState });
-      } else {
-        localStorage.removeItem(storageKey);
-        console.log('🗑️ ROUTE PERSISTENCE: Cleared route state from localStorage');
-      }
-    } catch (error) {
-      console.error('❌ Error saving route state:', error);
     }
   };
 
@@ -448,7 +738,7 @@ export default function RecorridosPage() {
         (!!routeStartTime && !routeFinishedToday) // Only consider routeStartTime if route not finished
       );
       
-      console.log('🔍 ROUTE PROGRESS CHECK (DAY-AWARE):', {
+      console.log(' ROUTE PROGRESS CHECK (DAY-AWARE):', {
         userEmail,
         mazatlanToday,
         selectedDay,
@@ -459,7 +749,7 @@ export default function RecorridosPage() {
         routeFinishedToday,
         shouldShowFinishButton,
         completedTodayCount: Object.values(visitHistory).filter(h => h.lastVisitDate === mazatlanToday).length,
-        reason: !isSelectedDayToday ? 'Not today\'s tab' : 
+        reason: !isSelectedDayToday ? "Not today's tab" : 
                 !hasCompletedVisitsToday && !routeStartTime ? 'No completed visits and no start time' :
                 routeFinishedToday && !!routeStartTime ? 'Route already finished' : 
                 'Should show button'
@@ -472,7 +762,7 @@ export default function RecorridosPage() {
         const defaultStartTime = '08:00'; // Default morning start
         setRouteStartTime(defaultStartTime);
         saveRouteState(defaultStartTime);
-        console.log('🔄 ROUTE PROGRESS: Set default start time for existing completed visits on correct day');
+        console.log(' ROUTE PROGRESS: Set default start time for existing completed visits on correct day');
       }
       
     } catch (error) {
@@ -489,12 +779,18 @@ export default function RecorridosPage() {
       // Determine which email to use for the API call
       let apiUrl = `/api/recorridos?email=${encodeURIComponent(session?.user?.email || '')}&sheet=clientes`
       
-      // For master accounts, add viewAsEmail parameter if viewing specific vendor
-      if (isMaster && selectedVendorEmail) {
-        apiUrl += `&viewAsEmail=${encodeURIComponent(selectedVendorEmail)}`
+      // ✅ FIXED: Handle master account vendor selection properly
+      if (isMaster) {
+        if (selectedVendorEmail === 'ALL_ROUTES') {
+          // Explicitly request all routes by passing viewAsEmail=null
+          apiUrl += `&viewAsEmail=null`
+        } else if (selectedVendorEmail) {
+          // View specific vendor (including master's own email)
+          apiUrl += `&viewAsEmail=${encodeURIComponent(selectedVendorEmail)}`
+        }
       }
       
-      console.log('🔍 MASTER DEBUG: Fetching clients with URL:', apiUrl)
+      console.log(' MASTER DEBUG: Fetching clients with URL:', apiUrl)
       
       const response = await fetch(apiUrl)
       
@@ -505,7 +801,7 @@ export default function RecorridosPage() {
       const data = await response.json()
       setClients(data.data || [])
       
-      console.log('🔍 MASTER DEBUG: Received clients:', data.data?.length || 0)
+      console.log(' MASTER DEBUG: Received clients:', data.data?.length || 0)
     } catch (error) {
       console.error('❌ Error fetching clients:', error)
     } finally {
@@ -550,9 +846,15 @@ export default function RecorridosPage() {
     try {
       let apiUrl = `/api/recorridos?email=${encodeURIComponent(session?.user?.email || '')}&sheet=metricas`
       
-      // For master accounts, add viewAsEmail parameter if viewing specific vendor
-      if (isMaster && selectedVendorEmail) {
-        apiUrl += `&viewAsEmail=${encodeURIComponent(selectedVendorEmail)}`
+      // ✅ FIXED: Handle master account vendor selection properly
+      if (isMaster) {
+        if (selectedVendorEmail === 'ALL_ROUTES') {
+          // Explicitly request all routes by passing viewAsEmail=null
+          apiUrl += `&viewAsEmail=null`
+        } else if (selectedVendorEmail) {
+          // View specific vendor (including master's own email)
+          apiUrl += `&viewAsEmail=${encodeURIComponent(selectedVendorEmail)}`
+        }
       }
       
       const response = await fetch(apiUrl)
@@ -600,9 +902,15 @@ export default function RecorridosPage() {
     try {
       let apiUrl = `/api/recorridos?email=${encodeURIComponent(session?.user?.email || '')}&sheet=programacion`
       
-      // For master accounts, add viewAsEmail parameter if viewing specific vendor
-      if (isMaster && selectedVendorEmail) {
-        apiUrl += `&viewAsEmail=${encodeURIComponent(selectedVendorEmail)}`
+      // ✅ FIXED: Handle master account vendor selection properly
+      if (isMaster) {
+        if (selectedVendorEmail === 'ALL_ROUTES') {
+          // Explicitly request all routes by passing viewAsEmail=null
+          apiUrl += `&viewAsEmail=null`
+        } else if (selectedVendorEmail) {
+          // View specific vendor (including master's own email)
+          apiUrl += `&viewAsEmail=${encodeURIComponent(selectedVendorEmail)}`
+        }
       }
       
       const response = await fetch(apiUrl)
@@ -649,9 +957,15 @@ export default function RecorridosPage() {
     try {
       let apiUrl = `/api/recorridos?email=${encodeURIComponent(session?.user?.email || '')}&sheet=reprogramadas`
       
-      // For master accounts, add viewAsEmail parameter if viewing specific vendor
-      if (isMaster && selectedVendorEmail) {
-        apiUrl += `&viewAsEmail=${encodeURIComponent(selectedVendorEmail)}`
+      // ✅ FIXED: Handle master account vendor selection properly
+      if (isMaster) {
+        if (selectedVendorEmail === 'ALL_ROUTES') {
+          // Explicitly request all routes by passing viewAsEmail=null
+          apiUrl += `&viewAsEmail=null`
+        } else if (selectedVendorEmail) {
+          // View specific vendor (including master's own email)
+          apiUrl += `&viewAsEmail=${encodeURIComponent(selectedVendorEmail)}`
+        }
       }
       
       const response = await fetch(apiUrl)
@@ -678,7 +992,7 @@ export default function RecorridosPage() {
           }
         })
         
-        console.log('🔄 RESCHEDULE FETCH: Loaded active reschedules:', Object.keys(reschedules));
+        console.log('✅ RESCHEDULE FETCH: Loaded active reschedules:', Object.keys(reschedules));
         setRescheduledClients(reschedules)
       }
     } catch (error) {
@@ -687,26 +1001,32 @@ export default function RecorridosPage() {
   }
 
   const fetchRoutePerformance = async () => {
-    console.log('🚀 PERFORMANCE FETCH: Starting fetchRoutePerformance function');
-    console.log('🚀 PERFORMANCE FETCH: Session email:', session?.user?.email);
-    console.log('🚀 PERFORMANCE FETCH: Selected vendor email:', selectedVendorEmail);
-    console.log('🚀 PERFORMANCE FETCH: Is master:', isMaster);
+    console.log(' PERFORMANCE FETCH: Starting fetchRoutePerformance function');
+    console.log(' PERFORMANCE FETCH: Session email:', session?.user?.email);
+    console.log(' PERFORMANCE FETCH: Selected vendor email:', selectedVendorEmail);
+    console.log(' PERFORMANCE FETCH: Is master:', isMaster);
     try {
       let apiUrl = `/api/recorridos?email=${encodeURIComponent(session?.user?.email || '')}&sheet=performance`
       
-      // For master accounts, add viewAsEmail parameter if viewing specific vendor
-      if (isMaster && selectedVendorEmail) {
-        apiUrl += `&viewAsEmail=${encodeURIComponent(selectedVendorEmail)}`
+      // ✅ FIXED: Handle master account vendor selection properly
+      if (isMaster) {
+        if (selectedVendorEmail === 'ALL_ROUTES') {
+          // Explicitly request all routes by passing viewAsEmail=null
+          apiUrl += `&viewAsEmail=null`
+        } else if (selectedVendorEmail) {
+          // View specific vendor (including master's own email)
+          apiUrl += `&viewAsEmail=${encodeURIComponent(selectedVendorEmail)}`
+        }
       }
       
-      console.log('📊 PERFORMANCE API: Making request to:', apiUrl);
+      console.log('✅ PERFORMANCE API: Making request to:', apiUrl);
       
       const response = await fetch(apiUrl).catch(fetchError => {
         console.error('❌ PERFORMANCE FETCH NETWORK ERROR:', fetchError);
         throw fetchError;
       });
       
-      console.log('📊 PERFORMANCE API: Response status:', response.status, response.statusText);
+      console.log(' PERFORMANCE API: Response status:', response.status, response.statusText);
       
       if (!response.ok) {
         console.warn('❌ Failed to fetch route performance data - Status:', response.status);
@@ -717,14 +1037,14 @@ export default function RecorridosPage() {
       
       const data = await response.json()
       
-      console.log('📊 PERFORMANCE API: Raw response data:', data);
+      console.log(' PERFORMANCE API: Raw response data:', data);
       
       if (data.data && data.data.length > 0) {
-        console.log('📊 PERFORMANCE FETCH: Loaded route performance data:', data.data.length, 'records');
-        console.log('📊 PERFORMANCE FETCH: Sample records:', data.data.slice(0, 3));
+        console.log(' PERFORMANCE FETCH: Loaded route performance data:', data.data.length, 'records');
+        console.log(' PERFORMANCE FETCH: Sample records:', data.data.slice(0, 3));
         setRoutePerformanceData(data.data)
       } else {
-        console.log('📊 PERFORMANCE FETCH: No performance data returned');
+        console.log(' PERFORMANCE FETCH: No performance data returned');
         setRoutePerformanceData([]);
       }
     } catch (error: any) {
@@ -836,7 +1156,7 @@ export default function RecorridosPage() {
         const pedidosKey = `${client.Nombre} (Pedidos)`;
         if (rescheduledClients[pedidosKey]) {
           pedidosDay = rescheduledClients[pedidosKey].newDay;
-          console.log(`🔄 RESCHEDULE APPLIED: ${pedidosKey} moved from ${client.Dia} to ${pedidosDay}`);
+          console.log(` RESCHEDULE APPLIED: ${pedidosKey} moved from ${client.Dia} to ${pedidosDay}`);
         }
 
         const pedidosVisit: Client = {
@@ -850,7 +1170,7 @@ export default function RecorridosPage() {
         const entregaKey = `${client.Nombre} (Entrega)`;
         if (rescheduledClients[entregaKey]) {
           entregaDay = rescheduledClients[entregaKey].newDay;
-          console.log(`🔄 RESCHEDULE APPLIED: ${entregaKey} moved from ${client.Entrega} to ${entregaDay}`);
+          console.log(` RESCHEDULE APPLIED: ${entregaKey} moved from ${client.Entrega} to ${entregaDay}`);
         }
 
         const entregaVisit: Client = {
@@ -863,11 +1183,38 @@ export default function RecorridosPage() {
       } else {
         // Regular client (including non-CLEY clients)
         let clientDay = client.Dia;
-        const normalKey = `${client.Nombre} (Normal)`;
-        if (rescheduledClients[normalKey]) {
-          clientDay = rescheduledClients[normalKey].newDay;
-          console.log(`🔄 RESCHEDULE APPLIED: ${normalKey} moved from ${client.Dia} to ${clientDay}`);
+        
+        // ✅ ENHANCED: Check multiple possible keys for regular clients
+        const possibleKeys = [
+          client.Nombre, // Direct name (used by postpone system)
+          `${client.Nombre} (Normal)` // Original key format
+        ];
+        
+        let foundReschedule = false;
+        let usedKey = '';
+        
+        for (const key of possibleKeys) {
+          if (rescheduledClients[key]) {
+            clientDay = rescheduledClients[key].newDay;
+            foundReschedule = true;
+            usedKey = key;
+            console.log(`🔄 REGULAR RESCHEDULE APPLIED: ${client.Nombre} moved from ${client.Dia} to ${clientDay} (using key: "${usedKey}")`);
+            break;
+          }
         }
+        
+        if (!foundReschedule) {
+          console.log(`📋 REGULAR CLIENT: ${client.Nombre} staying on original day ${client.Dia} (no reschedule found)`);
+        }
+        
+        console.log(`🏗️ EXPANDING REGULAR CLIENT:`, {
+          originalName: client.Nombre,
+          originalDay: client.Dia,
+          finalDay: clientDay,
+          wasRescheduled: foundReschedule,
+          rescheduleKey: usedKey,
+          availableRescheduleKeys: Object.keys(rescheduledClients)
+        });
 
         const regularClient: Client = {
           ...client,
@@ -904,7 +1251,7 @@ export default function RecorridosPage() {
     const visitType = getVisitType(client.Nombre);
     const today = new Date().toISOString().split('T')[0];
     
-    console.log(`🔍 CLEY POSTPONE: Adding ${client.Nombre} to postpone pool for ${targetDay}`);
+    console.log(` CLEY POSTPONE: Adding ${client.Nombre} to postpone pool for ${targetDay}`);
     
     setPostponePool(prev => ({
       ...prev,
@@ -927,6 +1274,144 @@ export default function RecorridosPage() {
     console.log(`✅ CLEY POSTPONE: ${client.Nombre} added to postpone pool for ${targetDay}`);
   };
 
+  // ✅ NEW: Handle regular client postpone - add to postpone pool with day selection
+  const postponeRegularClient = (client: Client, targetDay: RouteDay) => {
+    const today = new Date().toISOString().split('T')[0];
+    
+    console.log(`🔄 REGULAR POSTPONE START: Adding ${client.Nombre} to postpone pool for ${targetDay}`);
+    console.log(`🔄 REGULAR POSTPONE CLIENT DATA:`, {
+      clientName: client.Nombre,
+      originalDay: client.Dia,
+      targetDay: targetDay,
+      clientType: client.Tipo_Cliente,
+      isClientCley: client.Tipo_Cliente?.toUpperCase() === 'CLEY'
+    });
+    
+    // ✅ VALIDATION: Log that this is only client-side
+    console.log(`❌ REGULAR POSTPONE ISSUE: This function only updates React state - NO API CALL!`);
+    console.log(`❌ MISSING: API call to save postpone action to backend`);
+    console.log(`❌ COMPARISON: CLEY clients use rescheduleFromPostponePool() → API call, regular clients don't`);
+    
+    setPostponePool(prev => {
+      const newPool = {
+        ...prev,
+        [client.Nombre]: {
+          client: {
+            ...client,
+            Dia: targetDay // Update the day for rescheduling
+          },
+          originalDay: client.Dia,
+          postponedOn: today
+        }
+      };
+      
+      console.log(`🔄 REGULAR POSTPONE POOL UPDATE:`, {
+        clientName: client.Nombre,
+        poolBefore: Object.keys(prev),
+        poolAfter: Object.keys(newPool),
+        newEntry: newPool[client.Nombre]
+      });
+      
+      return newPool;
+    });
+    
+    // Mark as postponed in current route
+    setVisitStatus(prev => {
+      console.log(`🔄 REGULAR POSTPONE STATUS UPDATE:`, {
+        clientName: client.Nombre,
+        statusBefore: prev[client.Nombre] || 'none',
+        statusAfter: 'postponed'
+      });
+      
+      return {
+        ...prev,
+        [client.Nombre]: 'postponed' as VisitStatus
+      };
+    });
+    
+    // ✅ FIX: Add immediate API call to save the postpone action
+    console.log(`🔄 REGULAR POSTPONE API: Now calling reschedule API to persist the postpone`);
+    
+    // Create a reschedule request for the regular client
+    const rescheduleRequest = {
+      clientName: client.Nombre,
+      originalDay: client.Dia,
+      newDay: targetDay,
+      visitType: 'Normal' as const
+    };
+    
+    // Call the reschedule API immediately
+    fetch('/api/recorridos/reschedule', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        action: 'batch_reschedule',
+        userEmail: selectedVendorEmail || session?.user?.email,
+        reschedules: [rescheduleRequest],
+        masterEmail: isMaster ? session?.user?.email : undefined,
+      }),
+    })
+    .then(response => {
+      if (response.ok) {
+        console.log(`✅ REGULAR POSTPONE API SUCCESS: ${client.Nombre} postpone saved to backend`);
+        
+        // Update rescheduledClients state to reflect the API save
+        setRescheduledClients(prev => ({
+          ...prev,
+          [client.Nombre]: {
+            originalDay: client.Dia,
+            newDay: targetDay,
+            visitType: 'Normal'
+          }
+        }));
+        
+        console.log(`🔄 REGULAR POSTPONE STATE: Added ${client.Nombre} to rescheduledClients mapping`);
+      } else {
+        console.error(`❌ REGULAR POSTPONE API ERROR: Failed to save ${client.Nombre} postpone to backend`);
+        response.json().then(errorData => {
+          console.error(`❌ REGULAR POSTPONE ERROR DETAILS:`, errorData);
+        });
+        
+        // Revert the postpone if API call failed
+        setPostponePool(prev => {
+          const newPool = { ...prev };
+          delete newPool[client.Nombre];
+          return newPool;
+        });
+        
+        setVisitStatus(prev => {
+          const newStatus = { ...prev };
+          delete newStatus[client.Nombre];
+          return newStatus;
+        });
+        
+        alert('Error al posponer el cliente. Inténtalo de nuevo.');
+      }
+    })
+    .catch(error => {
+      console.error(`❌ REGULAR POSTPONE NETWORK ERROR:`, error);
+      
+      // Revert the postpone if network error
+      setPostponePool(prev => {
+        const newPool = { ...prev };
+        delete newPool[client.Nombre];
+        return newPool;
+      });
+      
+      setVisitStatus(prev => {
+        const newStatus = { ...prev };
+        delete newStatus[client.Nombre];
+        return newStatus;
+      });
+      
+      alert('Error de conexión al posponer el cliente. Inténtalo de nuevo.');
+    });
+    
+    console.log(`✅ REGULAR POSTPONE COMPLETE: ${client.Nombre} added to postpone pool for ${targetDay} and API call initiated`);
+  };
+
   // ✅ NEW: Reschedule client from postpone pool to specific day (add to pending reschedules)
   const rescheduleFromPostponePool = (clientName: string, targetDay: RouteDay) => {
     const postponedClient = postponePool[clientName];
@@ -935,43 +1420,64 @@ export default function RecorridosPage() {
       return;
     }
     
-    console.log(`🔄 CLEY RESCHEDULE: Adding ${clientName} to pending reschedules for ${targetDay}`);
-    console.log(`🔍 RESCHEDULE DEBUG: Original day: ${postponedClient.originalDay}, Target day: ${targetDay}`);
-    
     const visitType = getVisitType(clientName);
     const originalClientName = getOriginalClientName(clientName);
+    const isCley = isCleyClient(postponedClient.client);
     
-    // Add to pending reschedules
-    setPendingReschedules(prev => {
-      // Remove any existing pending reschedule for this client+visit type
-      const filtered = prev.filter(r => !(r.clientName === originalClientName && r.visitType === visitType));
-      
-      const newReschedule = {
-        clientName: originalClientName,
-        originalDay: postponedClient.originalDay,
-        newDay: targetDay,
-        visitType: visitType
-      };
-      
-      console.log(`📝 PENDING RESCHEDULE: Added ${clientName} to pending list`);
-      return [...filtered, newReschedule];
-    });
+    console.log(` ${isCley ? 'CLEY' : 'REGULAR'} RESCHEDULE: Adding ${clientName} to ${isCley ? 'pending reschedules' : 'target day'} for ${targetDay}`);
+    console.log(` RESCHEDULE DEBUG: Original day: ${postponedClient.originalDay}, Target day: ${targetDay}`);
     
-    // Apply the reschedule immediately to local state for UI
-    setRescheduledClients(prev => ({
-      ...prev,
-      [clientName]: {
-        originalDay: postponedClient.originalDay,
-        newDay: targetDay,
-        visitType: visitType
-      }
-    }));
+    if (isCley) {
+      // CLEY clients use temporary reschedules that revert after visit
+      setPendingReschedules(prev => {
+        // Remove any existing pending reschedule for this client+visit type
+        const filtered = prev.filter(r => !(r.clientName === originalClientName && r.visitType === visitType));
+        
+        const newReschedule = {
+          clientName: originalClientName,
+          originalDay: postponedClient.originalDay,
+          newDay: targetDay,
+          visitType: visitType
+        };
+        
+        console.log(`🔄 CLEY PENDING RESCHEDULE: Added ${clientName} to pending list`);
+        return [...filtered, newReschedule];
+      });
+      
+      // Apply the reschedule immediately to local state for UI
+      setRescheduledClients(prev => ({
+        ...prev,
+        [clientName]: {
+          originalDay: postponedClient.originalDay,
+          newDay: targetDay,
+          visitType: visitType
+        }
+      }));
+      console.log(`🔄 CLEY RESCHEDULE STATE: Added ${clientName} to rescheduledClients for ${targetDay}`);
+    } else {
+      // ✅ FIXED: Regular clients need to be added to rescheduledClients with correct key
+      console.log(`🔄 REGULAR RESCHEDULE: Moving ${clientName} from ${postponedClient.originalDay} to ${targetDay}`);
+      
+      // For regular clients, use the client name directly (without visit type suffix)
+      const regularClientKey = clientName; // Regular clients don't have (Pedidos)/(Entrega) suffix
+      
+      setRescheduledClients(prev => ({
+        ...prev,
+        [regularClientKey]: {
+          originalDay: postponedClient.originalDay,
+          newDay: targetDay,
+          visitType: 'Normal'
+        }
+      }));
+      
+      console.log(`🔄 REGULAR RESCHEDULE STATE: Added ${regularClientKey} to rescheduledClients mapping from ${postponedClient.originalDay} to ${targetDay}`);
+    }
     
     // Remove from postpone pool
     setPostponePool(prev => {
       const newPool = { ...prev };
       delete newPool[clientName];
-      console.log(`🗑️ RESCHEDULE: Removed ${clientName} from postpone pool. Remaining:`, Object.keys(newPool));
+      console.log(`️ RESCHEDULE: Removed ${clientName} from postpone pool. Remaining:`, Object.keys(newPool));
       return newPool;
     });
     
@@ -979,11 +1485,11 @@ export default function RecorridosPage() {
     setVisitStatus(prev => {
       const newStatus = { ...prev };
       delete newStatus[clientName];
-      console.log(`🔄 RESCHEDULE: Cleared visit status for ${clientName}`);
+      console.log(` RESCHEDULE: Cleared visit status for ${clientName}`);
       return newStatus;
     });
     
-    console.log(`✅ CLEY RESCHEDULE: ${clientName} added to pending reschedules for ${targetDay}`);
+    console.log(`✅ ${isCley ? 'CLEY' : 'REGULAR'} RESCHEDULE: ${clientName} ${isCley ? 'added to pending reschedules' : 'moved'} for ${targetDay}`);
   };
 
   // ✅ NEW: Save all pending reschedules to the sheet
@@ -995,7 +1501,7 @@ export default function RecorridosPage() {
 
     try {
       setSavingReschedules(true);
-      console.log('💾 SAVING RESCHEDULES: Starting batch save for', pendingReschedules.length, 'reschedules');
+      console.log(' SAVING RESCHEDULES: Starting batch save for', pendingReschedules.length, 'reschedules');
 
       const response = await fetch('/api/recorridos/reschedule', {
         method: 'POST',
@@ -1047,7 +1553,7 @@ export default function RecorridosPage() {
 
     // ✅ PRIORITY 1: Check if client has a scheduled visit for today
     if (scheduledVisit && scheduledVisit.scheduledDate === mazatlanToday && scheduledVisit.status === 'Programado') {
-      console.log(`👍 ${client.Nombre} (${originalName}): YES (scheduled for today)`);
+      console.log(` ${client.Nombre} (${originalName}): YES (scheduled for today)`);
       return true;
     }
 
@@ -1056,14 +1562,14 @@ export default function RecorridosPage() {
       const scheduledDate = new Date(scheduledVisit.scheduledDate);
       const todayDate = new Date(mazatlanToday);
       if (scheduledDate <= todayDate) {
-        console.log(`👍 ${client.Nombre} (${originalName}): YES (overdue scheduled visit from ${scheduledVisit.scheduledDate})`);
+        console.log(` ${client.Nombre} (${originalName}): YES (overdue scheduled visit from ${scheduledVisit.scheduledDate})`);
         return true;
       }
     }
 
     // If never visited before, show for first-time visit
     if (!clientHistory) {
-      console.log(`👍 ${client.Nombre} (${originalName}): YES (no history - first visit)`);
+      console.log(` ${client.Nombre} (${originalName}): YES (no history - first visit)`);
       return true;
     }
     
@@ -1071,7 +1577,7 @@ export default function RecorridosPage() {
     // but will be filtered out from "pending" list later if visitStatus is 'completed'.
     // This ensures they are available for the "Completados Hoy" list.
     if (clientHistory.lastVisitDate === mazatlanToday) {
-      console.log(`👍 ${client.Nombre} (${originalName}): YES (last visit was today)`);
+      console.log(` ${client.Nombre} (${originalName}): YES (last visit was today)`);
       return true; 
     }
     
@@ -1089,7 +1595,7 @@ export default function RecorridosPage() {
     const isDue = weeksSinceLastVisit >= client.Frecuencia;
 
     // ✅ ENHANCED DEBUG: Show detailed week calculation
-    console.log(`📅 WEEK CALCULATION: ${client.Nombre} (${originalName}):`, {
+    console.log(` WEEK CALCULATION: ${client.Nombre} (${originalName}):`, {
       currentWeek,
       lastVisitWeek,
       lastVisitDate: clientHistory.lastVisitDate,
@@ -1109,13 +1615,13 @@ export default function RecorridosPage() {
     setRouteStartTime(startTime)
     setRouteInProgress(true)
     saveRouteState(startTime) // ✅ NEW: Persist route state
-    console.log('🚀 ROUTE START: Route started at', startTime)
+    console.log(' ROUTE START: Route started at', startTime)
   }
 
   // ✅ NEW: Deactivate a temporary reschedule after the visit is completed
   const deactivateRescheduleAfterVisit = async (clientName: string, visitType: string) => {
     try {
-      console.log(`🔄 DEACTIVATING RESCHEDULE: ${clientName} (${visitType})`);
+      console.log(` DEACTIVATING RESCHEDULE: ${clientName} (${visitType})`);
       
       const response = await fetch('/api/recorridos/reschedule', {
         method: 'POST',
@@ -1155,7 +1661,22 @@ export default function RecorridosPage() {
         startRoute(); // This will call setRouteStartTime
       }
 
-      setVisitStatus(prev => ({ ...prev, [client.Nombre]: status }));
+      // ✅ NEW: Handle completion animation
+      if (status === 'completed') {
+        setCompletingClient(client.Nombre);
+        
+        // Wait for animation to start before updating status
+        setTimeout(() => {
+          setVisitStatus(prev => ({ ...prev, [client.Nombre]: status }));
+          
+          // Clear animation state after animation completes
+          setTimeout(() => {
+            setCompletingClient(null);
+          }, 300); // Match the animation duration
+        }, 100);
+      } else {
+        setVisitStatus(prev => ({ ...prev, [client.Nombre]: status }));
+      }
       
       // ✅ NEW: Get visit type and original client name for CLEY clients
       const visitTypeForCley = getVisitType(client.Nombre);
@@ -1200,7 +1721,7 @@ export default function RecorridosPage() {
           // ✅ NEW: Check if this was a rescheduled visit and deactivate it
           const clientKey = client.Nombre; // The full name with (Pedidos) or (Entrega)
           if (rescheduledClients[clientKey]) {
-            console.log(`🔄 TEMP RESCHEDULE: Deactivating reschedule for ${clientKey} after completion`);
+            console.log(` TEMP RESCHEDULE: Deactivating reschedule for ${clientKey} after completion`);
             
             // Call API to deactivate the reschedule
             deactivateRescheduleAfterVisit(originalClientName, visitTypeForCley);
@@ -1241,7 +1762,7 @@ export default function RecorridosPage() {
     let actualStartTime = routeStartTime;
     if (!actualStartTime && routeInProgress) {
       actualStartTime = '08:00'; // Default start time for routes with completed visits
-      console.log('🔄 ROUTE FINISH: Using default start time for route with completed visits');
+      console.log(' ROUTE FINISH: Using default start time for route with completed visits');
     }
 
     try {
@@ -1303,7 +1824,7 @@ export default function RecorridosPage() {
         setRouteFinishedToday(true);
         saveRouteState(actualStartTime, true, endTime);
         
-        alert(`✅ Ruta del ${selectedDay} finalizada exitosamente!\n\n📊 Resumen:\n• ${clientesVisitados}/${clientesProgramados} clientes visitados\n• Tiempo: ${actualStartTime} - ${endTime}\n• Distancia: ${totalDistanceKm} km\n• Combustible: $${fuelCost}`)
+        alert(`✅ Ruta del ${selectedDay} finalizada exitosamente!\n\n Resumen:\n• ${clientesVisitados}/${clientesProgramados} clientes visitados\n• Tiempo: ${actualStartTime} - ${endTime}\n• Distancia: ${totalDistanceKm} km\n• Combustible: $${fuelCost}`)
         
         // Reset route state but keep finished status
         setVisitStatus({})
@@ -1426,7 +1947,7 @@ export default function RecorridosPage() {
   useEffect(() => {
     const rescheduledCount = Object.keys(postponePool).length;
     if (rescheduledCount > 0) {
-      console.log(`🔄 VALIDATION: ${rescheduledCount} clients in postpone pool`);
+      console.log(` VALIDATION: ${rescheduledCount} clients in postpone pool`);
     }
   }, [expandedClients, postponePool]);
 
@@ -1449,6 +1970,8 @@ export default function RecorridosPage() {
     const normalizedSelectedDay = normalizeDay(selectedDay);
     const matches = normalizedClientDay === normalizedSelectedDay;
     
+    console.log(`📅 DAY FILTER: ${client.Nombre} - originalDay: "${client.Dia}" → normalizedDay: "${normalizedClientDay}" vs selectedDay: "${normalizedSelectedDay}" = ${matches ? 'INCLUDED' : 'EXCLUDED'}`);
+    
     return matches;
   });
 
@@ -1466,7 +1989,7 @@ export default function RecorridosPage() {
 
   // Debug client counts for selected day
   if (postponedClientsForToday.length > 0) {
-    console.log(`📅 DEBUG: ${selectedDay} - Regular: ${clientsForSelectedDay.length}, Postponed: ${postponedClientsForToday.length}, Total: ${allClientsForSelectedDay.length}`);
+    console.log(` DEBUG: ${selectedDay} - Regular: ${clientsForSelectedDay.length}, Postponed: ${postponedClientsForToday.length}, Total: ${allClientsForSelectedDay.length}`);
   }
 
   // ✅ REVISED: Clients considered for today based on their schedule and history (frequency, first visit)
@@ -1481,46 +2004,43 @@ export default function RecorridosPage() {
     !visitStatus[client.Nombre] || visitStatus[client.Nombre] === 'pending'
   );
   
-  // ✅ REVISED: Properly exclude clients who were already visited today (even in previous sessions) - FIXED TIMEZONE
-  const utcNow = new Date();
-  const mazatlanOffset = -7; // GMT-7
-  const mazatlanTime = new Date(utcNow.getTime() + (mazatlanOffset * 60 * 60 * 1000));
-  const mazatlanToday = mazatlanTime.toISOString().split('T')[0];
+  // ✅ FIXED: Properly exclude clients who were already visited on the SELECTED DAY (not just today) - FIXED TIMEZONE
+  const selectedDayDateString = getSelectedDayDate(selectedDay);
   
   const actuallyPendingClients = clientsConsideredForVisitToday.filter(client => {
     const originalName = getOriginalClientName(client.Nombre);
     const history = visitHistory[originalName];
     const status = visitStatus[client.Nombre];
-    const wasVisitedToday = history?.lastVisitDate === mazatlanToday;
+    const wasVisitedOnSelectedDay = history?.lastVisitDate === selectedDayDateString;
     const isPostponedClient = postponedClientsForToday.some(p => p.Nombre === client.Nombre);
     
     // ✅ DEBUG: Log detailed filtering logic for each client
     const shouldInclude = (() => {
-      // Postponed clients that were rescheduled to today should appear as pending
+      // Postponed clients that were rescheduled to the selected day should appear as pending
       if (isPostponedClient && status !== 'completed') {
-        console.log(`📋 PENDING FILTER: ${client.Nombre} - INCLUDED (postponed client rescheduled to today)`);
+        console.log(` PENDING FILTER: ${client.Nombre} - INCLUDED (postponed client rescheduled to ${selectedDay})`);
         return true;
       }
       
-      // If visited today in a previous session, they shouldn't be pending
-      if (wasVisitedToday && !routeStartTime) {
-        console.log(`📋 PENDING FILTER: ${client.Nombre} - EXCLUDED (visited today in previous session, no active route)`);
+      // If visited on selected day in a previous session, they shouldn't be pending
+      if (wasVisitedOnSelectedDay && !routeStartTime) {
+        console.log(` PENDING FILTER: ${client.Nombre} - EXCLUDED (visited on ${selectedDay} in previous session, no active route)`);
         return false;
       }
       
-      // If visited today in current session and marked as completed, they shouldn't be pending
+      // If visited on selected day in current session and marked as completed, they shouldn't be pending
       if (status === 'completed' || status === 'skipped' || status === 'postponed') {
-        console.log(`📋 PENDING FILTER: ${client.Nombre} - EXCLUDED (status: ${status})`);
+        console.log(` PENDING FILTER: ${client.Nombre} - EXCLUDED (status: ${status})`);
         return false;
       }
       
-      // ✅ NEW: If client was completed today, they should NOT appear as pending
-      if (wasVisitedToday) {
-        console.log(`📋 PENDING FILTER: ${client.Nombre} - EXCLUDED (already completed today: ${history?.lastVisitDate})`);
+      // ✅ FIXED: If client was completed on the selected day, they should NOT appear as pending
+      if (wasVisitedOnSelectedDay) {
+        console.log(` PENDING FILTER: ${client.Nombre} - EXCLUDED (already completed on ${selectedDay}: ${history?.lastVisitDate})`);
         return false;
       }
       
-      console.log(`📋 PENDING FILTER: ${client.Nombre} - INCLUDED (genuinely pending)`);
+      console.log(` PENDING FILTER: ${client.Nombre} - INCLUDED (genuinely pending)`);
       return true;
     })();
     
@@ -1533,44 +2053,37 @@ export default function RecorridosPage() {
   
 
 
-  // ✅ REVISED: Clients actually completed during THIS active route session for the "Completados Hoy" card - FIXED TIMEZONE
+  // ✅ FIXED: Clients actually completed during THIS active route session for the selected day - FIXED TIMEZONE
   const completedThisSessionClients = allClientsForSelectedDay.filter(client => {
     const originalName = getOriginalClientName(client.Nombre);
     const history = visitHistory[originalName];
     
-    // ✅ FIX: Use Mazatlán timezone consistently
-    const utcNow = new Date();
-    const mazatlanOffset = -7; // GMT-7
-    const mazatlanTime = new Date(utcNow.getTime() + (mazatlanOffset * 60 * 60 * 1000));
-    const mazatlanToday = mazatlanTime.toISOString().split('T')[0];
+    // ✅ FIXED: Use helper function to get selected day date
+    const selectedDayDateString = getSelectedDayDate(selectedDay);
     
     // Ensure they were marked 'completed' in visitStatus, 
-    // their last recorded visit in history is today, 
+    // their last recorded visit in history is on the selected day, 
     // and a route is currently active (or was active when they were completed).
     return visitStatus[client.Nombre] === 'completed' && 
-           history?.lastVisitDate === mazatlanToday && 
+           history?.lastVisitDate === selectedDayDateString && 
            !!routeStartTime; // routeStartTime ensures it's part of the current active session
   });
   
-  // ✅ REVISED: All clients completed today (including previous sessions) - FIXED TIMEZONE
+  // ✅ FIXED: All clients completed on the SELECTED DAY (not just today) - FIXED TIMEZONE
   const allCompletedTodayClients = allClientsForSelectedDay.filter(client => {
     const originalName = getOriginalClientName(client.Nombre);
     const history = visitHistory[originalName];
     
-    // ✅ FIX: Use Mazatlán timezone for date comparison
-    const utcNow = new Date();
-    const mazatlanOffset = -7; // GMT-7
-    const mazatlanTime = new Date(utcNow.getTime() + (mazatlanOffset * 60 * 60 * 1000));
-    const mazatlanToday = mazatlanTime.toISOString().split('T')[0];
+    // ✅ FIXED: Use helper function to get selected day date
+    const selectedDayDateString = getSelectedDayDate(selectedDay);
+    const wasCompletedOnSelectedDay = history?.lastVisitDate === selectedDayDateString;
     
-    const wasCompletedToday = history?.lastVisitDate === mazatlanToday;
-    
-    // ✅ DEBUG: Log completed client filtering with timezone info
-    if (wasCompletedToday) {
-      console.log(`✅ COMPLETED TODAY (MAZATLAN TIME): ${client.Nombre} (${originalName}) - last visit: ${history?.lastVisitDate}, mazatlanToday: ${mazatlanToday}, selectedDay: ${selectedDay}`);
+    // ✅ DEBUG: Log completed client filtering with selected day info
+    if (wasCompletedOnSelectedDay) {
+      console.log(`✅ COMPLETED ON SELECTED DAY: ${client.Nombre} (${originalName}) - last visit: ${history?.lastVisitDate}, selectedDayDate: ${selectedDayDateString}, selectedDay: ${selectedDay}`);
     }
     
-    return wasCompletedToday;
+    return wasCompletedOnSelectedDay;
   });
   
 
@@ -1586,12 +2099,12 @@ export default function RecorridosPage() {
     const duplicates = completedNames.filter(name => pendingNames.includes(name));
     
     if (duplicates.length > 0) {
-      console.error('🚨 DUPLICATE CLIENTS DETECTED:', {
+      console.error('❌ DUPLICATE CLIENTS DETECTED:', {
         duplicateClients: duplicates,
         completedClients: completedNames,
         pendingClients: pendingNames,
         selectedDay,
-        mazatlanToday
+        selectedDayDate: getSelectedDayDate(selectedDay)
       });
       
       // Show details for each duplicate
@@ -1600,7 +2113,7 @@ export default function RecorridosPage() {
         const pendingClient = optimizedPendingClients.find(c => getOriginalClientName(c.Nombre) === duplicateName);
         const history = visitHistory[duplicateName];
         
-        console.error(`🚨 DUPLICATE DETAILS for ${duplicateName}:`, {
+        console.error(` DUPLICATE DETAILS for ${duplicateName}:`, {
           completedClient: completedClient ? {
             name: completedClient.Nombre,
             day: completedClient.Dia,
@@ -1633,7 +2146,7 @@ export default function RecorridosPage() {
     const utcDayName = dayNames[utcNow.getDay()];
     const mazatlanDayName = dayNames[mazatlanTime.getDay()];
     
-    console.log('🕐 TIMEZONE DEBUG:', {
+    console.log(' TIMEZONE DEBUG:', {
       utcTime: utcNow.toISOString(),
       mazatlanTime: mazatlanTime.toISOString(),
       utcToday,
@@ -1650,7 +2163,7 @@ export default function RecorridosPage() {
       }
     });
     
-    console.log('🔍 FINISH BUTTON DEBUG:', {
+    console.log(' FINISH BUTTON DEBUG:', {
       routeInProgress,
       routeStartTime,
       routeFinishedToday,
@@ -1675,7 +2188,7 @@ export default function RecorridosPage() {
                (isMaster && selectedVendorEmail && recordVendor === selectedVendorEmail);
       }).slice(0, 3); // Show last 3 records
       
-      console.log('📊 PERFORMANCE RECORDS for current user:', userRecords.map(record => ({
+      console.log(' PERFORMANCE RECORDS for current user:', userRecords.map(record => ({
         fecha: record.fecha,
         dia_ruta: record.dia_ruta,
         vendedor: record.vendedor,
@@ -1692,7 +2205,7 @@ export default function RecorridosPage() {
     const mazatlanTodayVisits = Object.entries(visitHistory).filter(([name, history]) => history.lastVisitDate === mazatlanToday);
     
     if (utcTodayVisits.length > 0) {
-      console.log('📅 VISITS COMPLETED TODAY (UTC):', utcTodayVisits.map(([name, history]) => ({
+      console.log(' VISITS COMPLETED TODAY (UTC):', utcTodayVisits.map(([name, history]) => ({
         clientName: name,
         lastVisitDate: history.lastVisitDate,
         lastVisitWeek: history.lastVisitWeek
@@ -1700,7 +2213,7 @@ export default function RecorridosPage() {
     }
     
     if (mazatlanTodayVisits.length > 0) {
-      console.log('📅 VISITS COMPLETED TODAY (MAZATLAN):', mazatlanTodayVisits.map(([name, history]) => ({
+      console.log(' VISITS COMPLETED TODAY (MAZATLAN):', mazatlanTodayVisits.map(([name, history]) => ({
         clientName: name,
         lastVisitDate: history.lastVisitDate,
         lastVisitWeek: history.lastVisitWeek
@@ -1708,7 +2221,7 @@ export default function RecorridosPage() {
     }
     
     if (utcTodayVisits.length === 0 && mazatlanTodayVisits.length === 0) {
-      console.log('📅 NO VISITS FOUND FOR TODAY - Checking recent visits:');
+      console.log(' NO VISITS FOUND FOR TODAY - Checking recent visits:');
       const recentVisits = Object.entries(visitHistory)
         .filter(([name, history]) => {
           const visitDate = new Date(history.lastVisitDate);
@@ -1717,7 +2230,7 @@ export default function RecorridosPage() {
         })
         .sort(([,a], [,b]) => new Date(b.lastVisitDate).getTime() - new Date(a.lastVisitDate).getTime());
       
-      console.log('🔍 RECENT VISITS (last 7 days):', recentVisits.slice(0, 5).map(([name, history]) => ({
+      console.log(' RECENT VISITS (last 7 days):', recentVisits.slice(0, 5).map(([name, history]) => ({
         clientName: name,
         lastVisitDate: history.lastVisitDate,
         daysAgo: Math.floor((utcNow.getTime() - new Date(history.lastVisitDate).getTime()) / (1000 * 60 * 60 * 24))
@@ -1741,7 +2254,19 @@ export default function RecorridosPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white px-4 py-3 font-sans w-full" style={{ fontFamily: 'Inter, sans-serif', fontSize: '0.8rem' }}>
+    <>
+      {/* ✅ NEW: Add CSS animation for completion effect */}
+      <style dangerouslySetInnerHTML={{
+        __html: `
+          @keyframes gentle-pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+            100% { transform: scale(0.95); }
+          }
+        `
+      }} />
+      
+      <div className="min-h-screen bg-white px-4 py-3 font-sans w-full" style={{ fontFamily: 'Inter, sans-serif', fontSize: '0.8rem' }}>
       <header className="flex justify-between items-center mb-4">
         <div className="flex items-center">
           <div className="w-8 h-8 bg-blue-600 rounded-full mr-2 flex items-center justify-center">
@@ -1794,7 +2319,7 @@ export default function RecorridosPage() {
         onVendorChange={(vendorEmail) => {
           setSelectedVendorEmail(vendorEmail)
           setViewingAsVendor(vendorEmail ? getVendorLabel(vendorEmail) : 'Todas las Rutas')
-          console.log('🔍 MASTER DEBUG: Switching to vendor:', vendorEmail || 'all vendors')
+          console.log(' MASTER DEBUG: Switching to vendor:', vendorEmail || 'all vendors')
         }}
         isVisible={isMaster}
       />
@@ -1805,7 +2330,36 @@ export default function RecorridosPage() {
           <div className="flex items-center">
             <Calendar className="h-5 w-5 text-blue-600 mr-2" />
             <div>
-              <h2 className="text-lg font-semibold text-gray-900">Progreso del Día</h2>
+              <h2 className="text-lg font-semibold text-gray-900">
+                Progreso del Día - {selectedDay}
+              </h2>
+              <p className="text-xs text-gray-500">
+                {(() => {
+                  const utcNow = new Date();
+                  const mazatlanOffset = -7; // GMT-7
+                  const mazatlanTime = new Date(utcNow.getTime() + (mazatlanOffset * 60 * 60 * 1000));
+                  const dayNames: RouteDay[] = ['Domingo', 'Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado'];
+                  const currentWeekStart = new Date(mazatlanTime);
+                  const dayOfWeek = currentWeekStart.getDay();
+                  const daysToSubtract = dayOfWeek === 0 ? 0 : dayOfWeek - 1; // Monday = 0, Sunday = 6
+                  currentWeekStart.setDate(currentWeekStart.getDate() - daysToSubtract);
+                  
+                  const selectedDayIndex = dayNames.indexOf(selectedDay);
+                  const selectedDate = new Date(currentWeekStart);
+                  if (selectedDayIndex === 0) { // Sunday
+                    selectedDate.setDate(currentWeekStart.getDate() + 6);
+                  } else {
+                    selectedDate.setDate(currentWeekStart.getDate() + selectedDayIndex - 1);
+                  }
+                  
+                  return selectedDate.toLocaleDateString('es-ES', { 
+                    weekday: 'long', 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric' 
+                  });
+                })()}
+              </p>
               {isMaster && (
                 <p className="text-xs text-blue-600">
                   Viendo: {viewingAsVendor}
@@ -1970,47 +2524,98 @@ export default function RecorridosPage() {
         )}
       </div>
 
-      {/* Day Selector */}
+      {/* Day Selector - Current Week Only */}
       <div className="bg-gray-100 rounded-lg mb-4 p-1">
         <div className="grid grid-cols-7 gap-1">
-          {ROUTE_DAYS.map((day) => (
-            <button
-              key={day}
-              className={`py-2 px-1 text-xs font-medium rounded-md transition-colors duration-200 ${
-                selectedDay === day
-                  ? 'bg-white text-gray-900 shadow-sm'
-                  : 'bg-gray-100 text-gray-500 hover:text-gray-700'
-              }`}
-              onClick={() => {
-                console.log('🔄 DAY SWITCH: Switching to day:', day, 'from:', selectedDay);
-                
-                // ✅ ENHANCED: More explicit state reset with detailed logging
-                console.log('🔄 DAY SWITCH: Resetting route states before switch');
-                setSelectedDay(day);
-                setRouteFinishedToday(false);
-                setRouteStartTime(null);
-                setRouteInProgress(false);
-                
-                // ✅ ENHANCED: Clear any session-specific visit status when switching days
-                setVisitStatus({});
-                
-                console.log('🔄 DAY SWITCH: States reset, loading persisted state for:', day);
-                
-                // ✅ FIXED: Load persisted state for the new day after a brief delay to ensure state is updated
-                setTimeout(() => {
-                  console.log('🔄 DAY SWITCH: Loading persisted state for:', day);
-                  loadPersistedRouteState(day);
-                  // ✅ NEW: Force a route progress check after loading state
+          {ROUTE_DAYS.map((day) => {
+            // Calculate if this day is in the current week
+            const utcNow = new Date();
+            const mazatlanOffset = -7; // GMT-7
+            const mazatlanTime = new Date(utcNow.getTime() + (mazatlanOffset * 60 * 60 * 1000));
+            const dayNames: RouteDay[] = ['Domingo', 'Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado'];
+            
+            // Calculate current week start (Monday)
+            const currentWeekStart = new Date(mazatlanTime);
+            const dayOfWeek = currentWeekStart.getDay();
+            const daysToSubtract = dayOfWeek === 0 ? 6 : dayOfWeek - 1; // Sunday = 6, Monday = 0
+            currentWeekStart.setDate(currentWeekStart.getDate() - daysToSubtract);
+            
+            // Calculate the date for this day in the current week
+            const selectedDayIndex = dayNames.indexOf(day);
+            const dayDate = new Date(currentWeekStart);
+            if (selectedDayIndex === 0) { // Sunday
+              dayDate.setDate(currentWeekStart.getDate() + 6);
+            } else {
+              dayDate.setDate(currentWeekStart.getDate() + selectedDayIndex - 1);
+            }
+            
+            // Check if this day is within the current week (allow future days within same week)
+            const isToday = dayDate.toDateString() === mazatlanTime.toDateString();
+            const isPast = dayDate < mazatlanTime;
+            const isFuture = dayDate > mazatlanTime;
+            const isWithinCurrentWeek = true; // All calculated days are within current week by design
+            
+            return (
+              <button
+                key={day}
+                className={`py-2 px-1 text-xs font-medium rounded-md transition-colors duration-200 ${
+                  selectedDay === day
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : isWithinCurrentWeek
+                      ? 'bg-gray-100 text-gray-500 hover:text-gray-700'
+                      : 'bg-gray-50 text-gray-300 cursor-not-allowed'
+                } ${isToday ? 'ring-2 ring-blue-400' : ''} ${isFuture ? 'text-blue-600' : ''}`}
+                disabled={!isWithinCurrentWeek}
+                onClick={() => {
+                  if (!isWithinCurrentWeek) return;
+                  
+                  console.log('📅 DAY SWITCH: Switching to day:', day, 'from:', selectedDay);
+                  
+                  // Reset route states before switch
+                  console.log('📅 DAY SWITCH: Resetting route states before switch');
+                  setSelectedDay(day);
+                  setRouteFinishedToday(false);
+                  setRouteStartTime(null);
+                  setRouteInProgress(false);
+                  
+                  // Clear session-specific visit status but preserve postponed clients
+                  setVisitStatus(prev => {
+                    const preservedStatuses: Record<string, VisitStatus> = {};
+                    // Keep postponed clients in their status to prevent them from reappearing
+                    Object.entries(prev).forEach(([clientName, status]) => {
+                      if (status === 'postponed') {
+                        preservedStatuses[clientName] = status;
+                      }
+                    });
+                    return preservedStatuses;
+                  });
+                  
+                  console.log('📅 DAY SWITCH: States reset, loading persisted state for:', day);
+                  
+                  // Load persisted state for the new day
                   setTimeout(() => {
-                    console.log('🔄 DAY SWITCH: Checking route progress after state load for:', day);
-                    checkRouteInProgress();
-                  }, 50);
-                }, 150);
-              }}
-            >
-              {day.slice(0, 3)}
-            </button>
-          ))}
+                    console.log('📅 DAY SWITCH: Loading persisted state for:', day);
+                    loadPersistedRouteState(day);
+                    // Force a route progress check after loading state
+                    setTimeout(() => {
+                      console.log('📅 DAY SWITCH: Checking route progress after state load for:', day);
+                      checkRouteInProgress();
+                    }, 50);
+                  }, 150);
+                }}
+              >
+                <div className="flex flex-col items-center">
+                  <span>{day.slice(0, 3)}</span>
+                  {isToday && <span className="text-xs text-blue-600">HOY</span>}
+                  {isPast && !isToday && <span className="text-xs text-gray-400">•</span>}
+                  {isFuture && <span className="text-xs text-blue-500">↗</span>}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+        <div className="text-xs text-gray-500 text-center mt-2">
+          Semana actual • Días pasados muestran lo completado • Días futuros para planificación
         </div>
       </div>
 
@@ -2019,16 +2624,16 @@ export default function RecorridosPage() {
         <div className="mb-4 bg-yellow-50 rounded-lg p-4 border border-yellow-200">
           <div className="flex items-center mb-3">
             <AlertTriangle className="h-5 w-5 text-yellow-600 mr-2" />
-            <h3 className="text-lg font-semibold text-yellow-800">Clientes CLEY Pospuestos</h3>
+            <h3 className="text-lg font-semibold text-yellow-800">Clientes Pospuestos</h3>
           </div>
           
           <div className="text-xs text-yellow-700 mb-3">
             <div className="mb-2">
-              <strong>⚠️ Reprogramación Temporal:</strong> Los clientes CLEY pospuestos se pueden reprogramar temporalmente a otro día. 
-              Después de completar la visita reprogramada, el cliente volverá automáticamente a su horario original.
+              <strong>⚠️ Reprogramación:</strong> Los clientes pospuestos se pueden reprogramar a otro día. 
+              Para clientes CLEY, la reprogramación es temporal y volverán automáticamente a su horario original después de la visita.
             </div>
             <div className="text-xs text-yellow-600">
-              Úsalo solo cuando no puedas completar tu ruta regular. Las reprogramaciones son una medida de emergencia.
+              Úsalo solo cuando no puedas completar tu ruta regular. Las reprogramaciones deben usarse con moderación.
             </div>
             {pendingReschedules.length > 0 && (
               <div className="mt-2 p-2 bg-blue-50 rounded border border-blue-200">
@@ -2067,7 +2672,7 @@ export default function RecorridosPage() {
                           `${r.clientName} (${r.visitType})` === clientName
                         ) && (
                           <span className="px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-700">
-                            🔄 Temporal activo
+                             Temporal activo
                           </span>
                         )}
                       </div>
@@ -2154,7 +2759,7 @@ export default function RecorridosPage() {
       )}
 
       {/* Clients List */}
-      <div className="space-y-3">
+      <div className="space-y-3 transition-all duration-300 ease-out">
         {loading ? (
           <div className="text-center py-8">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
@@ -2188,7 +2793,19 @@ export default function RecorridosPage() {
             const isFirstTime = !visitHistory[originalName]
 
             return (
-              <div key={index} className="bg-white rounded-lg border border-[#E2E4E9] p-4">
+              <div 
+                key={index} 
+                className={`bg-white rounded-lg border border-[#E2E4E9] p-4 transition-all duration-300 ease-out ${
+                  completingClient === client.Nombre 
+                    ? 'transform scale-95 opacity-60 bg-green-50 border-green-200 shadow-lg' 
+                    : 'transform scale-100 opacity-100 hover:shadow-md'
+                }`}
+                style={{
+                  animation: completingClient === client.Nombre 
+                    ? 'gentle-pulse 0.3s ease-out' 
+                    : undefined
+                }}
+              >
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
@@ -2240,57 +2857,59 @@ export default function RecorridosPage() {
                 <div className="flex gap-2">
                   <button
                     onClick={() => updateVisitStatus(client, 'completed')}
-                    className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
-                      status === 'completed' 
-                        ? 'bg-green-100 text-green-700 border border-green-300' 
-                        : 'bg-gray-100 text-gray-700 hover:bg-green-50'
+                    disabled={completingClient === client.Nombre}
+                    className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all duration-200 ${
+                      completingClient === client.Nombre
+                        ? 'bg-green-500 text-white border border-green-500 transform scale-95'
+                        : status === 'completed' 
+                          ? 'bg-green-100 text-green-700 border border-green-300' 
+                          : 'bg-gray-100 text-gray-700 hover:bg-green-50'
                     }`}
                   >
-                    Completar
+                    {completingClient === client.Nombre ? (
+                      <span className="flex items-center justify-center">
+                        <CheckCircle className="h-4 w-4 mr-1" />
+                        Completado
+                      </span>
+                    ) : (
+                      'Completar'
+                    )}
                   </button>
                   
-                  {isCleyClient(client) ? (
-                    cleyDaySelector === client.Nombre ? (
-                      // Show day selector for CLEY clients
-                      <div className="flex-1">
-                        <div className="text-xs text-center mb-1 text-gray-600">Reprogramar para:</div>
-                        <div className="grid grid-cols-3 gap-1">
-                          {ROUTE_DAYS.slice(0, 6).map((day) => ( // Exclude Sunday for CLEY
-                            <button
-                              key={day}
-                              onClick={() => {
+                  {cleyDaySelector === client.Nombre ? (
+                    // Show day selector for ALL clients (both CLEY and regular)
+                    <div className="flex-1">
+                      <div className="text-xs text-center mb-1 text-gray-600">Posponer para:</div>
+                      <div className="grid grid-cols-3 gap-1">
+                        {(isCleyClient(client) ? ROUTE_DAYS.slice(0, 6) : ROUTE_DAYS).map((day) => (
+                          <button
+                            key={day}
+                            onClick={() => {
+                              if (isCleyClient(client)) {
                                 postponeCleyClient(client, day);
-                                setCleyDaySelector(null);
-                              }}
-                              className="py-1 px-1 text-xs bg-yellow-100 text-yellow-700 rounded hover:bg-yellow-200 transition-colors"
-                            >
-                              {day.slice(0, 3)}
-                            </button>
-                          ))}
-                        </div>
-                        <button
-                          onClick={() => setCleyDaySelector(null)}
-                          className="w-full mt-1 py-1 text-xs text-gray-500 hover:text-gray-700"
-                        >
-                          Cancelar
-                        </button>
+                              } else {
+                                // Handle regular client postpone with day selection
+                                postponeRegularClient(client, day);
+                              }
+                              setCleyDaySelector(null);
+                            }}
+                            className="py-1 px-1 text-xs bg-yellow-100 text-yellow-700 rounded hover:bg-yellow-200 transition-colors"
+                          >
+                            {day.slice(0, 3)}
+                          </button>
+                        ))}
                       </div>
-                    ) : (
-                      // Regular postpone button for CLEY clients
                       <button
-                        onClick={() => setCleyDaySelector(client.Nombre)}
-                        className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
-                          status === 'postponed' 
-                            ? 'bg-yellow-100 text-yellow-700 border border-yellow-300' 
-                            : 'bg-gray-100 text-gray-700 hover:bg-yellow-50'
-                        }`}
+                        onClick={() => setCleyDaySelector(null)}
+                        className="w-full mt-1 py-1 text-xs text-gray-500 hover:text-gray-700"
                       >
-                        Reprogramar
+                        Cancelar
                       </button>
-                    )
+                    </div>
                   ) : (
+                    // Show postpone button for ALL clients
                     <button
-                      onClick={() => updateVisitStatus(client, 'postponed')}
+                      onClick={() => setCleyDaySelector(client.Nombre)}
                       className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
                         status === 'postponed' 
                           ? 'bg-yellow-100 text-yellow-700 border border-yellow-300' 
@@ -2319,7 +2938,17 @@ export default function RecorridosPage() {
         <div className="mt-6 bg-gray-50 rounded-lg p-4 border border-gray-200">
           <div className="flex items-center mb-3">
             <CheckCircle className="h-5 w-5 text-green-600 mr-2" />
-            <h3 className="text-lg font-semibold text-gray-900">Completados Hoy</h3>
+            <h3 className="text-lg font-semibold text-gray-900">
+              {(() => {
+                const utcNow = new Date();
+                const mazatlanOffset = -7; // GMT-7
+                const mazatlanTime = new Date(utcNow.getTime() + (mazatlanOffset * 60 * 60 * 1000));
+                const dayNames: RouteDay[] = ['Domingo', 'Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado'];
+                const currentDayName = dayNames[mazatlanTime.getDay()];
+                
+                return selectedDay === currentDayName ? 'Completados Hoy' : `Completados el ${selectedDay}`;
+              })()}
+            </h3>
             <span className="ml-auto text-sm text-gray-500">{allCompletedTodayClients.length} clientes</span>
           </div>
           
@@ -2348,5 +2977,6 @@ export default function RecorridosPage() {
         </div>
       )}
     </div>
+    </>
   )
-} 
+}

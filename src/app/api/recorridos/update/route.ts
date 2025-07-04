@@ -54,6 +54,7 @@ async function updateVisitStatus(body: any) {
     location, // Contains { lat: number, lng: number }
     notes,
     cleyVisitType, // 'Pedidos', 'Entrega', or 'Normal'
+    visitDate, // ✅ NEW: The specific date of the visit from the client
     timestamp = new Date().toISOString(),
     masterEmail // For master account audit trail
   } = body;
@@ -75,8 +76,10 @@ async function updateVisitStatus(body: any) {
   const auditInfo = isMaster ? `${effectiveVendor} (via ${masterEmail})` : effectiveVendor;
 
   const vendedor = effectiveVendor;
-  const fecha = new Date().toISOString().split('T')[0];
-  const weekNumber = getWeekNumber(new Date());
+  // ✅ REVISED: Use the provided visitDate, or default to today's date
+  const effectiveDate = visitDate ? new Date(visitDate) : new Date();
+  const fecha = effectiveDate.toISOString().split('T')[0];
+  const weekNumber = getWeekNumber(effectiveDate);
   
   // ✅ Generate a unique ID for the visit
   const id_visita = `visit_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
@@ -322,7 +325,7 @@ function getEmailFromLabel(label: string): string {
     'Lidia': 'ventas3productoselrey@gmail.com',
     'Mazatlan': 'ventasmztproductoselrey.com@gmail.com',
     'Mochis': 'ventasmochisproductoselrey@gmail.com',
-    'Franz': 'franzcharbell@gmail.com',
+    'Franz': 'franzcharbell@gmail.com', // ✅ REVERTED: Franz has his own mapping
     'Cesar': 'cesar.reyes.ochoa@gmail.com',
     'Arturo Mty': 'arturo.elreychiltepin@gmail.com',
     'Arlyn': 'alopezelrey@gmail.com',
@@ -372,7 +375,7 @@ async function updateRouteSummary(body: any) {
     'ventas3productoselrey@gmail.com': 'Lidia',
     'ventasmztproductoselrey.com@gmail.com': 'Mazatlan',
     'ventasmochisproductoselrey@gmail.com': 'Mochis',
-    'franzcharbell@gmail.com': 'Franz',
+    'franzcharbell@gmail.com': 'Franz', // ✅ REVERTED: Franz has his own data with his email
     'cesar.reyes.ochoa@gmail.com': 'Cesar',
     'arturo.elreychiltepin@gmail.com': 'Arturo Mty',
     'alopezelrey@gmail.com': 'Arlyn',
@@ -472,7 +475,7 @@ async function updateWeeklySchedule(body: any) {
     'ventas3productoselrey@gmail.com': 'Lidia',
     'ventasmztproductoselrey.com@gmail.com': 'Mazatlan',
     'ventasmochisproductoselrey@gmail.com': 'Mochis',
-    'franzcharbell@gmail.com': 'Franz',
+    'franzcharbell@gmail.com': 'Franz', // ✅ REVERTED: Franz has his own data with his email
     'cesar.reyes.ochoa@gmail.com': 'Cesar',
     'arturo.elreychiltepin@gmail.com': 'Arturo Mty',
     'alopezelrey@gmail.com': 'Arlyn',
