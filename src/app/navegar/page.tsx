@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import React, { useEffect, useState, useRef, useMemo } from "react";
 import dynamic from "next/dynamic";
@@ -39,6 +39,7 @@ export default function NavegarPage() {
   const [vendedorFilter, setVendedorFilter] = useState<string | null>(null);
   const [vendedorDropdownOpen, setVendedorDropdownOpen] = useState(false);
   const vendedorChipRef = useRef<HTMLButtonElement>(null);
+  const [allVendedorClients, setAllVendedorClients] = useState<{ name: string; email: string }[]>([]);
   const [sinVisitarFilter, setSinVisitarFilter] = useState(false);
   const [sheetRows, setSheetRows] = useState<any[]>([]);
   const [sheetHeaders, setSheetHeaders] = useState<string[]>([]);
@@ -225,9 +226,9 @@ export default function NavegarPage() {
             latestClients.push({ name, email });
           }
         }
-        // setAllVendedorClients(latestClients.reverse()); // reverse to keep original order
+        setAllVendedorClients(latestClients.reverse()); // reverse to keep original order
       } catch (e) {
-        // setAllVendedorClients([]);
+        setAllVendedorClients([]);
       }
     };
     fetchAllVendedores();

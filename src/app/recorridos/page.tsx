@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 import { 
@@ -2048,8 +2048,14 @@ export default function RecorridosPage() {
   });
   
   // ✅ ADDED: Optimize the route for pending clients
-  const optimizedPendingClients = optimizeRoute(actuallyPendingClients);
-  const totalRouteDistance = calculateTotalRouteDistance(optimizedPendingClients);
+  const optimizedPendingClients = useMemo(
+    () => optimizeRoute(actuallyPendingClients),
+    [actuallyPendingClients]
+  );
+  const totalRouteDistance = useMemo(
+    () => calculateTotalRouteDistance(optimizedPendingClients),
+    [optimizedPendingClients]
+  );
   
 
 
