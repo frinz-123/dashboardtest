@@ -2311,6 +2311,9 @@ export default function RecorridosPage() {
                   <Link href="/admin" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" role="menuitem">
                     Admin
                   </Link>
+                  <Link href="/navegar" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" role="menuitem">
+                    Navegar
+                  </Link>
                 </div>
               </div>
             )}
