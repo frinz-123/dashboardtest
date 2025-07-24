@@ -775,17 +775,35 @@ export default function NavegarPage() {
                       Distancia: {(routeInfo.distance / 1000).toFixed(2)} km &nbsp;•&nbsp; ETA: {Math.round(routeInfo.duration / 60)} min
                     </div>
                   )}
-                  <button
-                    className="w-full bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700 transition-colors duration-200"
-                    onClick={handleNavigate}
-                    disabled={!selectedClientLocation || isLocating}
-                  >
-                    {isLocating ? (
-                      <span className="flex items-center justify-center"><RefreshCw className="h-4 w-4 animate-spin mr-2" />Obteniendo ubicación…</span>
-                    ) : (
-                      'Navegar'
-                    )}
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      className="flex-1 bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700 transition-colors duration-200"
+                      onClick={handleNavigate}
+                      disabled={!selectedClientLocation || isLocating}
+                    >
+                      {isLocating ? (
+                        <span className="flex items-center justify-center"><RefreshCw className="h-4 w-4 animate-spin mr-2" />Obteniendo ubicación…</span>
+                      ) : (
+                        'Navegar'
+                      )}
+                    </button>
+                    <button
+                      className="px-4 bg-green-600 text-white py-2 rounded-lg font-medium hover:bg-green-700 transition-colors duration-200 flex items-center gap-1"
+                      onClick={() => {
+                        if (selectedClientLocation) {
+                          const url = `https://www.google.com/maps/dir/?api=1&destination=${selectedClientLocation.lat},${selectedClientLocation.lng}`;
+                          window.open(url, '_blank');
+                        }
+                      }}
+                      disabled={!selectedClientLocation}
+                      title="Abrir en Google Maps"
+                    >
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+                      </svg>
+                      Maps
+                    </button>
+                  </div>
                 </div>
               )}
             </>
