@@ -146,7 +146,7 @@ export default function NavegarPage() {
   const isSinVisitar = (name: string) => {
     const fecha = getLastVisitDate(name);
     if (!fecha || fecha === DEFAULT_VISIT_DATE) return true;
-    const [day, month, year] = fecha.split('/').map(Number);
+    const [month, day, year] = fecha.split('/').map(Number);
     if (!day || !month || !year) return false;
     const lastDate = new Date(year, month - 1, day);
     const now = new Date();
@@ -367,6 +367,48 @@ export default function NavegarPage() {
     // Intersect all sets
     filteredNames = sets.reduce((a, b) => a.filter(x => b.includes(x)));
   }
+
+  // Check if any filters are active
+  const hasActiveFilters = Boolean(codigoFilter || vendedorFilter || sinVisitarFilter);
+
+  // Get the final filtered client list with visit dates
+  const filteredClientsWithDates = useMemo(() => {
+    if (!hasActiveFilters) return [];
+    
+    const clients = filteredNames || [];
+    return clients.map(name => ({
+      name,
+      lastVisitDate: getLastVisitDate(name),
+      isSinVisitar: isSinVisitar(name)
+    })).sort((a, b) => {
+      // Sort by visit date, with no visits first, then by date descending
+      if (!a.lastVisitDate && !b.lastVisitDate) return a.name.localeCompare(b.name);
+      if (!a.lastVisitDate) return -1;
+      if (!b.lastVisitDate) return 1;
+      return new Date(b.lastVisitDate).getTime() - new Date(a.lastVisitDate).getTime();
+    });
+  }, [filteredNames, hasActiveFilters, clientLastVisitMap, clientNames]);
+
+  // Format date for display
+  const formatVisitDate = (dateStr: string | null) => {
+    if (!dateStr || dateStr === DEFAULT_VISIT_DATE) return 'Sin visitas';
+    
+    try {
+      // Parse as MM/DD/YYYY format (month/day/year)
+      const [month, day, year] = dateStr.split('/').map(Number);
+      const date = new Date(year, month - 1, day);
+      
+      // Format as "15 Mar 2024"
+      const monthNames = [
+        'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun',
+        'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'
+      ];
+      
+      return `${day} ${monthNames[month - 1]} ${year}`;
+    } catch {
+      return 'Fecha inválida';
+    }
+  };
 
   // Prepare client list for map
   const clientList: NavegarClient[] = (filteredNames || (searchTerm ? filteredClientsBySearch : clientNames)).map(
@@ -620,6 +662,61 @@ export default function NavegarPage() {
                 }}
                 placeholder="Buscar cliente..."
               />
+              
+              {/* Filtered Clients List */}
+              {hasActiveFilters && (
+                <div className="mt-3 border-t pt-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-sm font-medium text-gray-700">
+                      Clientes Filtrados ({filteredClientsWithDates.length})
+                    </h3>
+                    <button
+                      className="text-xs text-blue-600 hover:text-blue-800"
+                      onClick={() => {
+                        setCodigoFilter(null);
+                        setVendedorFilter(null);
+                        setSinVisitarFilter(false);
+                      }}
+                    >
+                      Limpiar filtros
+                    </button>
+                  </div>
+                  <div className="max-h-40 overflow-y-auto space-y-1">
+                    {filteredClientsWithDates.map((client) => (
+                      <div
+                        key={client.name}
+                        className={`px-3 py-2 text-sm cursor-pointer rounded border-l-2 transition-colors ${
+                          selectedClient === client.name 
+                            ? 'bg-blue-50 text-blue-700 border-blue-500' 
+                            : client.isSinVisitar 
+                              ? 'bg-yellow-50 hover:bg-yellow-100 border-yellow-400' 
+                              : 'bg-gray-50 hover:bg-gray-100 border-gray-300'
+                        }`}
+                        onClick={() => {
+                          setSelectedClient(client.name);
+                          setRouteInfo(null);
+                          setRouteMode(false);
+                        }}
+                      >
+                        <div className="flex justify-between items-center">
+                          <span className="font-medium">{client.name}</span>
+                          <span className={`text-xs ${
+                            client.isSinVisitar ? 'text-yellow-600' : 'text-gray-500'
+                          }`}>
+                            {formatVisitDate(client.lastVisitDate)}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                    {filteredClientsWithDates.length === 0 && (
+                      <div className="px-3 py-4 text-center text-sm text-gray-500">
+                        No hay clientes que coincidan con los filtros seleccionados
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {isLoading ? (
                 <div className="flex justify-center items-center py-8">
                   <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
@@ -644,7 +741,7 @@ export default function NavegarPage() {
                       Mostrando primeros 20 resultados. Continúa escribiendo para refinar la búsqueda.
                     </div>
                   )}
-                  {!searchTerm && (
+                  {!searchTerm && !hasActiveFilters && (
                     <div className="px-4 py-2 text-xs text-gray-400">Busca un cliente para navegar</div>
                   )}
                 </div>
