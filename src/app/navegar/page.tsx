@@ -39,7 +39,7 @@ export default function NavegarPage() {
   const [vendedorFilter, setVendedorFilter] = useState<string | null>(null);
   const [vendedorDropdownOpen, setVendedorDropdownOpen] = useState(false);
   const vendedorChipRef = useRef<HTMLButtonElement>(null);
-  const [allVendedorClients, setAllVendedorClients] = useState<{ name: string; email: string }[]>([]);
+  const [clientVendedorMap, setClientVendedorMap] = useState<Record<string, string>>({});
   const [sinVisitarFilter, setSinVisitarFilter] = useState(false);
   const [sheetRows, setSheetRows] = useState<any[]>([]);
   const [sheetHeaders, setSheetHeaders] = useState<string[]>([]);
@@ -53,7 +53,7 @@ export default function NavegarPage() {
       setFetchError(null);
       try {
         const response = await fetch(
-          `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:AG?key=${googleApiKey}`
+          `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:AN?key=${googleApiKey}`
         );
         if (!response.ok) throw new Error("Failed to fetch client data");
         const data = await response.json();
@@ -74,7 +74,7 @@ export default function NavegarPage() {
     const codigoIndex = sheetHeaders.findIndex(h => h.toLowerCase() === 'codigo');
     return sheetRows
       .map(row => ({ name: row[0], code: row[codigoIndex] || '' }))
-      .filter(row => row.name && row.code);
+      .filter(row => row.name && row.code && !row.name.includes('**ARCHIVADO NO USAR**'));
   }, [sheetRows, sheetHeaders]);
 
   const clientLastEmailMap = useMemo(() => {
@@ -84,7 +84,7 @@ export default function NavegarPage() {
       const row = sheetRows[i];
       const name = row[0] || '';
       const email = row[emailIndex] || '';
-      if (name && email && !lastEmailMap[name]) {
+      if (name && email && !lastEmailMap[name] && !name.includes('**ARCHIVADO NO USAR**')) {
         lastEmailMap[name] = email;
       }
     }
@@ -98,15 +98,33 @@ export default function NavegarPage() {
       const row = sheetRows[i];
       const name = row[0] || '';
       const fecha = row[fechaIndex] || '';
-      if (name && fecha && !lastVisitMap[name]) {
+      if (name && fecha && !lastVisitMap[name] && !name.includes('**ARCHIVADO NO USAR**')) {
         lastVisitMap[name] = fecha;
       }
     }
     return lastVisitMap;
   }, [sheetRows, sheetHeaders]);
 
+  const clientVendedorMapping = useMemo(() => {
+    // Column AN is the 40th column (A=1, B=2, ..., AN=40), so index 39
+    const vendedorIndex = 39;
+    const vendedorMap: Record<string, string> = {};
+    for (let i = sheetRows.length - 1; i >= 0; i--) {
+      const row = sheetRows[i];
+      const name = row[0] || '';
+      const vendedor = row[vendedorIndex] || '';
+      if (name && vendedor && !vendedorMap[name] && !name.includes('**ARCHIVADO NO USAR**')) {
+        vendedorMap[name] = vendedor;
+      }
+    }
+    return vendedorMap;
+  }, [sheetRows, sheetHeaders]);
+
   const uniqueCodes = useMemo(() => Array.from(new Set(allClientCodes.map(c => c.code))), [allClientCodes]);
-  const uniqueVendedorEmails = useMemo(() => Array.from(new Set(Object.values(clientLastEmailMap))), [clientLastEmailMap]);
+  const uniqueVendedorNames = useMemo(() => {
+    const uniqueVendedores = Array.from(new Set(Object.values(clientVendedorMapping).filter(Boolean)));
+    return uniqueVendedores;
+  }, [clientVendedorMapping]);
 
   // Debounced search
   useEffect(() => { debouncedSetSearchTerm(searchTerm); }, [searchTerm, debouncedSetSearchTerm]);
@@ -117,7 +135,7 @@ export default function NavegarPage() {
     const searchLower = debouncedSearchTerm.toLowerCase();
     const MAX_RESULTS = 20;
     return clientNames
-      .filter(name => name && name.toLowerCase().includes(searchLower))
+      .filter(name => name && name.toLowerCase().includes(searchLower) && !name.includes('**ARCHIVADO NO USAR**'))
       .slice(0, MAX_RESULTS);
   }, [debouncedSearchTerm, clientNames]);
 
@@ -146,7 +164,7 @@ export default function NavegarPage() {
       try {
         // Fetch the row for the selected client from the sheet
         const response = await fetch(
-          `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:AG?key=${googleApiKey}`
+          `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:AN?key=${googleApiKey}`
         );
         if (!response.ok) throw new Error("Failed to fetch client data");
         const data = await response.json();
@@ -181,14 +199,14 @@ export default function NavegarPage() {
         const clients: Record<string, { lat: number; lng: number }> = {};
         const names = (data.values?.slice(1) || []).map((row: any[]) => {
           const name = row[0];
-          if (name && row[1] && row[2]) {
+          if (name && row[1] && row[2] && !name.includes('**ARCHIVADO NO USAR**')) {
             clients[name] = {
               lat: parseFloat(row[1]),
               lng: parseFloat(row[2]),
             };
           }
           return name;
-        }).filter(Boolean);
+        }).filter((name: string) => name && !name.includes('**ARCHIVADO NO USAR**'));
         setClientNames(Array.from(new Set(names)) as string[]);
         setClientLocations(clients);
       } catch (error) {
@@ -202,37 +220,11 @@ export default function NavegarPage() {
     fetchClientNames();
   }, []);
 
-  // Fetch all client names and their last email on load
+  // This effect is no longer needed since vendedor data is loaded in fetchAllData
+  // Keeping for compatibility but simplified
   useEffect(() => {
-    const fetchAllVendedores = async () => {
-      try {
-        const response = await fetch(
-          `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:H?key=${googleApiKey}`
-        );
-        if (!response.ok) throw new Error("Failed to fetch client data");
-        const data = await response.json();
-        const headers = data.values[0];
-        const emailIndex = headers.findIndex((h: string) => h.toLowerCase() === 'email');
-        if (emailIndex === -1) return;
-        // Read bottom up, keep only the last occurrence for each email
-        const seen = new Set<string>();
-        const latestClients: { name: string; email: string }[] = [];
-        for (let i = data.values.length - 1; i > 0; i--) {
-          const row = data.values[i];
-          const email = row[emailIndex] || '';
-          const name = row[0] || '';
-          if (email && name && !seen.has(email)) {
-            seen.add(email);
-            latestClients.push({ name, email });
-          }
-        }
-        setAllVendedorClients(latestClients.reverse()); // reverse to keep original order
-      } catch (e) {
-        setAllVendedorClients([]);
-      }
-    };
-    fetchAllVendedores();
-  }, []);
+    setClientVendedorMap(clientVendedorMapping);
+  }, [clientVendedorMapping]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -268,19 +260,83 @@ export default function NavegarPage() {
     };
   }, [vendedorDropdownOpen]);
 
-  // Filtered client names by code
+  // Helper function to apply all filters except the specified one
+  const getFilteredClientsExcluding = (excludeFilter: 'codigo' | 'vendedor' | 'sinVisitar') => {
+    let baseClients = clientNames;
+    
+    // Apply código filter if active and not excluded
+    if (codigoFilter && excludeFilter !== 'codigo') {
+      const codeClients = allClientCodes.filter(c => c.code === codigoFilter).map(c => c.name);
+      baseClients = baseClients.filter(name => codeClients.includes(name));
+    }
+    
+    // Apply vendedor filter if active and not excluded
+    if (vendedorFilter && excludeFilter !== 'vendedor') {
+      const vendedorClients = Object.entries(clientVendedorMapping)
+        .filter(([name, vendedor]) => vendedor === vendedorFilter)
+        .map(([name]) => name);
+      baseClients = baseClients.filter(name => vendedorClients.includes(name));
+    }
+    
+    // Apply sin visitar filter if active and not excluded
+    if (sinVisitarFilter && excludeFilter !== 'sinVisitar') {
+      const sinVisitarClients = Object.entries(clientLastVisitMap)
+        .filter(([name, fecha]) => {
+          if (!fecha || fecha === DEFAULT_VISIT_DATE) return true;
+          const [day, month, year] = fecha.split('/').map(Number);
+          if (!day || !month || !year) return false;
+          const lastDate = new Date(year, month - 1, day);
+          const now = new Date();
+          const diffDays = (now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24);
+          return diffDays > DAYS_WITHOUT_VISIT;
+        })
+        .map(([name]) => name);
+      baseClients = baseClients.filter(name => sinVisitarClients.includes(name));
+    }
+    
+    return baseClients;
+  };
+
+  // Count clients that match the código filter (considering other active filters)
+  const codigoClientCount = codigoFilter 
+    ? getFilteredClientsExcluding('codigo').filter(name => {
+        const clientCode = allClientCodes.find(c => c.name === name)?.code;
+        return clientCode === codigoFilter;
+      }).length
+    : 0;
+
+  // Count clients that match the vendedor filter (considering other active filters)
+  const vendedorClientCount = vendedorFilter 
+    ? getFilteredClientsExcluding('vendedor').filter(name => {
+        return clientVendedorMapping[name] === vendedorFilter;
+      }).length
+    : 0;
+
+  // Count clients that match the sin visitar filter (considering other active filters)
+  const sinVisitarClientCount = sinVisitarFilter 
+    ? getFilteredClientsExcluding('sinVisitar').filter(name => {
+        const fecha = clientLastVisitMap[name];
+        if (!fecha || fecha === DEFAULT_VISIT_DATE) return true;
+        const [day, month, year] = fecha.split('/').map(Number);
+        if (!day || !month || !year) return false;
+        const lastDate = new Date(year, month - 1, day);
+        const now = new Date();
+        const diffDays = (now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24);
+        return diffDays > DAYS_WITHOUT_VISIT;
+      }).length
+    : 0;
+
+  // Individual filter results for main filtering logic
   const filteredByCode = codigoFilter
     ? allClientCodes.filter(c => c.code === codigoFilter).map(c => c.name)
     : null;
 
-  // Vendedor filter: show all clients whose last entry's email matches the selected vendedor
   const filteredByVendedor = vendedorFilter
-    ? Object.entries(clientLastEmailMap)
-        .filter(([name, email]) => email === vendedorFilter)
+    ? Object.entries(clientVendedorMapping)
+        .filter(([name, vendedor]) => vendedor === vendedorFilter)
         .map(([name]) => name)
     : null;
 
-  // Sin Visitar filter: clients with last visit > 30 days ago, ignoring '1/1/2024'
   const filteredBySinVisitar = sinVisitarFilter
     ? Object.entries(clientLastVisitMap)
         .filter(([name, fecha]) => {
@@ -300,25 +356,13 @@ export default function NavegarPage() {
   if (codigoFilter || vendedorFilter || sinVisitarFilter) {
     let sets: string[][] = [];
     if (codigoFilter) {
-      sets.push(allClientCodes.filter(c => c.code === codigoFilter).map(c => c.name));
+      sets.push(filteredByCode || []);
     }
     if (vendedorFilter) {
-      sets.push(Object.entries(clientLastEmailMap)
-        .filter(([name, email]) => email === vendedorFilter)
-        .map(([name]) => name));
+      sets.push(filteredByVendedor || []);
     }
     if (sinVisitarFilter) {
-      sets.push(Object.entries(clientLastVisitMap)
-        .filter(([name, fecha]) => {
-          if (!fecha || fecha === DEFAULT_VISIT_DATE) return true;
-          const [day, month, year] = fecha.split('/').map(Number);
-          if (!day || !month || !year) return false;
-          const lastDate = new Date(year, month - 1, day);
-          const now = new Date();
-          const diffDays = (now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24);
-          return diffDays > DAYS_WITHOUT_VISIT;
-        })
-        .map(([name]) => name));
+      sets.push(filteredBySinVisitar || []);
     }
     // Intersect all sets
     filteredNames = sets.reduce((a, b) => a.filter(x => b.includes(x)));
@@ -421,7 +465,7 @@ export default function NavegarPage() {
             onClick={() => setCodigoDropdownOpen((open) => !open)}
             type="button"
           >
-            Código{codigoFilter ? `: ${codigoFilter}` : ''}
+            Código{codigoFilter ? `: ${codigoFilter} (${codigoClientCount})` : ''}
             {codigoFilter && (
               <span
                 className="ml-1 cursor-pointer text-white bg-blue-700 rounded-full px-1.5 py-0.5 text-xs hover:bg-blue-800"
@@ -459,7 +503,7 @@ export default function NavegarPage() {
             onClick={() => setVendedorDropdownOpen((open) => !open)}
             type="button"
           >
-            Vendedor{vendedorFilter ? `: ${vendedorFilter}` : ''}
+            Vendedor{vendedorFilter ? `: ${vendedorFilter} (${vendedorClientCount})` : ''}
             {vendedorFilter && (
               <span
                 className="ml-1 cursor-pointer text-white bg-green-700 rounded-full px-1.5 py-0.5 text-xs hover:bg-green-800"
@@ -472,20 +516,20 @@ export default function NavegarPage() {
           </button>
           {vendedorDropdownOpen && (
             <div className="absolute left-32 bottom-10 z-20 bg-white border border-gray-200 rounded-lg shadow-lg w-56 max-h-64 overflow-y-auto animate-fade-in">
-              {uniqueVendedorEmails.map(email => (
+              {uniqueVendedorNames.map(name => (
                 <button
-                  key={email}
-                  className={`block w-full text-left px-4 py-2 text-xs hover:bg-green-100 ${vendedorFilter === email ? 'bg-green-600 text-white' : ''}`}
+                  key={name}
+                  className={`block w-full text-left px-4 py-2 text-xs hover:bg-green-100 ${vendedorFilter === name ? 'bg-green-600 text-white' : ''}`}
                   onMouseDown={e => {
                     e.preventDefault();
-                    setVendedorFilter(email);
+                    setVendedorFilter(name);
                     setVendedorDropdownOpen(false);
                   }}
                 >
-                  {email}
+                  {name}
                 </button>
               ))}
-              {uniqueVendedorEmails.length === 0 && (
+              {uniqueVendedorNames.length === 0 && (
                 <div className="px-4 py-2 text-xs text-gray-400">Sin vendedores</div>
               )}
             </div>
@@ -496,7 +540,7 @@ export default function NavegarPage() {
             onClick={() => setSinVisitarFilter(f => !f)}
             type="button"
           >
-            Sin Visitar
+            Sin Visitar{sinVisitarFilter ? ` (${sinVisitarClientCount})` : ''}
             {sinVisitarFilter && (
               <span
                 className="ml-1 cursor-pointer text-white bg-yellow-700 rounded-full px-1.5 py-0.5 text-xs hover:bg-yellow-800"
