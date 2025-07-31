@@ -86,12 +86,12 @@ const PRICES: ProductPrices = {
     'El Rey Mix Especial': 60,
     'Habanero Molido 50 g': 40,
     'Habanero Molido 20 g': 20,
-    'Medio Kilo Chiltepin Entero': 600
+    'Medio Kilo Chiltepin Entero': 500
   },
   'CLEY': {
     'Chiltepin Molido 50 g': 44.16,
     'Chiltepin Molido 20 g': 22.08,
-    'Chiltepin Entero 30 g': 45,
+    'Chiltepin Entero 30 g': 46,
     'Salsa Chiltepin El rey 195 ml': 15,
     'Salsa Especial El Rey 195 ml': 15,
     'Salsa Reina El rey 195 ml': 15,
