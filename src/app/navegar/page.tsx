@@ -46,6 +46,11 @@ export default function NavegarPage() {
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [isSheetLoading, setIsSheetLoading] = useState(true);
 
+  // Add filtering state
+  const [isFiltering, setIsFiltering] = useState(false);
+
+
+
   // Batch fetch all data from Google Sheets once
   useEffect(() => {
     const fetchAllData = async () => {
@@ -134,9 +139,11 @@ export default function NavegarPage() {
     if (!debouncedSearchTerm) return [];
     const searchLower = debouncedSearchTerm.toLowerCase();
     const MAX_RESULTS = 20;
-    return clientNames
+    const results = clientNames
       .filter(name => name && name.toLowerCase().includes(searchLower) && !name.includes('**ARCHIVADO NO USAR**'))
       .slice(0, MAX_RESULTS);
+    // Deduplicate search results
+    return Array.from(new Set(results));
   }, [debouncedSearchTerm, clientNames]);
 
   // Utility: get last visit date for a client
@@ -150,6 +157,9 @@ export default function NavegarPage() {
     if (!day || !month || !year) return false;
     const lastDate = new Date(year, month - 1, day);
     const now = new Date();
+    // Set both dates to midnight to ignore time portion
+    lastDate.setHours(0, 0, 0, 0);
+    now.setHours(0, 0, 0, 0);
     const diffDays = (now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24);
     return diffDays > DAYS_WITHOUT_VISIT;
   };
@@ -207,7 +217,9 @@ export default function NavegarPage() {
           }
           return name;
         }).filter((name: string) => name && !name.includes('**ARCHIVADO NO USAR**'));
-        setClientNames(Array.from(new Set(names)) as string[]);
+        // Double-check deduplication and clean up the client names
+        const cleanNames = Array.from(new Set(names.filter(Boolean)));
+        setClientNames(cleanNames as string[]);
         setClientLocations(clients);
       } catch (error) {
         // TODO: handle error UI
@@ -283,11 +295,14 @@ export default function NavegarPage() {
       const sinVisitarClients = Object.entries(clientLastVisitMap)
         .filter(([name, fecha]) => {
           if (!fecha || fecha === DEFAULT_VISIT_DATE) return true;
-          const [day, month, year] = fecha.split('/').map(Number);
+          const [month, day, year] = fecha.split('/').map(Number);
           if (!day || !month || !year) return false;
           const lastDate = new Date(year, month - 1, day);
           const now = new Date();
           const diffDays = (now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24);
+          
+
+          
           return diffDays > DAYS_WITHOUT_VISIT;
         })
         .map(([name]) => name);
@@ -317,56 +332,89 @@ export default function NavegarPage() {
     ? getFilteredClientsExcluding('sinVisitar').filter(name => {
         const fecha = clientLastVisitMap[name];
         if (!fecha || fecha === DEFAULT_VISIT_DATE) return true;
-        const [day, month, year] = fecha.split('/').map(Number);
+        const [month, day, year] = fecha.split('/').map(Number);
         if (!day || !month || !year) return false;
         const lastDate = new Date(year, month - 1, day);
         const now = new Date();
         const diffDays = (now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24);
+        
+
+        
         return diffDays > DAYS_WITHOUT_VISIT;
       }).length
     : 0;
 
-  // Individual filter results for main filtering logic
-  const filteredByCode = codigoFilter
-    ? allClientCodes.filter(c => c.code === codigoFilter).map(c => c.name)
-    : null;
+  // Memoize individual filter results for stable references
+  const filteredByCode = useMemo(() => {
+    if (!codigoFilter) return null;
+    const result = allClientCodes.filter(c => c.code === codigoFilter).map(c => c.name);
+    // Deduplicate to prevent duplicate keys
+    return Array.from(new Set(result));
+  }, [codigoFilter, allClientCodes]);
 
-  const filteredByVendedor = vendedorFilter
-    ? Object.entries(clientVendedorMapping)
-        .filter(([name, vendedor]) => vendedor === vendedorFilter)
-        .map(([name]) => name)
-    : null;
+  const filteredByVendedor = useMemo(() => {
+    if (!vendedorFilter) return null;
+    const result = Object.entries(clientVendedorMapping)
+      .filter(([name, vendedor]) => vendedor === vendedorFilter)
+      .map(([name]) => name);
+    // Deduplicate to prevent duplicate keys
+    return Array.from(new Set(result));
+  }, [vendedorFilter, clientVendedorMapping]);
 
-  const filteredBySinVisitar = sinVisitarFilter
-    ? Object.entries(clientLastVisitMap)
-        .filter(([name, fecha]) => {
-          if (!fecha || fecha === DEFAULT_VISIT_DATE) return true;
-          const [day, month, year] = fecha.split('/').map(Number);
-          if (!day || !month || !year) return false;
-          const lastDate = new Date(year, month - 1, day);
-          const now = new Date();
-          const diffDays = (now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24);
-          return diffDays > DAYS_WITHOUT_VISIT;
-        })
-        .map(([name]) => name)
-    : null;
+  const filteredBySinVisitar = useMemo(() => {
+    if (!sinVisitarFilter) return null;
+    
+    const result = Object.entries(clientLastVisitMap)
+      .filter(([name, fecha]) => {
+        if (!fecha || fecha === DEFAULT_VISIT_DATE) return true;
+        const [month, day, year] = fecha.split('/').map(Number);
+        if (!day || !month || !year) return false;
+        const lastDate = new Date(year, month - 1, day);
+        const now = new Date();
+        // Set both dates to midnight to match isSinVisitar logic
+        lastDate.setHours(0, 0, 0, 0);
+        now.setHours(0, 0, 0, 0);
+        const diffDays = (now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24);
+        return diffDays > DAYS_WITHOUT_VISIT;
+      })
+      .map(([name]) => name);
+    
+    // Deduplicate to prevent duplicate keys
+    return Array.from(new Set(result));
+  }, [sinVisitarFilter, clientLastVisitMap]);
 
-  // Combine filters: Codigo, Vendedor, Sin Visitar
-  let filteredNames: string[] | null = null;
-  if (codigoFilter || vendedorFilter || sinVisitarFilter) {
+  // Memoize the final filtered names to prevent infinite loops
+  const filteredNames = useMemo(() => {
+    if (!codigoFilter && !vendedorFilter && !sinVisitarFilter) {
+      return null;
+    }
+
     let sets: string[][] = [];
-    if (codigoFilter) {
-      sets.push(filteredByCode || []);
+    if (codigoFilter && filteredByCode) {
+      sets.push(filteredByCode);
     }
-    if (vendedorFilter) {
-      sets.push(filteredByVendedor || []);
+    if (vendedorFilter && filteredByVendedor) {
+      sets.push(filteredByVendedor);
     }
-    if (sinVisitarFilter) {
-      sets.push(filteredBySinVisitar || []);
+    if (sinVisitarFilter && filteredBySinVisitar) {
+      sets.push(filteredBySinVisitar);
     }
+
+    if (sets.length === 0) return null;
+
     // Intersect all sets
-    filteredNames = sets.reduce((a, b) => a.filter(x => b.includes(x)));
-  }
+    let result = sets.reduce((a, b) => a.filter(x => b.includes(x)));
+    
+    // CRITICAL: Deduplicate the results to prevent React key warnings
+    return Array.from(new Set(result));
+  }, [codigoFilter, vendedorFilter, sinVisitarFilter, filteredByCode, filteredByVendedor, filteredBySinVisitar]);
+
+  // Debounce filtering state to avoid flashing unfiltered results
+  useEffect(() => {
+    setIsFiltering(true);
+    const handler = setTimeout(() => setIsFiltering(false), 350);
+    return () => clearTimeout(handler);
+  }, [filteredNames, searchTerm, sinVisitarFilter, codigoFilter, vendedorFilter, clientNames]);
 
   // Check if any filters are active
   const hasActiveFilters = Boolean(codigoFilter || vendedorFilter || sinVisitarFilter);
@@ -376,7 +424,7 @@ export default function NavegarPage() {
     if (!hasActiveFilters) return [];
     
     const clients = filteredNames || [];
-    return clients.map(name => ({
+    const result = clients.map(name => ({
       name,
       lastVisitDate: getLastVisitDate(name),
       isSinVisitar: isSinVisitar(name)
@@ -387,6 +435,8 @@ export default function NavegarPage() {
       if (!b.lastVisitDate) return 1;
       return new Date(b.lastVisitDate).getTime() - new Date(a.lastVisitDate).getTime();
     });
+    
+    return result;
   }, [filteredNames, hasActiveFilters, clientLastVisitMap, clientNames]);
 
   // Format date for display
@@ -419,8 +469,8 @@ export default function NavegarPage() {
     })
   ).filter((c) => c.lat && c.lng);
 
-  // Get selected client location
-  const selectedClientLocation = selectedClient && clientLocations[selectedClient]
+  // Only show selected client if it is in the filtered list
+  const selectedClientLocation = selectedClient && clientLocations[selectedClient] && (!filteredNames || filteredNames.includes(selectedClient))
     ? clientLocations[selectedClient]
     : null;
 
@@ -477,7 +527,7 @@ export default function NavegarPage() {
     }
   };
 
-  // Only show selected client in route mode
+  // Only show selected client in route mode if it is in the filtered list
   const mapClients = routeMode && selectedClient && selectedClientLocation
     ? [{ name: selectedClient, lat: selectedClientLocation.lat, lng: selectedClientLocation.lng }]
     : clientList;
@@ -717,9 +767,10 @@ export default function NavegarPage() {
                 </div>
               )}
 
-              {isLoading ? (
+              {isFiltering ? (
                 <div className="flex justify-center items-center py-8">
                   <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
+                  <span className="ml-3 text-gray-500 text-sm">Filtrando clientes…</span>
                 </div>
               ) : (
                 <div className="max-h-60 overflow-y-auto mt-2">
