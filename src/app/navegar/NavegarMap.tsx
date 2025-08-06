@@ -9,10 +9,33 @@ mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
 const DEFAULT_CENTER = { lng: -110.962, lat: 29.072 }; // Hermosillo, Sonora, MX
 const FALLBACK_CENTER = { lng: -107.3940, lat: 24.8091 }; // Culiacán, Sinaloa
 
+// Function to get pin color based on codigo
+const getPinColor = (codigo?: string, isSelected: boolean = false) => {
+  if (!codigo) return isSelected ? "#007AFF" : "#007AFF"; // Default blue
+  
+  const codigoLower = codigo.toLowerCase();
+  let baseColor = "#007AFF"; // Default blue
+  
+  if (codigoLower.includes("cley")) {
+    baseColor = "#DC2626"; // Red
+  } else if (codigoLower.includes("tere")) {
+    baseColor = "#16A34A"; // Green
+  } else if (codigoLower.includes("oxx")) {
+    baseColor = "#EA580C"; // Orange
+  } else if (codigoLower.includes("eft")) {
+    baseColor = "#EAB308"; // Yellow
+  } else if (codigoLower.includes("kiosk")) {
+    baseColor = "#9333EA"; // Purple
+  }
+  
+  return baseColor;
+};
+
 export type Client = {
   name: string;
   lat: number;
   lng: number;
+  codigo?: string;
 };
 
 export type RouteInfo = {
@@ -178,7 +201,6 @@ const NavegarMap = forwardRef(function NavegarMap({ clients, selectedClient, onS
       } else {
         center = [FALLBACK_CENTER.lng, FALLBACK_CENTER.lat];
       }
-      console.log("[NavegarMap] Initializing map with center:", center);
       if (!mapboxgl.accessToken) {
         console.warn("[NavegarMap] Mapbox access token is missing!");
       }
@@ -203,14 +225,13 @@ const NavegarMap = forwardRef(function NavegarMap({ clients, selectedClient, onS
       el.className = "client-marker";
       el.style.width = "22px";
       el.style.height = "22px";
-      el.style.background =
-        client.name === selectedClient
-          ? "#007AFF"
-          : "#fff";
-      el.style.border =
-        client.name === selectedClient
-          ? "3px solid #007AFF"
-          : "2px solid #007AFF";
+      const isSelected = client.name === selectedClient;
+      const pinColor = getPinColor(client.codigo, isSelected);
+      
+      el.style.background = isSelected ? pinColor : "#fff";
+      el.style.border = isSelected 
+        ? `3px solid ${pinColor}` 
+        : `2px solid ${pinColor}`;
       el.style.borderRadius = "50%";
       el.style.boxShadow = "0 2px 8px rgba(0,0,0,0.15)";
       el.style.cursor = "pointer";
@@ -219,7 +240,7 @@ const NavegarMap = forwardRef(function NavegarMap({ clients, selectedClient, onS
       el.style.justifyContent = "center";
       el.style.fontFamily = "Inter, sans-serif";
       el.style.fontWeight = "bold";
-      el.style.color = client.name === selectedClient ? "#fff" : "#007AFF";
+      el.style.color = isSelected ? "#fff" : pinColor;
       el.innerText = client.name[0].toUpperCase();
       el.onclick = (e) => {
         e.stopPropagation();

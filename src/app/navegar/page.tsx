@@ -462,11 +462,16 @@ export default function NavegarPage() {
 
   // Prepare client list for map
   const clientList: NavegarClient[] = (filteredNames || (searchTerm ? filteredClientsBySearch : clientNames)).map(
-    (name) => ({
-      name,
-      lat: clientLocations[name]?.lat,
-      lng: clientLocations[name]?.lng,
-    })
+    (name) => {
+      // Find the codigo for this client
+      const clientCode = allClientCodes.find(c => c.name === name)?.code;
+      return {
+        name,
+        lat: clientLocations[name]?.lat,
+        lng: clientLocations[name]?.lng,
+        codigo: clientCode,
+      };
+    }
   ).filter((c) => c.lat && c.lng);
 
   // Only show selected client if it is in the filtered list
@@ -529,7 +534,12 @@ export default function NavegarPage() {
 
   // Only show selected client in route mode if it is in the filtered list
   const mapClients = routeMode && selectedClient && selectedClientLocation
-    ? [{ name: selectedClient, lat: selectedClientLocation.lat, lng: selectedClientLocation.lng }]
+    ? [{
+        name: selectedClient,
+        lat: selectedClientLocation.lat,
+        lng: selectedClientLocation.lng,
+        codigo: allClientCodes.find(c => c.name === selectedClient)?.code
+      }]
     : clientList;
 
   return (
@@ -784,7 +794,14 @@ export default function NavegarPage() {
                         setRouteMode(false);
                       }}
                     >
-                      {name}
+                      <div className="flex justify-between items-center">
+                        <span className="font-medium">{name}</span>
+                        <span className={`text-xs ${
+                          isSinVisitar(name) ? 'text-yellow-600' : 'text-gray-500'
+                        }`}>
+                          {formatVisitDate(getLastVisitDate(name))}
+                        </span>
+                      </div>
                     </div>
                   ))}
                   {searchTerm && filteredClientsBySearch.length === 20 && (
