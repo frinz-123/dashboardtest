@@ -42,7 +42,8 @@ function getClientCode(clientName: string): string {
     'facil': 'sfacil',
     'service': 'foods',
     'distribucentro': 'dbcentro',
-    'servicom': 'caseta'
+    'servicom': 'caseta',
+    'chata': 'chata'
   }
 
   for (const [key, code] of Object.entries(codeMap)) {
@@ -519,6 +520,19 @@ const PRICES: ProductPrices = {
     'Habanero Molido 50 g': 40,
     'Habanero Molido 20 g': 20,
     'Medio Kilo Chiltepin Entero': 500
+  },
+  'CHATA': {
+    'Chiltepin Molido 50 g': 50,
+    'Chiltepin Molido 20 g': 25,
+    'Chiltepin Entero 30 g': 45,
+    'Salsa Chiltepin El rey 195 ml': 18,
+    'Salsa Especial El Rey 195 ml': 18,
+    'Salsa Reina El rey 195 ml': 18,
+    'Salsa Habanera El Rey 195 ml': 18,
+    'Paquete El Rey': 120,
+    'Molinillo El Rey 30 g': 105,
+    'Tira Entero': 90,
+    'Tira Molido': 55,
   }
 }
 
