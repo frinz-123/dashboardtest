@@ -222,6 +222,7 @@ export async function GET(req: Request) {
         })
       }
 
+      const afIndexForCode = columnToIndex('AF')
       const entries = salesData.data.values.slice(1).map((row: any[], rowIndex) => {
         const products = Object.entries(PRODUCT_COLUMNS).reduce((acc, [col, productName]) => {
           const colIndex = columnToIndex(col)
@@ -268,11 +269,14 @@ export async function GET(req: Request) {
           console.log(`   🎯 Final products:`, products)
         }
 
+        const codeRaw = (row[afIndexForCode] || '').toString()
+        const code = codeRaw.trim().toUpperCase()
         return {
           clientName: row[0],
           date: row[32] || '',
           total: parseFloat(row[33] || '0'),
-          products
+          products,
+          code
         }
       })
 
@@ -362,6 +366,17 @@ export async function GET(req: Request) {
         }
       })
 
+      // Aggregate products by per-row code (AF), normalized
+      const productsByCode: Record<string, Record<string, number>> = {}
+      yearlyEntries.forEach((entry: any) => {
+        const code = (entry.code || '').toString().trim().toUpperCase()
+        if (!code) return
+        if (!productsByCode[code]) productsByCode[code] = {}
+        Object.entries(entry.products).forEach(([product, quantity]) => {
+          productsByCode[code][product] = (productsByCode[code][product] || 0) + (quantity || 0)
+        })
+      })
+
       const responseData = {
         totalSales,
         totalClients: uniqueClients,
@@ -369,7 +384,8 @@ export async function GET(req: Request) {
         monthlyTrend,
         topClients,
         clientStats,
-        clientCodes
+        clientCodes,
+        productsByCode
       }
       console.log('Final analytics response:', responseData)
       return NextResponse.json({

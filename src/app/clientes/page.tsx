@@ -63,6 +63,8 @@ interface AnalyticsData {
   clientStats: Record<string, ClientStats>
   // Optional mapping if backend provides client codes (client name -> code)
   clientCodes?: Record<string, string>
+  // Aggregated products by client code for current year
+  productsByCode?: Record<string, Record<string, number>>
 }
 
 // duplicate removed
@@ -343,6 +345,313 @@ function ClientesDesatendidos({
               <ArrowRight className={`h-3 w-3 ml-1 ${showMore ? 'transform rotate-180' : ''}`} />
             </button>
           </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+// Dashboard widget: Productos por código
+function ProductosPorCodigo({
+  analyticsData,
+  isLoading
+}: {
+  analyticsData: AnalyticsData | null
+  isLoading: boolean
+}) {
+  const [query, setQuery] = useState('')
+  const [sortBy, setSortBy] = useState<'quantity' | 'product' | 'code' | 'shareCode'>('quantity')
+  const [topN, setTopN] = useState<10 | 25 | 50 | 100 | 1000>(25)
+  const [selectedCodes, setSelectedCodes] = useState<string[]>([])
+  const [isCodesOpen, setIsCodesOpen] = useState(false)
+  const [collapsed, setCollapsed] = useState(false)
+
+  const productsByCode = analyticsData?.productsByCode || {}
+
+  const codeOptions = useMemo(() => {
+    return Object.keys(productsByCode).sort()
+  }, [productsByCode])
+
+  const filteredCodes = selectedCodes
+
+  const flattenedRows = useMemo(() => {
+    type Row = {
+      code: string
+      product: string
+      quantity: number
+      percentOfCode: number
+    }
+    const rows: Row[] = []
+
+    // Union of all products across ALL codes (used to show 0s when specific codes are filtered)
+    const allProductsAllCodes = Array.from(
+      new Set(
+        Object.values(productsByCode).flatMap(map => Object.keys(map || {}))
+      )
+    ).sort()
+
+    filteredCodes.forEach(code => {
+      const map = productsByCode[code] || {}
+      const codeTotal = Object.values(map).reduce((s, q) => s + (q || 0), 0)
+      const productListForRows = selectedCodes.length > 0 ? allProductsAllCodes : Object.keys(map)
+
+      productListForRows.forEach(product => {
+        if (!product) return
+        if (query && !product.toLowerCase().includes(query.toLowerCase())) return
+        const quantity = map[product] || 0
+        const percentOfCode = codeTotal > 0 ? quantity / codeTotal : 0
+        rows.push({ code, product, quantity, percentOfCode })
+      })
+    })
+
+    // Sort rows
+    rows.sort((a, b) => {
+      if (sortBy === 'quantity') return b.quantity - a.quantity
+      if (sortBy === 'product') return a.product.localeCompare(b.product)
+      if (sortBy === 'code') return a.code.localeCompare(b.code)
+      if (sortBy === 'shareCode') return b.percentOfCode - a.percentOfCode
+      return 0
+    })
+
+    return rows
+  }, [productsByCode, filteredCodes, selectedCodes.length, query, sortBy])
+
+  const visibleRows = useMemo(() => flattenedRows.slice(0, topN), [flattenedRows, topN])
+
+  const totalsByCode = useMemo(() => {
+    const totals: Record<string, number> = {}
+    filteredCodes.forEach(code => {
+      const qtySum = Object.values(productsByCode[code] || {}).reduce((s, q) => s + (q || 0), 0)
+      totals[code] = qtySum
+    })
+    return totals
+  }, [productsByCode, filteredCodes])
+
+  const grandTotal = useMemo(() => Object.values(totalsByCode).reduce((s, v) => s + v, 0), [totalsByCode])
+
+  const exportCSV = () => {
+    try {
+      const headers = ['Codigo', 'Producto', 'Cantidad', 'Part_codigo_%']
+      const lines = [headers.join(',')]
+      visibleRows.forEach(r => {
+        const row = [r.code, r.product, String(r.quantity), (r.percentOfCode * 100).toFixed(2) + '%']
+        // Escape commas and quotes
+        const escaped = row.map(v => '"' + String(v).replace(/"/g, '""') + '"')
+        lines.push(escaped.join(','))
+      })
+      const csvContent = lines.join('\n')
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'productos_por_codigo.csv'
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      console.error('CSV export failed', e)
+    }
+  }
+
+  return (
+    <div>
+      <div className="mb-3">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold text-gray-700 flex items-center text-sm">
+            <Package className="mr-2 h-4 w-4" /> Productos por código
+          </h3>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="text-xs border border-gray-300 rounded px-2 py-1 bg-white"
+              onClick={() => setCollapsed(!collapsed)}
+            >
+              {collapsed ? 'Expandir' : 'Colapsar'}
+            </button>
+            <button
+              type="button"
+              className="text-xs border border-gray-300 rounded px-2 py-1 bg-white"
+              onClick={exportCSV}
+              disabled={isLoading || !analyticsData?.productsByCode || visibleRows.length === 0}
+            >
+              Exportar CSV
+            </button>
+          </div>
+        </div>
+        <p className="text-xs text-gray-500 mt-1">Resumen de unidades vendidas por producto agrupado por código de cliente (año actual).</p>
+      </div>
+
+      {isLoading ? (
+        <div className="text-center py-4">
+          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto mb-2"></div>
+          <p className="text-sm text-gray-500">Cargando datos...</p>
+        </div>
+      ) : !analyticsData?.productsByCode || codeOptions.length === 0 ? (
+        <div className="text-center py-4">
+          <p className="text-sm text-gray-500">No hay datos de productos por código disponibles.</p>
+        </div>
+      ) : (
+        <>
+          {/* Controls */}
+          <div className="mb-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+            {/* Codes multi-select */}
+            <div className="relative">
+              <label className="block text-xs text-gray-600 mb-1">Filtrar por códigos</label>
+              <button
+                type="button"
+                className="w-full text-sm border border-gray-300 rounded px-2 py-2 bg-white text-left"
+                onClick={() => setIsCodesOpen(!isCodesOpen)}
+              >
+                {selectedCodes.length > 0 ? `Códigos (${selectedCodes.length})` : 'Selecciona códigos'}
+              </button>
+              {isCodesOpen && (
+                <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-56 overflow-y-auto p-2">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs text-gray-600">Selecciona uno o más</p>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        className="text-xs text-blue-600 hover:underline"
+                        onClick={() => setSelectedCodes(codeOptions)}
+                      >
+                        Seleccionar todos
+                      </button>
+                      <button
+                        type="button"
+                        className="text-xs text-blue-600 hover:underline"
+                        onClick={() => setSelectedCodes([])}
+                      >
+                        Limpiar
+                      </button>
+                    </div>
+                  </div>
+                  {codeOptions.map(code => {
+                    const checked = selectedCodes.includes(code)
+                    return (
+                      <label key={code} className="flex items-center space-x-2 py-1 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          className="h-3 w-3"
+                          checked={checked}
+                          onChange={(e) => {
+                            if (e.target.checked) setSelectedCodes(prev => Array.from(new Set([...prev, code])))
+                            else setSelectedCodes(prev => prev.filter(c => c !== code))
+                          }}
+                        />
+                        <span className="text-xs text-gray-700">{code}</span>
+                        <span className="ml-auto text-[10px] text-gray-500">{Object.values(productsByCode[code] || {}).reduce((s, q) => s + (q || 0), 0)} u</span>
+                      </label>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Product search */}
+            <div>
+              <label className="block text-xs text-gray-600 mb-1">Buscar producto</label>
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Nombre del producto"
+                className="w-full text-sm border border-gray-300 rounded px-2 py-2"
+              />
+            </div>
+
+            {/* Sort and Top N */}
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">Ordenar por</label>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as any)}
+                  className="w-full text-sm border border-gray-300 rounded px-2 py-2"
+                  disabled={selectedCodes.length === 0}
+                >
+                  <option value="quantity">Cantidad (desc)</option>
+                  <option value="product">Producto (A-Z)</option>
+                  <option value="code">Código (A-Z)</option>
+                  <option value="shareCode">Part. código (desc)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">Top</label>
+                <select
+                  value={String(topN)}
+                  onChange={(e) => setTopN(parseInt(e.target.value, 10) as any)}
+                  className="w-full text-sm border border-gray-300 rounded px-2 py-2"
+                  disabled={selectedCodes.length === 0}
+                >
+                  <option value="10">10</option>
+                  <option value="25">25</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                  <option value="1000">Todos</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {selectedCodes.length === 0 ? (
+            <div className="text-center py-10 border border-dashed border-gray-200 rounded-md bg-gray-50">
+              <p className="text-sm text-gray-600">Selecciona uno o más códigos para ver productos.</p>
+            </div>
+          ) : (
+            <>
+              {/* Summary by code */}
+              {!collapsed && (
+                <div className="mb-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {filteredCodes.map(code => {
+                    const codeTotal = totalsByCode[code] || 0
+                    const pct = grandTotal > 0 ? Math.round((codeTotal / grandTotal) * 100) : 0
+                    return (
+                      <div key={code} className="border border-gray-200 rounded-md p-3">
+                        <div className="flex items-center justify-between mb-1">
+                          <p className="text-sm font-medium text-gray-700">{code}</p>
+                          <p className="text-sm font-semibold text-blue-600">{codeTotal} u</p>
+                        </div>
+                        <div className="h-2 bg-gray-100 rounded">
+                          <div className="h-2 bg-blue-500 rounded" style={{ width: `${pct}%` }} />
+                        </div>
+                        <p className="text-[11px] text-gray-500 mt-1">{pct}% del total seleccionado</p>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
+              {/* Table */}
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-gray-500">
+                      <th className="py-2 pr-4">Código</th>
+                      <th className="py-2 pr-4">Producto</th>
+                      <th className="py-2 pr-4 text-right">Cantidad</th>
+                      <th className="py-2 pr-4 text-right">Part. en código</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visibleRows.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="text-center py-4 text-gray-500">Sin resultados</td>
+                      </tr>
+                    ) : (
+                      visibleRows.map(row => (
+                        <tr key={`${row.code}-${row.product}`} className="border-t border-gray-100">
+                          <td className="py-2 pr-4">{row.code}</td>
+                          <td className="py-2 pr-4">{row.product}</td>
+                          <td className="py-2 pr-4 text-right font-semibold text-gray-800 tabular-nums">{row.quantity}</td>
+                          <td className="py-2 pr-4 text-right text-gray-600 tabular-nums">{(row.percentOfCode * 100).toFixed(1)}%</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
         </>
       )}
     </div>
@@ -862,6 +1171,14 @@ export default function ClientesPage() {
                 setSelectedClient(name)
                 setSearchTerm(name)
               }}
+            />
+          </div>
+
+          {/* Productos por código */}
+          <div className="bg-white rounded-lg p-4 border border-[#E2E4E9]">
+            <ProductosPorCodigo
+              analyticsData={analyticsData}
+              isLoading={isLoadingAnalytics}
             />
           </div>
         </div>
