@@ -202,19 +202,19 @@ function ClientesDesatendidos({
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-3">
+      <div className="mb-3 space-y-2">
         <h3 className="font-semibold text-gray-700 flex items-center text-sm">
           <AlertTriangle className="mr-2 h-4 w-4 text-amber-500" /> Clientes Desatendidos
         </h3>
-        <div className="flex items-center space-x-2">
-          <div className="relative">
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Buscar nombre o código"
-              className="text-sm border border-gray-300 rounded px-2 py-1"
-            />
-          </div>
+        <div>
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Buscar nombre o código"
+            className="w-full text-base sm:text-sm border border-gray-300 rounded px-2 h-11"
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
           {/* Codes multi-select */}
           <div className="relative">
             <button
