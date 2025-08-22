@@ -469,6 +469,13 @@ export default function AdminPage() {
                     Ventas
                   </Link>
                   <Link
+                    href="/clientes"
+                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                    role="menuitem"
+                  >
+                    Clientes
+                  </Link>
+                  <Link
                     href="/recorridos"
                     className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
                     role="menuitem"

@@ -2305,6 +2305,9 @@ export default function RecorridosPage() {
                   <Link href="/form" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" role="menuitem">
                     Ventas
                   </Link>
+                  <Link href="/clientes" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" role="menuitem">
+                    Clientes
+                  </Link>
                   <Link href="/inventario" className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100" role="menuitem">
                     Inventario
                   </Link>
