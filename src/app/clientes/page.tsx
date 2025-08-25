@@ -8,6 +8,94 @@ import BlurIn from '@/components/ui/blur-in'
 import SearchInput from '@/components/ui/SearchInput'
 import InputGray from '@/components/ui/InputGray'
 
+// Custom ScrollableTabs component for mobile-friendly tab navigation
+function ScrollableTabs({
+  tabs,
+  activeTab,
+  onTabChange,
+  className = ""
+}: {
+  tabs: Array<{ id: string; label: string; icon: React.ComponentType<any> }>
+  activeTab: string
+  onTabChange: (tabId: string) => void
+  className?: string
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  // Scroll active tab into view on mobile
+  useEffect(() => {
+    if (scrollRef.current && window.innerWidth < 768) {
+      const activeButton = scrollRef.current.querySelector(`[data-tab-id="${activeTab}"]`) as HTMLElement
+      if (activeButton) {
+        const container = scrollRef.current
+        const buttonLeft = activeButton.offsetLeft
+        const buttonWidth = activeButton.offsetWidth
+        const containerWidth = container.offsetWidth
+        const scrollLeft = buttonLeft - (containerWidth / 2) + (buttonWidth / 2)
+
+        container.scrollTo({
+          left: scrollLeft,
+          behavior: 'smooth'
+        })
+      }
+    }
+  }, [activeTab])
+
+  return (
+    <div className={`bg-white rounded-lg p-2 border border-[#E2E4E9] ${className}`}>
+      <div
+        ref={scrollRef}
+        className="flex overflow-x-auto gap-1 pb-1"
+        style={{
+          scrollbarWidth: 'none',
+          msOverflowStyle: 'none',
+          WebkitOverflowScrolling: 'touch',
+          scrollBehavior: 'smooth',
+          touchAction: 'pan-x',
+          maxWidth: '100%',
+        }}
+        onScroll={(e) => {
+          // Hide scrollbar on scroll
+          const target = e.target as HTMLElement
+          target.style.scrollbarWidth = 'none'
+        }}
+      >
+        <style jsx>{`
+          div::-webkit-scrollbar {
+            display: none;
+          }
+        `}</style>
+        {tabs.map((tab) => {
+          const Icon = tab.icon
+          const isActive = activeTab === tab.id
+
+          return (
+            <button
+              key={tab.id}
+              data-tab-id={tab.id}
+              onClick={() => onTabChange(tab.id)}
+              className={`
+                flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex-shrink-0 whitespace-nowrap
+                ${isActive
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-800'
+                }
+              `}
+              style={{
+                touchAction: 'manipulation',
+                minWidth: 'fit-content',
+              }}
+            >
+              <Icon className="w-4 h-4 mr-2 flex-shrink-0" />
+              {tab.label}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 interface ClientEntry {
   id: number
   clientName: string
@@ -1185,30 +1273,17 @@ export default function ClientesPage() {
       ) : selectedClient && clientData ? (
         <div className="space-y-3">
           {/* Tab Navigation */}
-          <div className="bg-white rounded-lg p-2 border border-[#E2E4E9] overflow-x-auto">
-            <div className="flex space-x-1 w-max">
-              {[
-                { id: 'overview', label: 'Resumen', icon: BarChart3 },
-                { id: 'entries', label: 'Entradas', icon: Calendar },
-                { id: 'products', label: 'Productos', icon: Package },
-                { id: 'trends', label: 'Tendencias', icon: TrendingUp },
-                { id: 'insights', label: 'Insights', icon: Lightbulb }
-              ].map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id as any)}
-                  className={`flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-colors shrink-0 ${
-                    activeTab === tab.id
-                      ? 'bg-blue-600 text-white'
-                      : 'text-gray-600 hover:bg-gray-100'
-                  }`}
-                >
-                  <tab.icon className="w-4 h-4 mr-2" />
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-          </div>
+          <ScrollableTabs
+            tabs={[
+              { id: 'overview', label: 'Resumen', icon: BarChart3 },
+              { id: 'entries', label: 'Entradas', icon: Calendar },
+              { id: 'products', label: 'Productos', icon: Package },
+              { id: 'trends', label: 'Tendencias', icon: TrendingUp },
+              { id: 'insights', label: 'Insights', icon: Lightbulb }
+            ]}
+            activeTab={activeTab}
+            onTabChange={(tabId) => setActiveTab(tabId as any)}
+          />
 
           {/* Overview Tab */}
           {activeTab === 'overview' && (
@@ -1222,7 +1297,7 @@ export default function ClientesPage() {
                     </div>
                     <div className="ml-3">
                       <p className="text-sm text-gray-600">Ventas este año</p>
-                      <p className="text-xl font-bold text-gray-900">{formatCurrency(clientData.yearlySales)}</p>
+                      <p className="text-lg font-bold text-gray-900">{formatCurrency(clientData.yearlySales)}</p>
                     </div>
                   </div>
                 </div>
@@ -1234,7 +1309,7 @@ export default function ClientesPage() {
                     </div>
                     <div className="ml-3">
                       <p className="text-sm text-gray-600">Total histórico</p>
-                      <p className="text-xl font-bold text-gray-900">{formatCurrency(clientData.allTimeSales)}</p>
+                      <p className="text-lg font-bold text-gray-900">{formatCurrency(clientData.allTimeSales)}</p>
                     </div>
                   </div>
                 </div>
@@ -1246,7 +1321,7 @@ export default function ClientesPage() {
                     </div>
                     <div className="ml-3">
                       <p className="text-sm text-gray-600">Total entradas</p>
-                      <p className="text-xl font-bold text-gray-900">{clientData.totalEntries}</p>
+                      <p className="text-lg font-bold text-gray-900">{clientData.totalEntries}</p>
                     </div>
                   </div>
                 </div>
@@ -1258,7 +1333,7 @@ export default function ClientesPage() {
                     </div>
                     <div className="ml-3">
                       <p className="text-sm text-gray-600">Productos vendidos</p>
-                      <p className="text-xl font-bold text-gray-900">
+                      <p className="text-lg font-bold text-gray-900">
                         {Object.values(clientData.productBreakdown).reduce((sum, p) => sum + p.quantity, 0)}
                       </p>
                     </div>
@@ -1273,7 +1348,7 @@ export default function ClientesPage() {
                     </div>
                     <div className="ml-3">
                       <p className="text-sm text-gray-600">Ticket promedio</p>
-                      <p className="text-xl font-bold text-gray-900">
+                      <p className="text-lg font-bold text-gray-900">
                         {formatCurrency(computeAverageTicket(clientData.recentEntries || []))}
                       </p>
                     </div>
