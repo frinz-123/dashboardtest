@@ -1185,8 +1185,8 @@ export default function ClientesPage() {
       ) : selectedClient && clientData ? (
         <div className="space-y-3">
           {/* Tab Navigation */}
-          <div className="bg-white rounded-lg p-2 border border-[#E2E4E9]">
-            <div className="flex space-x-1">
+          <div className="bg-white rounded-lg p-2 border border-[#E2E4E9] overflow-x-auto">
+            <div className="flex space-x-1 w-max">
               {[
                 { id: 'overview', label: 'Resumen', icon: BarChart3 },
                 { id: 'entries', label: 'Entradas', icon: Calendar },
@@ -1197,7 +1197,7 @@ export default function ClientesPage() {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id as any)}
-                  className={`flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  className={`flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-colors shrink-0 ${
                     activeTab === tab.id
                       ? 'bg-blue-600 text-white'
                       : 'text-gray-600 hover:bg-gray-100'
