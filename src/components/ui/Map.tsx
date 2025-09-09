@@ -59,6 +59,37 @@ export default function Map({ onLocationUpdate, clientLocation }: MapProps) {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [locationError, setLocationError] = useState<string>('')
   const [isAutoUpdating, setIsAutoUpdating] = useState(true)
+  const userMarkerRef = useRef<mapboxgl.Marker | null>(null)
+  const clientMarkerRef = useRef<mapboxgl.Marker | null>(null)
+
+  const createLabeledMarker = (label: string, color: string) => {
+    const el = document.createElement('div')
+    el.style.position = 'relative'
+    el.style.display = 'flex'
+    el.style.flexDirection = 'column'
+    el.style.alignItems = 'center'
+
+    const bubble = document.createElement('div')
+    bubble.style.backgroundColor = color
+    bubble.style.width = '10px'
+    bubble.style.height = '10px'
+    bubble.style.borderRadius = '50%'
+    bubble.style.boxShadow = '0 0 0 2px white'
+
+    const text = document.createElement('div')
+    text.textContent = label
+    text.style.fontSize = '10px'
+    text.style.color = '#111827'
+    text.style.background = 'white'
+    text.style.padding = '2px 4px'
+    text.style.borderRadius = '4px'
+    text.style.boxShadow = '0 1px 2px rgba(0,0,0,0.1)'
+    text.style.marginTop = '4px'
+
+    el.appendChild(bubble)
+    el.appendChild(text)
+    return el
+  }
 
   const getCurrentLocation = () => {
     if (!navigator.geolocation) {
@@ -101,13 +132,12 @@ export default function Map({ onLocationUpdate, clientLocation }: MapProps) {
 
         setLocation(newLocation)
         onLocationUpdate?.(newLocation)
-        
+
         if (map.current && shouldUpdateMap) {
-          const markers = document.getElementsByClassName('mapboxgl-marker')
-          if (markers.length > 0) {
-            markers[0].remove()
+          if (userMarkerRef.current) {
+            userMarkerRef.current.remove()
           }
-          new mapboxgl.Marker()
+          userMarkerRef.current = new mapboxgl.Marker({ element: createLabeledMarker('TU', '#2563EB') })
             .setLngLat([newLocation.lng, newLocation.lat])
             .addTo(map.current)
 
@@ -181,8 +211,9 @@ export default function Map({ onLocationUpdate, clientLocation }: MapProps) {
       // Add navigation controls
       map.current.addControl(new mapboxgl.NavigationControl())
 
-      // Add marker at user's location
-      new mapboxgl.Marker()
+      // Add marker at user's location with label
+      if (userMarkerRef.current) userMarkerRef.current.remove()
+      userMarkerRef.current = new mapboxgl.Marker({ element: createLabeledMarker('TU', '#2563EB') })
         .setLngLat([location.lng, location.lat])
         .addTo(map.current)
     }
@@ -196,11 +227,8 @@ export default function Map({ onLocationUpdate, clientLocation }: MapProps) {
     }
 
     if (map.current && clientLocation) {
-      const marker = new mapboxgl.Marker({
-        color: '#FF0000',
-        scale: 0.8,
-        className: 'client-marker'
-      })
+      if (clientMarkerRef.current) clientMarkerRef.current.remove()
+      clientMarkerRef.current = new mapboxgl.Marker({ element: createLabeledMarker('Cliente', '#DC2626') })
         .setLngLat([clientLocation.lng, clientLocation.lat])
         .addTo(map.current)
 
@@ -240,9 +268,9 @@ export default function Map({ onLocationUpdate, clientLocation }: MapProps) {
       <div className="flex justify-between items-center mt-2">
         <div className="flex items-center gap-2">
           {locationError ? (
-            <p className="text-xs text-red-500">
+            <div className="text-xs text-yellow-800 bg-yellow-100 px-2 py-1 rounded">
               {locationError}
-            </p>
+            </div>
           ) : location && (
             <p className="text-xs text-gray-500">
               Ubicación: {location.lat.toFixed(5)}, {location.lng.toFixed(5)}
@@ -253,6 +281,14 @@ export default function Map({ onLocationUpdate, clientLocation }: MapProps) {
           )}
         </div>
         <div className="flex items-center gap-2">
+          {locationError && (
+            <button
+              onClick={() => getCurrentLocation()}
+              className="text-xs px-2 py-1 rounded bg-yellow-200 text-yellow-900 hover:bg-yellow-300"
+            >
+              Reintentar
+            </button>
+          )}
           <button
             onClick={() => setIsAutoUpdating(!isAutoUpdating)}
             className={`text-xs px-2 py-1 rounded ${

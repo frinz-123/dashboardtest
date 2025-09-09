@@ -1,12 +1,13 @@
 'use client'
 
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import Link from 'next/link'
-import { Menu } from 'lucide-react'
+import { Menu, ShoppingCart } from 'lucide-react'
 import BlurIn from '@/components/ui/blur-in'
 import LabelNumbers from '@/components/ui/labelnumbers'
 import SearchInput from '@/components/ui/SearchInput'
 import Map from '@/components/ui/Map'
+import VirtualList from '@/components/ui/VirtualList'
 import InputGray from '@/components/ui/InputGray'
 import { useSession } from "next-auth/react"
 import CleyOrderQuestion from '@/components/comp-166'
@@ -16,9 +17,39 @@ const spreadsheetId = process.env.NEXT_PUBLIC_SPREADSHEET_ID
 const sheetName = process.env.NEXT_PUBLIC_SHEET_NAME
 const OVERRIDE_EMAILS = process.env.NEXT_PUBLIC_OVERRIDE_EMAIL?.split(',').map(email => email.trim()) || [];
 
-const MIN_MOVEMENT_THRESHOLD = 20; // Increased from 10 meters to 20 meters
+// Static list defined once to avoid re-allocating on every render
+const PRODUCTS: string[] = [
+  "Chiltepin Molido 50 g",
+  "Chiltepin Molido 20 g",
+  "Chiltepin Entero 30 g",
+  "Salsa Chiltepin El rey 195 ml",
+  "Salsa Especial El Rey 195 ml",
+  "Salsa Reina El rey 195 ml",
+  "Salsa Habanera El Rey 195 ml",
+  "Paquete El Rey",
+  "Molinillo El Rey 30 g",
+  "Tira Entero",
+  "Tira Molido",
+  "Salsa chiltepin Litro",
+  "Salsa Especial Litro",
+  "Salsa Reina Litro",
+  "Salsa Habanera Litro",
+  "Michela Mix Tamarindo",
+  "Michela Mix Mango",
+  "Michela Mix Sandia",
+  "Michela Mix Fuego",
+  "Michela Mix Picafresa",
+  "El Rey Mix Original",
+  "El Rey Mix Especial",
+  "Medio Kilo Chiltepin Entero",
+  "Habanero Molido 50 g",
+  "Habanero Molido 20 g"
+]
+
+const MIN_MOVEMENT_THRESHOLD = 5; // Align with map for precise updates
 const MAX_LOCATION_AGE = 30000; // 30 seconds in milliseconds
 const MAX_CLIENT_DISTANCE = 450; // Maximum allowed distance to client in meters
+const ARCHIVE_MARKER = 'archivado no usar';
 
 function getClientCode(clientName: string): string {
   if (!clientName) return 'EFT'
@@ -603,6 +634,16 @@ export default function FormPage() {
       setCurrentLocation(location);
     }, 1000)
   ).current;
+  // Currency formatting (MXN)
+  const currencyFormatter = useMemo(() => new Intl.NumberFormat('es-MX', {
+    style: 'currency',
+    currency: 'MXN',
+    maximumFractionDigits: 2
+  }), [])
+  const formatCurrency = (value: number) => currencyFormatter.format(value)
+
+  const orderDetails = useMemo(() => calculateOrderDetails(), [selectedClient, quantities])
+
 
   // Add a debounced search handler
   const debouncedSearch = useRef(
@@ -631,7 +672,7 @@ export default function FormPage() {
       newLocation.lng
     );
 
-    return distance > MIN_MOVEMENT_THRESHOLD * 0.8;
+    return distance > MIN_MOVEMENT_THRESHOLD;
   };
 
   // Update handleLocationUpdate to use the state
@@ -647,7 +688,23 @@ export default function FormPage() {
   };
 
   useEffect(() => {
-    fetchClientNames()
+    try {
+      const cached = localStorage.getItem('clientData');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed?.names && parsed?.locations) {
+          setClientNames(parsed.names);
+          setClientLocations(parsed.locations);
+          setIsLoading(false);
+        }
+      }
+    } catch (e) {
+      // ignore cache errors
+    }
+
+    const controller = new AbortController();
+    fetchClientNames(controller.signal);
+    return () => controller.abort();
   }, [])
 
   // Initialize cached email on component mount
@@ -693,7 +750,12 @@ export default function FormPage() {
       const MAX_RESULTS = 20; // Limit to 20 results for better performance
       
       const filtered = clientNames
-        .filter(name => name && name.toLowerCase().includes(searchLower))
+        .filter(name => {
+          if (!name) return false;
+          const lowerName = name.toLowerCase();
+          if (lowerName.includes('archivado no usar')) return false;
+          return lowerName.includes(searchLower);
+        })
         .slice(0, MAX_RESULTS);
       
       setFilteredClients(filtered);
@@ -732,32 +794,48 @@ export default function FormPage() {
   }, [selectedClient, currentLocation, clientLocations]);
 
   // Modify fetchClientNames to handle errors better
-  const fetchClientNames = async () => {
+  const fetchClientNames = async (signal?: AbortSignal) => {
     setIsLoading(true)
     try {
       const response = await fetch(
-        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:C?key=${googleApiKey}`
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:C?key=${googleApiKey}`,
+        { signal }
       )
       if (!response.ok) {
         throw new Error('Failed to fetch client data')
       }
       const data = await response.json()
       const clients: Record<string, { lat: number, lng: number }> = {}
-      const names = (data.values?.slice(1) || []).map((row: any[]) => {
-        const name = row[0]
-        if (name && row[1] && row[2]) {
-          clients[name] = {
-            lat: parseFloat(row[1]),
-            lng: parseFloat(row[2])
+      const names = (data.values?.slice(1) || [])
+        .map((row: any[]) => {
+          const name = row[0]
+          if (!name) return null
+          const lowerName = String(name).toLowerCase()
+          if (lowerName.includes(ARCHIVE_MARKER)) return null
+          if (row[1] && row[2]) {
+            clients[name] = {
+              lat: parseFloat(row[1]),
+              lng: parseFloat(row[2])
+            }
           }
-        }
-        return name
-      }).filter(Boolean)
+          return name
+        })
+        .filter(Boolean)
       
       const uniqueNames = Array.from(new Set(names))
       setClientNames(uniqueNames as string[])
       setClientLocations(clients)
+
+      try {
+        localStorage.setItem(
+          'clientData', 
+          JSON.stringify({ names: uniqueNames, locations: clients })
+        )
+      } catch (e) {
+        // ignore cache write errors
+      }
     } catch (error) {
+      if ((error as any)?.name === 'AbortError') return
       console.error('Error fetching client names:', error)
       setValidationErrors(prev => ({
         ...prev,
@@ -768,33 +846,22 @@ export default function FormPage() {
     }
   }
 
-  const products = [
-    "Chiltepin Molido 50 g",
-    "Chiltepin Molido 20 g",
-    "Chiltepin Entero 30 g",
-    "Salsa Chiltepin El rey 195 ml",
-    "Salsa Especial El Rey 195 ml",
-    "Salsa Reina El rey 195 ml",
-    "Salsa Habanera El Rey 195 ml",
-    "Paquete El Rey",
-    "Molinillo El Rey 30 g",
-    "Tira Entero",
-    "Tira Molido",
-    "Salsa chiltepin Litro",
-    "Salsa Especial Litro",
-    "Salsa Reina Litro",
-    "Salsa Habanera Litro",
-    "Michela Mix Tamarindo",
-    "Michela Mix Mango",
-    "Michela Mix Sandia",
-    "Michela Mix Fuego",
-    "Michela Mix Picafresa",
-    "El Rey Mix Original",
-    "El Rey Mix Especial",
-    "Medio Kilo Chiltepin Entero",
-    "Habanero Molido 50 g",
-    "Habanero Molido 20 g"
-  ]
+  const distanceToClient = useMemo(() => {
+    if (!selectedClient || !currentLocation || !clientLocations[selectedClient]) return null
+    return calculateDistance(
+      currentLocation.lat,
+      currentLocation.lng,
+      clientLocations[selectedClient].lat,
+      clientLocations[selectedClient].lng
+    )
+  }, [selectedClient, currentLocation, clientLocations])
+
+  const formatDistance = (meters: number) => {
+    if (meters >= 1000) return `${(meters / 1000).toFixed(1)} km`
+    return `${Math.round(meters)} m`
+  }
+
+  // Products list moved to top-level constant PRODUCTS
 
   const handleQuantityChange = (product: string, value: number) => {
     setQuantities(prev => {
@@ -950,7 +1017,7 @@ export default function FormPage() {
     }
   };
 
-  const calculateOrderDetails = () => {
+  function calculateOrderDetails() {
     if (!selectedClient) return []
     
     const clientCode = getClientCode(selectedClient)
@@ -1094,9 +1161,16 @@ export default function FormPage() {
           )}
         </div>
         {selectedClient && (
-          <p className="text-sm text-gray-600 mt-2">
-            Cliente seleccionado: {selectedClient} ({getClientCode(selectedClient)})
-          </p>
+          <div className="text-sm text-gray-600 mt-2 flex items-center justify-between">
+            <p>
+              Cliente seleccionado: {selectedClient} ({getClientCode(selectedClient)})
+            </p>
+            {distanceToClient !== null && (
+              <span className={`ml-2 ${distanceToClient > MAX_CLIENT_DISTANCE ? 'text-red-600' : 'text-green-600'}`}>
+                {formatDistance(distanceToClient)}
+              </span>
+            )}
+          </div>
         )}
         {locationAlert && (
           <p className="text-sm text-red-600 mt-2 font-medium">
@@ -1113,15 +1187,21 @@ export default function FormPage() {
         />
       </div>
 
-      <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9] space-y-4">
-        {products.map((product) => (
-          <LabelNumbers 
-            key={`${product}-${key}`}
-            label={product} 
-            value={quantities[product] || 0}
-            onChange={(value) => handleQuantityChange(product, value)}
-          />
-        ))}
+      <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
+        <VirtualList
+          items={PRODUCTS}
+          itemHeight={80}
+          height={360}
+          overscan={6}
+          renderItem={(product) => (
+            <LabelNumbers
+              key={`${product}-${key}`}
+              label={product}
+              value={quantities[product] || 0}
+              onChange={(value) => handleQuantityChange(product as string, value)}
+            />
+          )}
+        />
       </div>
 
       {/* Add CLEY order question component */}
@@ -1138,24 +1218,33 @@ export default function FormPage() {
         </div>
       )}
 
-      <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
+      <div className="bg-white rounded-xl mb-3 p-4 border border-[#E2E4E9] shadow-sm">
         {Object.values(quantities).some(q => q > 0) && (
           <div className="text-sm">
-            <h3 className="font-semibold text-gray-700 mb-2">Detalles del pedido:</h3>
-            <div className="space-y-2">
-              {calculateOrderDetails().map(({ product, quantity, price, subtotal }) => (
-                <div key={product} className="flex justify-between text-gray-600">
-                  <span>{quantity}x {product}</span>
-                  <div className="text-right">
-                    <span className="text-gray-500">${price} c/u</span>
-                    <span className="ml-2">${subtotal.toFixed(2)}</span>
-                  </div>
-                </div>
-              ))}
-              <div className="border-t pt-2 font-medium flex justify-between text-gray-800">
-                <span>Total</span>
-                <span>${total}</span>
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <ShoppingCart className="h-4 w-4 text-gray-500" />
+                <h3 className="font-semibold text-gray-800 tracking-tight">Detalle del pedido</h3>
               </div>
+              <span className="text-xs text-gray-500">{orderDetails.length} {orderDetails.length === 1 ? 'artículo' : 'artículos'}</span>
+            </div>
+            <ul className="divide-y divide-gray-100">
+              {orderDetails.map(({ product, quantity, price, subtotal }) => (
+                <li key={product} className="py-2 flex items-start justify-between">
+                  <div className="pr-3">
+                    <div className="text-gray-800">{product}</div>
+                    <div className="text-xs text-gray-500">Precio {formatCurrency(price)}</div>
+                  </div>
+                  <div className="text-right">
+                    <span className="inline-flex items-center rounded-full bg-gray-100 text-gray-700 text-xs px-2 py-1 font-medium">x{quantity}</span>
+                    <div className="mt-1 text-gray-900 font-semibold">{formatCurrency(subtotal)}</div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <div className="mt-3 rounded-lg bg-gray-50 p-3 flex items-center justify-between">
+              <span className="text-sm text-gray-600 font-medium">Total</span>
+              <span className="text-base font-semibold text-gray-900">{formatCurrency(parseFloat(total))}</span>
             </div>
           </div>
         )}

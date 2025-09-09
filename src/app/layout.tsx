@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google'
 import "./globals.css";
 import AuthProvider from '@/components/providers/AuthProvider'
 import { ZoomPrevention } from '@/components/ZoomPrevention'
+import ClientDataPrefetcher from '@/components/ClientDataPrefetcher'
 
 const inter = Inter({
   subsets: ['latin'],
@@ -50,6 +51,7 @@ export default function RootLayout({
       </head>
       <body className={`${inter.variable} antialiased scroll-container`}>
         <ZoomPrevention />
+        <ClientDataPrefetcher />
         <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
