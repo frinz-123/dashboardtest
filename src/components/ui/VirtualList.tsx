@@ -13,6 +13,7 @@ type VirtualListProps<T> = {
 export default function VirtualList<T>({ items, itemHeight, height, overscan = 4, renderItem }: VirtualListProps<T>) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [scrollTop, setScrollTop] = useState(0)
+  const touchStartY = useRef<number | null>(null)
 
   const onScroll = useCallback(() => {
     if (!containerRef.current) return
@@ -23,8 +24,45 @@ export default function VirtualList<T>({ items, itemHeight, height, overscan = 4
     const el = containerRef.current
     if (!el) return
     el.addEventListener('scroll', onScroll, { passive: true })
+
+    const onWheel = (e: WheelEvent) => {
+      if (!el) return
+      const atTop = el.scrollTop <= 0
+      const atBottom = Math.ceil(el.scrollTop + el.clientHeight) >= el.scrollHeight
+      const scrollingUp = e.deltaY < 0
+      const scrollingDown = e.deltaY > 0
+      if ((atTop && scrollingUp) || (atBottom && scrollingDown)) {
+        e.preventDefault()
+        window.scrollBy({ top: e.deltaY, behavior: 'auto' })
+      }
+    }
+
+    const onTouchStart = (e: TouchEvent) => {
+      touchStartY.current = e.touches[0]?.clientY ?? null
+    }
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (!el || touchStartY.current === null) return
+      const currentY = e.touches[0]?.clientY ?? touchStartY.current
+      const delta = touchStartY.current - currentY // >0 means swipe up (scroll down)
+      const atTop = el.scrollTop <= 0
+      const atBottom = Math.ceil(el.scrollTop + el.clientHeight) >= el.scrollHeight
+      const swipingDown = delta < 0
+      const swipingUp = delta > 0
+      if ((atTop && swipingDown) || (atBottom && swipingUp)) {
+        e.preventDefault()
+        window.scrollBy({ top: delta, behavior: 'auto' })
+      }
+    }
+
+    el.addEventListener('wheel', onWheel, { passive: false })
+    el.addEventListener('touchstart', onTouchStart, { passive: true })
+    el.addEventListener('touchmove', onTouchMove, { passive: false })
     return () => {
       el.removeEventListener('scroll', onScroll)
+      el.removeEventListener('wheel', onWheel)
+      el.removeEventListener('touchstart', onTouchStart)
+      el.removeEventListener('touchmove', onTouchMove)
     }
   }, [onScroll])
 
@@ -44,7 +82,7 @@ export default function VirtualList<T>({ items, itemHeight, height, overscan = 4
   }
 
   return (
-    <div ref={containerRef} style={{ height, overflowY: 'auto', position: 'relative' }}>
+    <div ref={containerRef} style={{ height, overflowY: 'auto', position: 'relative', overscrollBehaviorY: 'auto' }}>
       <div style={{ height: totalHeight, position: 'relative' }}>
         <div style={{ position: 'absolute', top: offsetY, left: 0, right: 0 }}>
           {visibleItems}
