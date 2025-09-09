@@ -628,6 +628,8 @@ export default function FormPage() {
     products?: string;
     submit?: string;
   }>({});
+  const detailsRef = useRef<HTMLDivElement | null>(null)
+  const [productsHeight, setProductsHeight] = useState<number>(360)
   
   const throttledLocationUpdate = useRef(
     throttle((location: { lat: number, lng: number }) => {
@@ -704,6 +706,15 @@ export default function FormPage() {
 
     const controller = new AbortController();
     fetchClientNames(controller.signal);
+    const computeHeights = () => {
+      if (typeof window === 'undefined') return
+      const vh = window.innerHeight
+      const desired = Math.round(vh * 0.45)
+      const clamped = Math.max(220, Math.min(360, desired))
+      setProductsHeight(clamped)
+    }
+    computeHeights()
+    window.addEventListener('resize', computeHeights, { passive: true })
     return () => controller.abort();
   }, [])
 
@@ -1191,7 +1202,7 @@ export default function FormPage() {
         <VirtualList
           items={PRODUCTS}
           itemHeight={80}
-          height={360}
+          height={productsHeight}
           overscan={6}
           renderItem={(product) => (
             <LabelNumbers
@@ -1202,6 +1213,14 @@ export default function FormPage() {
             />
           )}
         />
+        <div className="mt-3 flex justify-end">
+          <button
+            onClick={() => detailsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+            className="text-xs px-3 py-1 rounded-full bg-blue-50 text-blue-600 hover:bg-blue-100"
+          >
+            Ver resumen
+          </button>
+        </div>
       </div>
 
       {/* Add CLEY order question component */}
@@ -1218,7 +1237,7 @@ export default function FormPage() {
         </div>
       )}
 
-      <div className="bg-white rounded-xl mb-3 p-4 border border-[#E2E4E9] shadow-sm">
+      <div ref={detailsRef} className="bg-white rounded-xl mb-3 p-4 border border-[#E2E4E9] shadow-sm">
         {Object.values(quantities).some(q => q > 0) && (
           <div className="text-sm">
             <div className="flex items-center justify-between mb-3">
