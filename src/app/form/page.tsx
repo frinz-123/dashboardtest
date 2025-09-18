@@ -7,10 +7,12 @@ import BlurIn from '@/components/ui/blur-in'
 import LabelNumbers from '@/components/ui/labelnumbers'
 import SearchInput from '@/components/ui/SearchInput'
 import Map from '@/components/ui/Map'
-import VirtualList from '@/components/ui/VirtualList'
 import InputGray from '@/components/ui/InputGray'
 import { useSession } from "next-auth/react"
 import CleyOrderQuestion from '@/components/comp-166'
+import Toast, { useToast } from '@/components/ui/Toast'
+import { haptics } from '@/utils/haptics'
+import { ClientSearchSkeleton, ProductListSkeleton, MapSkeleton } from '@/components/ui/SkeletonLoader'
 
 const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY
 const spreadsheetId = process.env.NEXT_PUBLIC_SPREADSHEET_ID
@@ -606,6 +608,7 @@ function debounce(func: Function, wait: number) {
 
 export default function FormPage() {
   const { data: session } = useSession()
+  const { toast, success, error, hideToast } = useToast()
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('')
@@ -628,8 +631,7 @@ export default function FormPage() {
     products?: string;
     submit?: string;
   }>({});
-  const detailsRef = useRef<HTMLDivElement | null>(null)
-  const [productsHeight, setProductsHeight] = useState<number>(360)
+  const [isOptimisticSubmit, setIsOptimisticSubmit] = useState(false)
   
   const throttledLocationUpdate = useRef(
     throttle((location: { lat: number, lng: number }) => {
@@ -706,15 +708,6 @@ export default function FormPage() {
 
     const controller = new AbortController();
     fetchClientNames(controller.signal);
-    const computeHeights = () => {
-      if (typeof window === 'undefined') return
-      const vh = window.innerHeight
-      const desired = Math.round(vh * 0.45)
-      const clamped = Math.max(220, Math.min(360, desired))
-      setProductsHeight(clamped)
-    }
-    computeHeights()
-    window.addEventListener('resize', computeHeights, { passive: true })
     return () => controller.abort();
   }, [])
 
@@ -875,6 +868,13 @@ export default function FormPage() {
   // Products list moved to top-level constant PRODUCTS
 
   const handleQuantityChange = (product: string, value: number) => {
+    // Haptic feedback for quantity changes
+    if (value > (quantities[product] || 0)) {
+      haptics.light();
+    } else if (value < (quantities[product] || 0)) {
+      haptics.light();
+    }
+    
     setQuantities(prev => {
       const newQuantities = {
         ...prev,
@@ -926,7 +926,9 @@ export default function FormPage() {
 
   // Modify handleSubmit with better error handling
   const handleSubmit = async () => {
+    haptics.medium(); // Haptic feedback on submit
     setIsSubmitting(true);
+    setIsOptimisticSubmit(true); // Optimistic UI
     setValidationErrors({});
 
     try {
@@ -1008,23 +1010,31 @@ export default function FormPage() {
       }
 
       if (data.success) {
-        alert('Pedido enviado exitosamente');
-        // Reset form
-        setSelectedClient('');
-        setSearchTerm('');
-        setDebouncedSearchTerm('');
-        setQuantities({});
-        setTotal('0.00');
-        setFilteredClients([]);
-        setCleyOrderValue("1");
-        setKey(prev => prev + 1);
+        haptics.success(); // Success haptic
+        success(
+          'Pedido enviado',
+          'Tu pedido ha sido registrado exitosamente y será procesado pronto.'
+        );
+        // Reset form with delay for better UX
+        setTimeout(() => {
+          setSelectedClient('');
+          setSearchTerm('');
+          setDebouncedSearchTerm('');
+          setQuantities({});
+          setTotal('0.00');
+          setFilteredClients([]);
+          setCleyOrderValue("1");
+          setKey(prev => prev + 1);
+        }, 1000);
       }
 
     } catch (error) {
       console.error('Error submitting form:', error);
+      haptics.error(); // Error haptic
       setValidationErrors(prev => ({ ...prev, submit: 'Error al enviar el pedido' }));
     } finally {
       setIsSubmitting(false);
+      setIsOptimisticSubmit(false);
     }
   };
 
@@ -1049,11 +1059,29 @@ export default function FormPage() {
     return details
   }
 
-  // Add loading state UI
+  // Add loading state UI with skeletons
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+      <div className="min-h-screen bg-white px-4 py-3 font-sans w-full" style={{ fontFamily: 'Inter, sans-serif', fontSize: '0.8rem' }}>
+        <header className="flex justify-between items-center mb-4">
+          <div className="flex items-center">
+            <div className="w-8 h-8 bg-blue-600 rounded-full mr-2 flex items-center justify-center">
+              <div className="w-5 h-0.5 bg-white rounded-full transform -rotate-45"></div>
+            </div>
+            <BlurIn
+              word="Form"
+              className="text-2xl font-medium tracking-tight"
+              duration={0.5}
+              variant={{
+                hidden: { filter: 'blur(4px)', opacity: 0 },
+                visible: { filter: 'blur(0px)', opacity: 1 }
+              }}
+            />
+          </div>
+        </header>
+        <ClientSearchSkeleton />
+        <MapSkeleton />
+        <ProductListSkeleton />
       </div>
     )
   }
@@ -1155,6 +1183,7 @@ export default function FormPage() {
                   key={name}
                   className="px-4 py-2 text-sm hover:bg-gray-100 cursor-pointer"
                   onClick={() => {
+                    haptics.light(); // Haptic feedback for client selection
                     setSelectedClient(name);
                     setSearchTerm(name);
                     setFilteredClients([]);
@@ -1198,29 +1227,23 @@ export default function FormPage() {
         />
       </div>
 
-      <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
-        <VirtualList
-          items={PRODUCTS}
-          itemHeight={80}
-          height={productsHeight}
-          overscan={6}
-          renderItem={(product) => (
-            <LabelNumbers
-              key={`${product}-${key}`}
-              label={product}
-              value={quantities[product] || 0}
-              onChange={(value) => handleQuantityChange(product as string, value)}
-            />
-          )}
-        />
-        <div className="mt-3 flex justify-end">
-          <button
-            onClick={() => detailsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-            className="text-xs px-3 py-1 rounded-full bg-blue-50 text-blue-600 hover:bg-blue-100"
+      <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9] space-y-4">
+        {PRODUCTS.map((product, index) => (
+          <div 
+            key={`${product}-${key}`}
+            className="transform transition-all duration-200 ease-out hover:scale-[1.01]"
+            style={{ 
+              animationDelay: `${index * 50}ms`,
+              animation: 'fadeInUp 0.4s ease-out forwards'
+            }}
           >
-            Ver resumen
-          </button>
-        </div>
+            <LabelNumbers 
+              label={product} 
+              value={quantities[product] || 0}
+              onChange={(value) => handleQuantityChange(product, value)}
+            />
+          </div>
+        ))}
       </div>
 
       {/* Add CLEY order question component */}
@@ -1237,40 +1260,65 @@ export default function FormPage() {
         </div>
       )}
 
-      <div ref={detailsRef} className="bg-white rounded-xl mb-3 p-4 border border-[#E2E4E9] shadow-sm">
-        {Object.values(quantities).some(q => q > 0) && (
-          <div className="text-sm">
+      {/* Sticky order details at bottom with animations */}
+      {Object.values(quantities).some(q => q > 0) && (
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 shadow-lg z-40 animate-in slide-in-from-bottom duration-300">
+          <div className="max-w-md mx-auto">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
-                <ShoppingCart className="h-4 w-4 text-gray-500" />
+                <div className={`transition-all duration-300 ${isOptimisticSubmit ? 'animate-pulse' : ''}`}>
+                  <ShoppingCart className="h-4 w-4 text-gray-500" />
+                </div>
                 <h3 className="font-semibold text-gray-800 tracking-tight">Detalle del pedido</h3>
               </div>
-              <span className="text-xs text-gray-500">{orderDetails.length} {orderDetails.length === 1 ? 'artículo' : 'artículos'}</span>
+              <span className="text-xs text-gray-500 transition-all duration-200">
+                {orderDetails.length} {orderDetails.length === 1 ? 'artículo' : 'artículos'}
+              </span>
             </div>
-            <ul className="divide-y divide-gray-100">
-              {orderDetails.map(({ product, quantity, price, subtotal }) => (
-                <li key={product} className="py-2 flex items-start justify-between">
-                  <div className="pr-3">
-                    <div className="text-gray-800">{product}</div>
-                    <div className="text-xs text-gray-500">Precio {formatCurrency(price)}</div>
-                  </div>
-                  <div className="text-right">
-                    <span className="inline-flex items-center rounded-full bg-gray-100 text-gray-700 text-xs px-2 py-1 font-medium">x{quantity}</span>
-                    <div className="mt-1 text-gray-900 font-semibold">{formatCurrency(subtotal)}</div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-            <div className="mt-3 rounded-lg bg-gray-50 p-3 flex items-center justify-between">
+            <div className="max-h-40 overflow-y-auto mb-3">
+              <ul className="divide-y divide-gray-100">
+                {orderDetails.map(({ product, quantity, price, subtotal }, index) => (
+                  <li 
+                    key={product} 
+                    className="py-2 flex items-start justify-between transform transition-all duration-200 ease-out"
+                    style={{ 
+                      animationDelay: `${index * 100}ms`,
+                      animation: 'fadeInLeft 0.3s ease-out forwards'
+                    }}
+                  >
+                    <div className="pr-3">
+                      <div className="text-gray-800 text-sm">{product}</div>
+                      <div className="text-xs text-gray-500">Precio {formatCurrency(price)}</div>
+                    </div>
+                    <div className="text-right">
+                      <span className="inline-flex items-center rounded-full bg-gray-100 text-gray-700 text-xs px-2 py-1 font-medium transition-all duration-200 hover:bg-gray-200">
+                        x{quantity}
+                      </span>
+                      <div className="mt-1 text-gray-900 font-semibold transition-all duration-200">
+                        {formatCurrency(subtotal)}
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className={`rounded-lg bg-gray-50 p-3 flex items-center justify-between transition-all duration-300 ${isOptimisticSubmit ? 'bg-green-50 border border-green-200' : ''}`}>
               <span className="text-sm text-gray-600 font-medium">Total</span>
-              <span className="text-base font-semibold text-gray-900">{formatCurrency(parseFloat(total))}</span>
+              <span className={`text-base font-semibold transition-all duration-300 ${isOptimisticSubmit ? 'text-green-700' : 'text-gray-900'}`}>
+                {formatCurrency(parseFloat(total))}
+              </span>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
-      <button
-        className="w-full bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors duration-200 mb-3 disabled:opacity-50 disabled:cursor-not-allowed"
+      <div className={`${Object.values(quantities).some(q => q > 0) ? 'mb-80' : 'mb-3'}`}>
+        <button
+          className={`w-full py-3 rounded-lg font-medium transition-all duration-300 disabled:cursor-not-allowed transform hover:scale-[1.02] active:scale-[0.98] ${
+            isOptimisticSubmit 
+              ? 'bg-green-500 text-white shadow-lg' 
+              : 'bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50'
+          }`}
         onClick={handleSubmit}
         disabled={
           !selectedClient || 
@@ -1283,14 +1331,17 @@ export default function FormPage() {
         {isSubmitting ? (
           <div className="flex items-center justify-center">
             <div className="w-5 h-5 border-t-2 border-white border-solid rounded-full animate-spin mr-2"></div>
-            Enviando...
+            {isOptimisticSubmit ? 'Procesando...' : 'Enviando...'}
           </div>
         ) : (!session?.user?.email && !cachedEmail) ? (
           '🔒 Sesión Requerida'
+        ) : isOptimisticSubmit ? (
+          '✓ Enviado'
         ) : (
           'Enviar Pedido'
         )}
-      </button>
+        </button>
+      </div>
 
 
 
@@ -1302,6 +1353,17 @@ export default function FormPage() {
           </div>
         )
       ))}
+
+      {/* Toast notification */}
+      {toast && (
+        <Toast
+          type={toast.type}
+          title={toast.title}
+          message={toast.message}
+          isVisible={toast.isVisible}
+          onClose={hideToast}
+        />
+      )}
     </div>
   )
 } 
