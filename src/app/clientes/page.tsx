@@ -151,6 +151,8 @@ interface AnalyticsData {
   clientStats: Record<string, ClientStats>
   // Optional mapping if backend provides client codes (client name -> code)
   clientCodes?: Record<string, string>
+  // Optional mapping for client vendedores (client name -> vendedor)
+  clientVendedores?: Record<string, string>
   // Aggregated products by client code for current year
   productsByCode?: Record<string, Record<string, number>>
 }
@@ -230,11 +232,26 @@ function ClientesDesatendidos({
   const [query, setQuery] = useState('')
   const [selectedCodes, setSelectedCodes] = useState<string[]>([])
   const [isCodesOpen, setIsCodesOpen] = useState(false)
+  const [selectedVendedores, setSelectedVendedores] = useState<string[]>([])
+  const [isVendedoresOpen, setIsVendedoresOpen] = useState(false)
 
   const codeOptions = useMemo(() => {
     if (!analyticsData?.clientCodes) return [] as string[]
     const all = Object.values(analyticsData.clientCodes).filter(Boolean)
     return Array.from(new Set(all)).sort()
+  }, [analyticsData])
+
+  const vendedorOptions = useMemo(() => {
+    console.log('🔄 Computing vendedor options from:', analyticsData?.clientVendedores)
+    if (!analyticsData?.clientVendedores) {
+      console.log('❌ No clientVendedores in analytics data')
+      return [] as string[]
+    }
+    const all = Object.values(analyticsData.clientVendedores).filter(Boolean)
+    console.log('📋 All vendedor values:', all)
+    const unique = Array.from(new Set(all)).sort()
+    console.log('📋 Unique vendedor options:', unique)
+    return unique
   }, [analyticsData])
 
   const items = useMemo(() => {
@@ -255,6 +272,8 @@ function ClientesDesatendidos({
     })
     // Ignore clients with no code
     .filter(r => !!r.code)
+    // Ignore archived clients
+    .filter(r => !r.client.includes('**ARCHIVADO NO USAR**'))
 
     // Filter by query on client or code
     const filtered = query
@@ -268,7 +287,14 @@ function ClientesDesatendidos({
       ? filtered.filter(r => selectedCodes.includes(r.code))
       : filtered
 
-    const sorted = [...codeFiltered].sort((a, b) => {
+    const vendedorFiltered = selectedVendedores.length > 0
+      ? codeFiltered.filter(r => {
+          const vendedor = analyticsData?.clientVendedores?.[r.client]
+          return selectedVendedores.includes(vendedor || '')
+        })
+      : codeFiltered
+
+    const sorted = [...vendedorFiltered].sort((a, b) => {
       if (sortBy === 'ventas') {
         return a.totalSales - b.totalSales
       }
@@ -285,7 +311,7 @@ function ClientesDesatendidos({
     })
 
     return sorted
-  }, [analyticsData, query, sortBy, selectedCodes])
+  }, [analyticsData, query, sortBy, selectedCodes, selectedVendedores])
 
   const limit = showMore ? 50 : 10
   const visible = items.slice(0, limit)
@@ -353,6 +379,55 @@ function ClientesDesatendidos({
               </div>
             )}
           </div>
+
+          {/* Vendedores multi-select */}
+          <div className="relative">
+            <button
+              type="button"
+              className="text-sm border border-gray-300 rounded px-2 py-1 bg-white"
+              onClick={() => setIsVendedoresOpen(!isVendedoresOpen)}
+            >
+              {selectedVendedores.length > 0 ? `Vendedores (${selectedVendedores.length})` : 'Filtrar vendedores'}
+            </button>
+            {isVendedoresOpen && (
+              <div className="absolute z-10 mt-1 w-56 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto p-2">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs text-gray-600">Selecciona uno o más</p>
+                  <button
+                    type="button"
+                    className="text-xs text-blue-600 hover:underline"
+                    onClick={() => setSelectedVendedores([])}
+                  >
+                    Limpiar
+                  </button>
+                </div>
+                {vendedorOptions.length === 0 ? (
+                  <p className="text-xs text-gray-500">Sin vendedores disponibles</p>
+                ) : (
+                  vendedorOptions.map(vendedor => {
+                    const checked = selectedVendedores.includes(vendedor)
+                    return (
+                      <label key={vendedor} className="flex items-center space-x-2 py-1 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          className="h-3 w-3"
+                          checked={checked}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedVendedores(prev => [...prev, vendedor])
+                            } else {
+                              setSelectedVendedores(prev => prev.filter(v => v !== vendedor))
+                            }
+                          }}
+                        />
+                        <span className="text-xs text-gray-700">{vendedor}</span>
+                      </label>
+                    )
+                  })
+                )}
+              </div>
+            )}
+          </div>
           <div className="flex items-center space-x-1">
             <Filter className="w-4 h-4 text-gray-500" />
             <select
@@ -386,32 +461,31 @@ function ClientesDesatendidos({
               return (
                 <div
                   key={row.client}
-                  className="flex items-center justify-between py-2 border-b border-gray-100 last:border-b-0 cursor-pointer hover:bg-gray-50 rounded"
+                  className="flex items-center gap-3 py-2 border-b border-gray-100 last:border-b-0 cursor-pointer hover:bg-gray-50 rounded"
                   onClick={() => onSelectClient(row.client)}
                 >
-                  <div className="flex items-center">
+                  <div className="flex items-center flex-1 min-w-0">
                     <div className={`w-2 h-2 rounded-full mr-3 ${needsAttention ? 'bg-amber-500' : 'bg-gray-300'}`}></div>
                     <div>
                       <p className="font-medium text-sm text-gray-800">{row.client}</p>
                       <p className="text-xs text-gray-500">{row.code || 'Sin código'}</p>
                     </div>
                   </div>
-                  <div className="hidden sm:flex w-[400px]">
-                    <div className="w-[120px] text-right">
+                  <div className="hidden sm:flex w-[400px] shrink-0 items-center justify-end">
+                    <div className="w-[120px] flex flex-col items-end justify-center text-right">
                       <p className="text-xs text-gray-500">Ventas</p>
                       <p className="font-semibold text-sm text-green-600 tabular-nums">{formatCurrency(row.totalSales)}</p>
                     </div>
-                    <div className="w-[80px] text-right">
+                    <div className="w-[80px] flex flex-col items-end justify-center text-right">
                       <p className="text-xs text-gray-500">Visitas</p>
                       <p className="font-semibold text-sm text-blue-600 tabular-nums">{row.entries}</p>
                     </div>
-                    <div className="w-[120px] text-right">
+                    <div className="w-[120px] flex flex-col items-end justify-center text-right">
                       <p className="text-xs text-gray-500">Promedio</p>
                       <p className="font-semibold text-sm text-gray-800 tabular-nums">{formatCurrency(row.avgOrder)}</p>
                     </div>
-                    <div className="w-[80px]"></div>
                   </div>
-                  <div className="text-right w-[160px]">
+                  <div className="text-right w-[160px] shrink-0 flex flex-col items-end justify-center">
                     <p className="text-xs text-gray-500">Última visita</p>
                     <p className="font-medium text-xs text-gray-700">
                       {row.lastVisit ? formatDate(row.lastVisit) : 'N/D'}
@@ -837,6 +911,8 @@ export default function ClientesPage() {
       console.log('📊 Frontend received analytics data:', data)
       if (data.success) {
         console.log('✅ Setting analytics data:', data.data)
+        console.log('🔍 Client codes mapping:', data.data?.clientCodes)
+        console.log('👤 Client vendedores mapping:', data.data?.clientVendedores)
         console.log('Top products in data:', data.data?.topProducts)
         setAnalyticsData(data.data)
       } else {

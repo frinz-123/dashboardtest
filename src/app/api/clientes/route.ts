@@ -13,7 +13,8 @@ const auth = new google.auth.GoogleAuth({
   scopes: ['https://www.googleapis.com/auth/spreadsheets'],
 })
 
-const spreadsheetId = '1a0jZVdKFNWTHDsM-68LT5_OLPMGejAKs9wfCxYqqe_g'
+const spreadsheetId = process.env.NEXT_PUBLIC_SPREADSHEET_ID || '1a0jZVdKFNWTHDsM-68LT5_OLPMGejAKs9wfCxYqqe_g'
+const sheetName = process.env.NEXT_PUBLIC_SHEET_NAME || 'Form_Data'
 
 // Product mapping from column letters to product names
 const PRODUCT_COLUMNS = {
@@ -57,7 +58,7 @@ export async function GET(req: Request) {
       // Get all unique clients
       const clientData = await sheets.spreadsheets.values.get({
         spreadsheetId,
-        range: 'Form_Data!A:C',
+        range: `${sheetName}!A:C`,
       })
 
       const clients: Record<string, { lat: number, lng: number }> = {}
@@ -83,7 +84,7 @@ export async function GET(req: Request) {
       // Get all sales data
       const salesData = await sheets.spreadsheets.values.get({
         spreadsheetId,
-        range: 'Form_Data!A:AM',
+        range: `${sheetName}!A:AN`,
       })
 
       if (!salesData.data.values) {
@@ -178,7 +179,7 @@ export async function GET(req: Request) {
       // Get overall analytics
       const salesData = await sheets.spreadsheets.values.get({
         spreadsheetId,
-        range: 'Form_Data!A:AM',
+        range: `${sheetName}!A:AN`,
       })
 
       console.log('📊 Google Sheets response:', salesData.data.values?.length, 'rows')
@@ -236,6 +237,9 @@ export async function GET(req: Request) {
           return acc
         }, {} as Record<string, number>)
 
+        const codeRaw = (row[afIndexForCode] || '').toString()
+        const code = codeRaw.trim().toUpperCase()
+
         // Debug: Log products for first few rows
         if (rowIndex < 5) { // Increased to 5 rows for better debugging
           console.log(`\n🚨 Row ${rowIndex + 1} Analysis:`)
@@ -269,8 +273,6 @@ export async function GET(req: Request) {
           console.log(`   🎯 Final products:`, products)
         }
 
-        const codeRaw = (row[afIndexForCode] || '').toString()
-        const code = codeRaw.trim().toUpperCase()
         return {
           clientName: row[0],
           date: row[32] || '',
@@ -278,7 +280,7 @@ export async function GET(req: Request) {
           products,
           code
         }
-      })
+      }).filter(entry => Object.keys(entry.products).length > 0) // Only include entries with products
 
       const currentYear = new Date().getFullYear()
       console.log('📅 Filtering for year:', currentYear)
@@ -355,16 +357,63 @@ export async function GET(req: Request) {
       // Monthly trend
       const monthlyTrend = generateMonthlyTrend(yearlyEntries)
 
+      // Get all rows for mapping operations
+      const allRows = salesData.data.values.slice(1)
+
       // Build client code mapping from the full sheet (first non-empty AF per client)
       const afIndex = columnToIndex('AF')
       const clientCodes: Record<string, string> = {}
-      salesData.data.values.slice(1).forEach((row: any[]) => {
+      // Process rows in reverse order like navegar page does (most recent first)
+      for (let i = allRows.length - 1; i >= 0; i--) {
+        const row = allRows[i]
         const name = row[0]
         const code = row[afIndex]
         if (name && code && !clientCodes[name]) {
           clientCodes[name] = code
         }
-      })
+      }
+
+      // Build client vendedor mapping from ALL sheet data (not just current year)
+      const anIndex = columnToIndex('AN')
+      console.log('🔍 AN column index calculation:')
+      console.log('  - columnToIndex("AN"):', anIndex)
+      console.log('  - Manual calculation: A=1, N=14, 1*26+14=40, 40-1=39')
+      console.log('  - Should be 39 for column AN')
+      console.log('🔍 Total columns in sheet:', salesData.data.values?.[0]?.length)
+      console.log('🔍 Headers array length:', salesData.data.values?.[0]?.length)
+      console.log('🔍 All headers:', salesData.data.values?.[0])
+      console.log('🔍 Sample header row for AN column:', salesData.data.values?.[0]?.[anIndex])
+      console.log('🔍 Column AF index:', columnToIndex('AF'))
+      console.log('🔍 Column AF header:', salesData.data.values?.[0]?.[columnToIndex('AF')])
+
+      // Debug: Check what columns exist beyond AK
+      const akIndex = columnToIndex('AK')
+      console.log('🔍 Column AK index:', akIndex)
+      console.log('🔍 Column AK header:', salesData.data.values?.[0]?.[akIndex])
+      console.log('🔍 Column AL index:', columnToIndex('AL'))
+      console.log('🔍 Column AL header:', salesData.data.values?.[0]?.[columnToIndex('AL')])
+      console.log('🔍 Column AM index:', columnToIndex('AM'))
+      console.log('🔍 Column AM header:', salesData.data.values?.[0]?.[columnToIndex('AM')])
+      console.log('🔍 Column AN index:', columnToIndex('AN'))
+      console.log('🔍 Column AN header:', salesData.data.values?.[0]?.[columnToIndex('AN')])
+
+      const clientVendedores: Record<string, string> = {}
+      let foundVendedores = 0
+      // Process rows in reverse order like navegar page does (most recent first)
+      for (let i = allRows.length - 1; i >= 0; i--) {
+        const row = allRows[i]
+        const name = row[0]
+        const vendedor = row[anIndex]
+        if (name && vendedor && !clientVendedores[name]) {
+          clientVendedores[name] = vendedor
+          foundVendedores++
+          console.log(`👤 Client: ${name} -> Vendedor: ${vendedor}`)
+        }
+      }
+
+      console.log('📋 Total client-vendedor mappings found:', Object.keys(clientVendedores).length)
+      console.log('📋 Vendedores found during processing:', foundVendedores)
+      console.log('📋 Sample mappings:', Object.entries(clientVendedores).slice(0, 5))
 
       // Aggregate products by per-row code (AF), normalized
       const productsByCode: Record<string, Record<string, number>> = {}
@@ -385,6 +434,7 @@ export async function GET(req: Request) {
         topClients,
         clientStats,
         clientCodes,
+        clientVendedores,
         productsByCode
       }
       console.log('Final analytics response:', responseData)
