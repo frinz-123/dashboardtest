@@ -36,7 +36,7 @@ const emailLabels: Record<string, string> = {
   'cesar.reyes.ochoa@gmail.com': 'Cesar',
   'arturo.elreychiltepin@gmail.com': 'Arturo Mty',
   'alopezelrey@gmail.com': 'Arlyn',
-  'promotoriaelrey@gmail.com': 'Brenda'
+  'promotoriaelrey@gmail.com': 'Karla'
 }
 
 export default function Dashboard() {
