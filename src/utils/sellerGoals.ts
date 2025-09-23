@@ -20,6 +20,11 @@ const sellerGoals: SellerGoals = {
     18: 205536.79, //mayo 2025
     19: 186289.01, //junio 2025
     20: 195887.01, //julio 2025
+    21: 200000.01, //agosto 2025
+    22: 200000.01, //septiembre 2025
+    23: 209073.00, //octubre 2025
+    24: 200000.01, //noviembre 2025
+    25: 200000.01, //diciembre 2025
   },
   'ventas2productoselrey@gmail.com': { // Roel
     11: 205426.29,
@@ -32,6 +37,11 @@ const sellerGoals: SellerGoals = {
     18: 200198.01, //mayo 2025
     19: 184211.01, //junio 2025
     20: 191687.01, //julio 2025
+    21: 200000.01, //agosto 2025
+    22: 200000.01, //septiembre 2025
+    23: 207070.00, //octubre 2025
+    24: 200000.01, //noviembre 2025
+    25: 200000.01, //diciembre 2025
   },
   'ventas3productoselrey@gmail.com': { // Lidia
     11: 214002.03,
@@ -44,6 +54,11 @@ const sellerGoals: SellerGoals = {
     18: 203741.01, //mayo 2025
     19: 183979.01, //junio 2025
     20: 187215.01, //julio 2025
+    21: 200000.01, //agosto 2025
+    22: 200000.01, //septiembre 2025
+    23: 165796.00, //octubre 2025
+    24: 200000.01, //noviembre 2025
+    25: 200000.01, //diciembre 2025
   },
   'ventasmochisproductoselrey@gmail.com': { // Mochis
     11: 200000.00,
@@ -56,6 +71,11 @@ const sellerGoals: SellerGoals = {
     18: 200000.00, //mayo 2025
     19: 180000.00, //junio 2025
     20: 185000.00, //julio 2025
+    21: 200000.01, //agosto 2025
+    22: 200000.01, //septiembre 2025
+    23: 200000.01, //octubre 2025
+    24: 200000.01, //noviembre 2025
+    25: 200000.01, //diciembre 2025
   },
   'alopezelrey@gmail.com': { // Arlyn
     11: 180000.00,
@@ -68,8 +88,13 @@ const sellerGoals: SellerGoals = {
     18: 195000.00, //mayo 2025
     19: 175000.00, //junio 2025
     20: 180000.00, //julio 2025
+    21: 200000.01, //agosto 2025
+    22: 200000.01, //septiembre 2025
+    23: 200000.01, //octubre 2025
+    24: 200000.01, //noviembre 2025
+    25: 200000.01, //diciembre 2025
   },
-  'promotoriaelrey@gmail.com': { // Brenda - Placeholder goals
+  'promotoriaelrey@gmail.com': { // Karla - Placeholder goals
     11: 150000.00, 
     12: 160000.00, 
     13: 165000.00, 
@@ -79,7 +104,12 @@ const sellerGoals: SellerGoals = {
     17: 160000.00, //abril 2025
     18: 165000.00, //mayo 2025
     19: 150000.00, //junio 2025
-    20: 155000.00  //julio 2025
+    20: 155000.00, //julio 2025
+    21: 200000.01, //agosto 2025
+    22: 200000.01, //septiembre 2025
+    23: 120299.00, //octubre 2025
+    24: 200000.01, //noviembre 2025
+    25: 200000.01, //diciembre 2025
   },
 };
 

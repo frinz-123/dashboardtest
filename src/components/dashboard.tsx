@@ -1,7 +1,7 @@
 'use client'
 import React, { useState, useEffect } from 'react'
 import { ChevronDown, BarChart2, Users, Clock, ChevronRight, Target, Menu, Search } from 'lucide-react'
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { CircularProgressbar, buildStyles } from 'react-circular-progressbar'
 import 'react-circular-progressbar/dist/styles.css'
 import BlurIn from './ui/blur-in'
@@ -198,6 +198,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (session?.user?.email) {
+      console.log('[Dashboard] Session detected, setting selectedEmail to session user', session.user.email)
       setSelectedEmail(session.user.email)
       fetchData()
     }
@@ -232,8 +233,30 @@ export default function Dashboard() {
     })
     setSalesData(sales)
     const uniqueEmails = [...new Set(sales.map((sale) => sale.email))]
+    console.log('[Dashboard] Fetched unique emails from sheet', uniqueEmails)
     setEmails(uniqueEmails)
-    if (uniqueEmails.length > 0) setSelectedEmail(uniqueEmails[0])
+    if (uniqueEmails.length > 0) {
+      setSelectedEmail((prevSelectedEmail) => {
+        const sessionEmail = session?.user?.email
+        const fallbackEmail = uniqueEmails[0]
+
+        const nextSelectedEmail =
+          prevSelectedEmail && uniqueEmails.includes(prevSelectedEmail)
+            ? prevSelectedEmail
+            : sessionEmail && uniqueEmails.includes(sessionEmail)
+            ? sessionEmail
+            : fallbackEmail
+
+        console.log('[Dashboard] Resolving selectedEmail', {
+          prevSelectedEmail,
+          sessionEmail,
+          fallbackEmail,
+          nextSelectedEmail
+        })
+
+        return nextSelectedEmail
+      })
+    }
 
     // Extract unique client names
     const uniqueClientNames = Array.from(new Set(sales.map(sale => sale.clientName))).filter(Boolean)
@@ -311,11 +334,223 @@ export default function Dashboard() {
   const currentPeriodNumber = getCurrentPeriodNumber()
   const currentGoal = getSellerGoal(selectedEmail, currentPeriodNumber as 11 | 12 | 13); // Añadido punto y coma
 
+  const periodInfo = getCurrentPeriodInfo()
+
+  const previousPeriodLabel = React.useMemo(() => {
+    switch (selectedPeriod) {
+      case 'Diario':
+        return 'ayer'
+      case 'Ayer':
+        return 'antier'
+      case 'Semanal':
+        return 'la semana previa'
+      case 'Mensual':
+        return 'el periodo anterior'
+      default:
+        return 'el periodo previo'
+    }
+  }, [selectedPeriod])
+
+  const currentVsGoalDelta = React.useMemo(() => {
+    if (!currentGoal) {
+      return currentPeriodSales
+    }
+    return currentPeriodSales - currentGoal
+  }, [currentGoal, currentPeriodSales])
+
+  const insightBadges = React.useMemo(
+    () => [
+      {
+        label: 'Meta actual',
+        value: currentGoal
+          ? `$${currentGoal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+          : 'Sin meta',
+        tone: 'neutral' as const
+      },
+      {
+        label: 'Progreso',
+        value: `${goalProgress ? goalProgress.toFixed(1) : '0.0'}%`,
+        tone: goalProgress >= 100 ? ('positive' as const) : goalProgress >= 66 ? ('warning' as const) : ('neutral' as const)
+      },
+      {
+        label: `Vs ${previousPeriodLabel}`,
+        value: `${percentageDifference >= 0 ? '+' : ''}${percentageDifference.toFixed(1)}%`,
+        tone: percentageDifference >= 0 ? ('positive' as const) : ('negative' as const)
+      }
+    ],
+    [currentGoal, goalProgress, percentageDifference, previousPeriodLabel]
+  )
+
+  const topPerformers = React.useMemo(() => {
+    const ranked = emails
+      .map((email) => {
+        const userSales = salesData
+          .filter((sale) => sale.email === email)
+          .filter((sale) => filterSalesByDate([sale], selectedPeriod).length > 0)
+        const total = userSales.reduce((sum, sale) => sum + sale.venta, 0)
+        return {
+          email,
+          label: emailLabels[email] || email,
+          total
+        }
+      })
+      .filter((item) => item.total > 0)
+      .sort((a, b) => b.total - a.total)
+
+    return ranked.slice(0, 3)
+  }, [emails, salesData, selectedPeriod])
+
+  const hasLeaderboard = topPerformers.length > 0
+
+  const formatCurrency = React.useCallback((value: number) => {
+    return `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  }, [])
+
+  const goalPacing = React.useMemo(() => {
+    if (!currentGoal || selectedPeriod !== 'Mensual') {
+      return null
+    }
+
+    const { periodStartDate, periodEndDate, dayInWeek, weekInPeriod } = periodInfo
+    const today = new Date()
+    const totalDays = Math.ceil((periodEndDate.getTime() - periodStartDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
+    const elapsedDays = Math.min(
+      totalDays,
+      Math.max(1, Math.ceil((today.getTime() - periodStartDate.getTime()) / (1000 * 60 * 60 * 24)) + 1)
+    )
+
+    const achievedDaily = currentPeriodSales / elapsedDays
+    const targetDaily = currentGoal / totalDays
+    const projectedTotal = achievedDaily * totalDays
+    const paceDifference = achievedDaily - targetDaily
+
+    return {
+      totalDays,
+      elapsedDays,
+      dayInWeek,
+      weekInPeriod,
+      achievedDaily,
+      targetDaily,
+      projectedTotal,
+      paceDifference
+    }
+  }, [currentGoal, currentPeriodSales, periodInfo, selectedPeriod])
+
+  const goalMilestones = React.useMemo(() => {
+    if (!currentGoal || selectedPeriod !== 'Mensual') {
+      return []
+    }
+
+    const thresholds = [25, 50, 75, 100]
+    return thresholds.map((threshold) => {
+      const required = (threshold / 100) * currentGoal
+      const achieved = currentPeriodSales >= required
+      const remaining = Math.max(0, required - currentPeriodSales)
+      return {
+        threshold,
+        required,
+        achieved,
+        remaining
+      }
+    })
+  }, [currentGoal, currentPeriodSales, selectedPeriod])
+
+  const clientInsights = React.useMemo(() => {
+    const now = new Date()
+    const ATTENTION_THRESHOLD_DAYS = 14
+    const SIX_MONTHS_AGO = new Date()
+    SIX_MONTHS_AGO.setMonth(SIX_MONTHS_AGO.getMonth() - 6)
+
+    const salesByClient = salesData
+      .filter((sale) => sale.email === selectedEmail)
+      .filter((sale) => !(sale.clientName || '').toUpperCase().includes('ARCHIVADO NO USAR'))
+      .reduce((acc, sale) => {
+        if (!acc[sale.clientName]) {
+          acc[sale.clientName] = []
+        }
+        acc[sale.clientName].push(sale)
+        return acc
+      }, {} as Record<string, Sale[]>)
+
+    const clients = Object.entries(salesByClient).map(([client, sales]) => {
+      const sortedSales = [...sales].sort((a, b) => new Date(b.fechaSinHora).getTime() - new Date(a.fechaSinHora).getTime())
+      const mostRecent = sortedSales[0]
+      const lastPositive = sortedSales.find((sale) => sale.venta > 0) || null
+      const previousPositive = sortedSales.find((sale) => {
+        if (!lastPositive) return false
+        return new Date(sale.fechaSinHora).getTime() < new Date(lastPositive.fechaSinHora).getTime() && sale.venta > 0
+      }) || null
+
+      const totalThisPeriod = sales
+        .filter((sale) => filterSalesByDate([sale], selectedPeriod).length > 0)
+        .reduce((sum, sale) => sum + sale.venta, 0)
+
+      const previousPeriodStartDate = new Date(periodInfo.periodStartDate)
+      previousPeriodStartDate.setDate(previousPeriodStartDate.getDate() - 28)
+      const previousPeriodEndDate = new Date(periodInfo.periodStartDate)
+      previousPeriodEndDate.setDate(previousPeriodEndDate.getDate() - 1)
+
+      const totalPreviousPeriod = sales
+        .filter((sale) => {
+          const saleDate = new Date(sale.fechaSinHora)
+          return saleDate >= previousPeriodStartDate && saleDate <= previousPeriodEndDate
+        })
+        .reduce((sum, sale) => sum + sale.venta, 0)
+
+      const mostRecentDate = mostRecent ? new Date(mostRecent.fechaSinHora) : null
+      const daysSinceLastPurchase = mostRecentDate
+        ? Math.floor((now.getTime() - mostRecentDate.getTime()) / (1000 * 60 * 60 * 24))
+        : Infinity
+      const hasRecentVisit = !!mostRecentDate && mostRecentDate >= SIX_MONTHS_AGO
+      const deltaFromPreviousSale =
+        lastPositive && previousPositive
+          ? lastPositive.venta - previousPositive.venta
+          : null
+
+      return {
+        client,
+        mostRecent,
+        lastPositive,
+        previousPositive,
+        totalThisPeriod,
+        totalPreviousPeriod,
+        growth: totalThisPeriod - totalPreviousPeriod,
+        daysSinceLastPurchase,
+        hasRecentVisit,
+        deltaFromPreviousSale
+      }
+    })
+
+    const attentionClients = clients
+      .filter((c) => c.hasRecentVisit && c.daysSinceLastPurchase >= ATTENTION_THRESHOLD_DAYS)
+      .sort((a, b) => b.daysSinceLastPurchase - a.daysSinceLastPurchase)
+      .slice(0, 3)
+
+    const clientsWithDelta = clients.filter((c) => c.deltaFromPreviousSale !== null)
+
+    const topGrowth = clientsWithDelta
+      .filter((c) => (c.deltaFromPreviousSale as number) > 0)
+      .sort((a, b) => (b.deltaFromPreviousSale as number) - (a.deltaFromPreviousSale as number))
+      .slice(0, 3)
+
+    const topDecline = clientsWithDelta
+      .filter((c) => (c.deltaFromPreviousSale as number) < 0)
+      .sort((a, b) => (a.deltaFromPreviousSale as number) - (b.deltaFromPreviousSale as number))
+      .slice(0, 3)
+
+    return {
+      attentionClients,
+      topGrowth,
+      topDecline,
+      attentionThreshold: ATTENTION_THRESHOLD_DAYS
+    }
+  }, [salesData, selectedEmail, selectedPeriod, periodInfo])
+
   return (
-    <div className="min-h-screen bg-white px-4 py-3 font-sans w-full" style={{ fontFamily: 'Inter, sans-serif', fontSize: '0.8rem' }}>
+    <div className="min-h-screen bg-[#f6f7fb] px-4 py-4 font-sans w-full" style={{ fontFamily: 'Inter, sans-serif', fontSize: '0.82rem' }}>
       <header className="flex justify-between items-center mb-4">
         <div className="flex items-center">
-          <div className="w-8 h-8 bg-blue-600 rounded-full mr-2 flex items-center justify-center">
+          <div className="w-9 h-9 bg-gradient-to-br from-blue-600 to-indigo-500 rounded-2xl mr-2 flex items-center justify-center">
             <div className="w-5 h-0.5 bg-white rounded-full transform -rotate-45"></div>
           </div>
           <BlurIn
@@ -331,7 +566,7 @@ export default function Dashboard() {
         <div className="flex items-center">
           <div className="relative mr-2">
             <select
-              className="appearance-none flex items-center text-gray-600 bg-white rounded-full pl-2 pr-6 py-0.5 text-xs border border-gray-300"
+              className="appearance-none flex items-center text-gray-600 bg-white rounded-full pl-3 pr-8 py-1 text-xs border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-300 transition"
               value={selectedEmail}
               onChange={(e) => setSelectedEmail(e.target.value)}
             >
@@ -341,11 +576,11 @@ export default function Dashboard() {
                 </option>
               ))}
             </select>
-            <ChevronDown className="absolute right-1.5 top-1/2 transform -translate-y-1/2 h-3 w-3 text-gray-400 pointer-events-none" />
+            <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 h-3 w-3 text-gray-400 pointer-events-none" />
           </div>
           <div className="relative">
             <button
-              className="p-1 rounded-full hover:bg-gray-200 transition-colors duration-200"
+              className="p-1.5 rounded-full hover:bg-gray-200 transition-colors duration-200"
               onClick={() => setIsMenuOpen(!isMenuOpen)}
             >
               <Menu className="h-5 w-5 text-gray-600" />
@@ -416,15 +651,15 @@ export default function Dashboard() {
         </div>
       </header>
 
-      <div className="bg-gray-100 rounded-lg mb-3 p-0.5">
+      <div className="bg-white rounded-lg mb-3 p-0.5 border border-[#E2E4E9]/70">
         <div className="inline-flex rounded-md w-full">
           {periods.map((period) => (
             <button
               key={period}
-              className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-colors duration-200 ease-in-out ${
+              className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-200 ease-in-out ${
                 selectedPeriod === period
-                  ? 'bg-white text-gray-900'
-                  : 'bg-gray-100 text-gray-500 hover:text-gray-700'
+                  ? 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white'
+                  : 'bg-transparent text-gray-500 hover:text-gray-700'
               }`}
               onClick={() => setSelectedPeriod(period)}
             >
@@ -434,7 +669,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
+      <div className="bg-white rounded-xl mb-3 p-5 border border-[#E2E4E9]/70">
         <h2 className="text-gray-500 text-xs mb-0.5">Vendido</h2>
         <div className="flex items-center">
           <span className="text-2xl font-bold mr-2">${totalSales.toFixed(2)}</span>
@@ -447,90 +682,252 @@ export default function Dashboard() {
             Periodo {getCurrentPeriodInfo().periodNumber}, Semana {getCurrentPeriodInfo().weekInPeriod}
           </p>
         )}
-        <div className="mt-3 h-[160px] w-full">
+        <div className="mt-3 h-[180px] w-full">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chartData}>
-              <XAxis 
-                dataKey="x" 
+            <BarChart data={chartData}>
+              <XAxis
+                dataKey="x"
                 tickFormatter={(value) => value}
-                tick={{ fontSize: 8 }}
+                tick={{ fontSize: 9 }}
               />
               <YAxis hide />
-              <Tooltip 
+              <Tooltip
                 formatter={(value: number) => [`$${value.toFixed(2)}`, 'Venta']}
                 labelFormatter={(label) => label}
                 contentStyle={{ fontSize: '10px' }}
               />
-              <Line type="monotone" dataKey="venta" stroke="#3b82f6" strokeWidth={1.5} dot={false} />
-            </LineChart>
+              <Bar dataKey="venta" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+            </BarChart>
           </ResponsiveContainer>
         </div>
       </div>
 
-      {selectedPeriod === 'Mensual' && (
-        <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
-          <h2 className="text-gray-500 text-xs mb-0.5 flex items-center">
-            <Target className="mr-1.5 h-4 w-4" /> Meta del Periodo
-          </h2>
-          <div className="flex items-center mb-2">
-            <span className="text-2xl font-bold mr-2">
-              ${currentGoal ? currentGoal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00'}
-            </span>
-            <span className={`text-xs px-1.5 py-0.5 rounded-full ${goalProgress >= 100 ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}`}>
-              {goalProgress ? goalProgress.toFixed(1) : '0.0'}%
-            </span>
-          </div>
-          <motion.div 
-            className="flex flex-col items-center justify-center w-full"
-            initial={{ opacity: 0, scale: 0.5 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.5 }}
-          >
-            <div style={{ width: 250, height: 250, marginTop: '20px' }}>
-              <CircularProgressbar
-                value={goalProgress}
-                text={`${goalProgress.toFixed(1)}%`}
-                circleRatio={0.75}
-                strokeWidth={12}
-                styles={buildStyles({
-                  rotation: 1 / 2 + 1 / 8,
-                  strokeLinecap: "round", // Changed from "butt" to "round"
-                  trailColor: "#eee",
-                  pathColor: goalProgress >= 100 ? "#2ECC71" : goalProgress >= 66 ? "#FFC371" : "#FF5F6D",
-                  textColor: "#333333",
-                  textSize: '16px',
-                })}
-              />
+      {goalPacing && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-3">
+          <div className="bg-white rounded-xl p-4 border border-[#E2E4E9]/70">
+            <h3 className="text-xs font-semibold text-gray-700 mb-1">Ritmo del Periodo</h3>
+            <p className="text-xxs uppercase tracking-wide text-gray-500 mb-3">Seguimiento de meta mensual</p>
+            <div className="grid grid-cols-2 gap-3 text-xs text-gray-600">
+              <div>
+                <p className="text-[10px] uppercase tracking-wide text-gray-500">Ventas diarias</p>
+                <p className="text-sm font-semibold text-blue-600">{formatCurrency(goalPacing.achievedDaily || 0)}/día</p>
+              </div>
+              <div>
+                <p className="text-[10px] uppercase tracking-wide text-gray-500">Ritmo objetivo</p>
+                <p className="text-sm font-semibold text-gray-700">{formatCurrency(goalPacing.targetDaily || 0)}/día</p>
+              </div>
+              <div>
+                <p className="text-[10px] uppercase tracking-wide text-gray-500">Días transcurridos</p>
+                <p className="text-sm font-semibold text-gray-700">{goalPacing.elapsedDays} / {goalPacing.totalDays}</p>
+              </div>
+              <div>
+                <p className="text-[10px] uppercase tracking-wide text-gray-500">Proyección</p>
+                <p className={`text-sm font-semibold ${goalPacing.projectedTotal >= currentGoal ? 'text-green-600' : 'text-amber-600'}`}>
+                  {formatCurrency(goalPacing.projectedTotal || 0)}
+                </p>
+              </div>
             </div>
-          </motion.div>
-          <p className="text-xs text-gray-500 text-center mt-2">
-            {goalProgress < 100
-              ? `Faltan $${(currentGoal - currentPeriodSales).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} para alcanzar la meta`
-              : 'Meta alcanzada!'}
-          </p>
+            <div className={`mt-3 border rounded-lg px-3 py-2 text-xs ${goalPacing.paceDifference >= 0 ? 'border-green-200 bg-green-50 text-green-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
+              {goalPacing.paceDifference >= 0
+                ? `Vas arriba del ritmo por ${formatCurrency(goalPacing.paceDifference)} por día.`
+                : `Debes incrementar ${formatCurrency(Math.abs(goalPacing.paceDifference))} por día para recuperar el objetivo.`}
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl p-4 border border-[#E2E4E9]/70">
+            <h3 className="text-xs font-semibold text-gray-700 mb-1">Hitos de la Meta</h3>
+            <p className="text-xxs uppercase tracking-wide text-gray-500 mb-3">Avance hacia {formatCurrency(currentGoal)}</p>
+            <div className="space-y-2">
+              {goalMilestones.map((milestone) => (
+                <div
+                  key={milestone.threshold}
+                  className={`flex items-center justify-between border rounded-lg px-3 py-2 text-xs ${milestone.achieved ? 'border-green-200 bg-green-50 text-green-700' : 'border-gray-200 bg-white text-gray-600'}`}
+                >
+                  <div>
+                    <p className="text-[10px] uppercase tracking-wide">{milestone.threshold}% alcanzado</p>
+                    <p className="text-sm font-semibold">{formatCurrency(milestone.required)}</p>
+                  </div>
+                  {!milestone.achieved && (
+                    <span className="text-xxs text-gray-500">Faltan {formatCurrency(milestone.remaining)}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl p-4 border border-[#E2E4E9]/70">
+            <h3 className="text-xs font-semibold text-gray-700 mb-1">Semana actual</h3>
+            <p className="text-xxs uppercase tracking-wide text-gray-500 mb-3">Contexto del periodo</p>
+            <ul className="text-xs text-gray-600 space-y-2">
+              <li className="flex justify-between">
+                <span>Semana en el periodo</span>
+                <span className="font-semibold">{goalPacing.weekInPeriod} / 4</span>
+              </li>
+              <li className="flex justify-between">
+                <span>Día de la semana</span>
+                <span className="font-semibold">{goalPacing.dayInWeek}</span>
+              </li>
+              <li className="flex justify-between">
+                <span>Meta restante</span>
+                <span className="font-semibold">{formatCurrency(Math.max(0, currentGoal - currentPeriodSales))}</span>
+              </li>
+              <li className="flex justify-between">
+                <span>Ventas por lograr/día</span>
+                <span className="font-semibold">
+                  {formatCurrency(currentGoal > currentPeriodSales
+                    ? (currentGoal - currentPeriodSales) / Math.max(1, goalPacing.totalDays - goalPacing.elapsedDays)
+                    : 0)}
+                </span>
+              </li>
+            </ul>
+          </div>
         </div>
       )}
 
-      <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
-        <h2 className="text-gray-700 font-semibold mb-2 flex items-center text-xs">
-          <BarChart2 className="mr-1.5 h-4 w-4" /> Ventas por tipo
-        </h2>
-        {Object.entries(salesByType).map(([codigo, venta], index) => (
-          <div key={index} className="mb-1.5">
-            <div className="flex justify-between text-xs mb-0.5">
-              <span>{codigo}</span>
-              <span className="text-gray-500">${venta.toFixed(2)}</span>
-            </div>
-            <div className="w-full bg-gray-200 h-1.5 rounded-full">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-3">
+        <div className="bg-white rounded-xl p-4 border border-[#E2E4E9]/70">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-xs font-semibold text-gray-700">Resumen Personalizado</h2>
+            <span className="text-[10px] uppercase tracking-wide text-blue-500 font-semibold bg-blue-50 px-2 py-0.5 rounded-full">
+              Insights
+            </span>
+          </div>
+          <p className="text-xs text-gray-500 mb-3">
+            {emailLabels[selectedEmail] || 'Tu'} cierre {selectedPeriod.toLowerCase()}.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-2">
+            {insightBadges.map((badge) => (
               <div
-                className={`h-1.5 rounded-full ${
-                  index % 4 === 0 ? 'bg-blue-500' : index % 4 === 1 ? 'bg-cyan-400' : index % 4 === 2 ? 'bg-purple-500' : 'bg-orange-400'
+                key={badge.label}
+                className={`flex-1 border rounded-lg px-3 py-2 bg-gradient-to-br from-white to-gray-50 ${
+                  badge.tone === 'positive'
+                    ? 'border-green-200 text-green-700'
+                    : badge.tone === 'negative'
+                    ? 'border-red-200 text-red-600'
+                    : badge.tone === 'warning'
+                    ? 'border-amber-200 text-amber-600'
+                    : 'border-gray-200 text-gray-600'
                 }`}
-                style={{ width: `${(venta / Math.max(...Object.values(salesByType))) * 100}%` }}
-              ></div>
+              >
+                <span className="text-[10px] uppercase tracking-wide block">{badge.label}</span>
+                <span className="text-sm font-semibold">{badge.value}</span>
+              </div>
+            ))}
+          </div>
+          {currentGoal ? (
+            <div className="mt-3 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-lg px-3 py-2 text-xs text-blue-700">
+              {currentVsGoalDelta >= 0
+                ? `Vas delante de la meta por ${formatCurrency(currentVsGoalDelta)}. Excelente ritmo.`
+                : `Necesitas ${formatCurrency(Math.abs(currentVsGoalDelta))} para alcanzar la meta.`}
+            </div>
+          ) : (
+            <div className="mt-3 bg-gradient-to-r from-gray-100 to-gray-200 border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-600">
+              No hay meta definida para este periodo.
+            </div>
+          )}
+        </div>
+
+        <div className="bg-white rounded-xl p-4 border border-[#E2E4E9]/70">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-xs font-semibold text-gray-700">Actividad del Equipo</h2>
+            <span className="text-[10px] uppercase tracking-wide text-purple-500 font-semibold bg-purple-50 px-2 py-0.5 rounded-full">
+              Colaboración
+            </span>
+          </div>
+          {hasLeaderboard ? (
+            <div className="space-y-2">
+              {topPerformers.map((performer, index) => (
+                <div
+                  key={performer.email}
+                  className={`flex items-center justify-between border rounded-lg px-3 py-2 bg-gradient-to-r ${
+                    index === 0
+                      ? 'from-yellow-50 to-amber-100 border-amber-200'
+                      : index === 1
+                      ? 'from-slate-50 to-slate-100 border-slate-200'
+                      : 'from-orange-50 to-orange-100 border-orange-200'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className={`text-xs font-bold w-6 h-6 rounded-full flex items-center justify-center ${
+                      index === 0
+                        ? 'bg-amber-400 text-white'
+                        : index === 1
+                        ? 'bg-gray-400 text-white'
+                        : 'bg-orange-400 text-white'
+                    }`}>
+                      #{index + 1}
+                    </span>
+                    <div>
+                      <p className="text-xs font-semibold text-gray-700">{performer.label}</p>
+                      <p className="text-xxs text-gray-500">{selectedPeriod} • {periodInfo.periodNumber ? `Periodo ${periodInfo.periodNumber}` : 'Tiempo actual'}</p>
+                    </div>
+                  </div>
+                  <span className="text-xs font-semibold text-gray-700">{formatCurrency(performer.total)}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="h-full flex items-center justify-center text-xs text-gray-500 border border-dashed border-gray-300 rounded-lg py-6">
+              No hay datos del equipo para este periodo.
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="bg-white rounded-xl p-4 border border-[#E2E4E9]/70 mb-3">
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-xs font-semibold text-gray-700">Clientes a Vigilar</h2>
+          <span className="text-[10px] uppercase tracking-wide text-emerald-500 font-semibold bg-emerald-50 px-2 py-0.5 rounded-full">
+            Inteligencia
+          </span>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 text-xs text-gray-600">
+          <div>
+            <h3 className="text-xxs uppercase tracking-wide text-gray-500 mb-2">Necesitan atención</h3>
+            <div className="space-y-1.5">
+              {clientInsights.attentionClients.length > 0 ? (
+                clientInsights.attentionClients.map((client) => (
+                  <div key={client.client} className="border border-amber-200 bg-amber-50 rounded-lg px-3 py-2">
+                    <p className="text-sm font-semibold text-amber-700">{client.client}</p>
+                    <p className="text-xxs text-amber-600">Última compra hace {client.daysSinceLastPurchase} días</p>
+                  </div>
+                ))
+              ) : (
+                <p className="text-xxs text-gray-500">Sin alertas recientes en clientes activos.</p>
+              )}
             </div>
           </div>
-        ))}
+          <div>
+            <h3 className="text-xxs uppercase tracking-wide text-gray-500 mb-2">Mayor crecimiento</h3>
+            <div className="space-y-1.5">
+              {clientInsights.topGrowth.length > 0 ? (
+                clientInsights.topGrowth.map((client) => (
+                  <div key={client.client} className="border border-green-200 bg-green-50 rounded-lg px-3 py-2">
+                    <p className="text-sm font-semibold text-green-700">{client.client}</p>
+                    <p className="text-xxs text-green-600">Última venta vs anterior +{formatCurrency(client.deltaFromPreviousSale as number)}</p>
+                  </div>
+                ))
+              ) : (
+                <p className="text-xxs text-gray-500">Aún no hay tendencias positivas.</p>
+              )}
+            </div>
+          </div>
+          <div>
+            <h3 className="text-xxs uppercase tracking-wide text-gray-500 mb-2">Mayor caída</h3>
+            <div className="space-y-1.5">
+              {clientInsights.topDecline.length > 0 ? (
+                clientInsights.topDecline.map((client) => (
+                  <div key={client.client} className="border border-red-200 bg-red-50 rounded-lg px-3 py-2">
+                    <p className="text-sm font-semibold text-red-700">{client.client}</p>
+                    <p className="text-xxs text-red-600">Última venta vs anterior {formatCurrency(client.deltaFromPreviousSale as number)}</p>
+                  </div>
+                ))
+              ) : (
+                <p className="text-xxs text-gray-500">Sin caídas relevantes detectadas.</p>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
