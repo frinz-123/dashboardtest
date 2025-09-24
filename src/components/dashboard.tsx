@@ -547,7 +547,7 @@ export default function Dashboard() {
   }, [salesData, selectedEmail, selectedPeriod, periodInfo])
 
   return (
-    <div className="min-h-screen bg-[#f6f7fb] px-4 py-4 font-sans w-full" style={{ fontFamily: 'Inter, sans-serif', fontSize: '0.82rem' }}>
+    <div className="min-h-screen bg-white px-4 py-4 font-sans w-full" style={{ fontFamily: 'Inter, sans-serif', fontSize: '0.82rem' }}>
       <header className="flex justify-between items-center mb-4">
         <div className="flex items-center">
           <div className="w-9 h-9 bg-gradient-to-br from-blue-600 to-indigo-500 rounded-2xl mr-2 flex items-center justify-center">
