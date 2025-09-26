@@ -1,12 +1,13 @@
 'use client'
 
-import { useState } from 'react'
-import { Award, DollarSign, Users, Activity, Target, Package, Download, BarChart3, Map, AlertTriangle, Zap, TrendingUp } from 'lucide-react'
+import { useState, useMemo } from 'react'
+import { Award, DollarSign, Users, Activity, Target, Package, Download, BarChart3, Map, AlertTriangle, Zap, TrendingUp, Filter, Calendar } from 'lucide-react'
 import SellerPerformanceReport from './SellerPerformanceReport'
 import TerritoryAnalysisReport from './TerritoryAnalysisReport'
 import ChurnRiskReport from './ChurnRiskReport'
 import SalesVelocityReport from './SalesVelocityReport'
 import SellerComparisonReport from './SellerComparisonReport'
+import SingleSellerReport from './SingleSellerReport'
 
 interface BestClient {
   clientName: string
@@ -57,6 +58,31 @@ export default function VendedoresSection({
   formatCurrency
 }: VendedoresSectionProps) {
   const [activeReport, setActiveReport] = useState<'ranking' | 'performance' | 'territory' | 'churn' | 'velocity' | 'comparison'>('ranking')
+  const [selectedSellerFilter, setSelectedSellerFilter] = useState<string>('all')
+  const [dateFrom, setDateFrom] = useState<string>('')
+  const [dateTo, setDateTo] = useState<string>('')
+
+  // Filter sellers based on selected seller and date range
+  const filteredSellers = useMemo(() => {
+    if (!sellerAnalyticsData?.sellers) return []
+
+    let filtered = sellerAnalyticsData.sellers
+
+    // Filter by selected seller
+    if (selectedSellerFilter !== 'all') {
+      filtered = filtered.filter(seller => seller.vendedor === selectedSellerFilter)
+    }
+
+    // Note: Date filtering would require API modification to filter raw data
+    // For now, we'll pass the date range to components for display
+
+    return filtered
+  }, [sellerAnalyticsData?.sellers, selectedSellerFilter])
+
+  // Get current year for default date range
+  const currentYear = new Date().getFullYear()
+  const defaultDateFrom = `${currentYear}-01-01`
+  const defaultDateTo = new Date().toISOString().split('T')[0]
 
   return (
     <div className="space-y-3">
@@ -132,8 +158,94 @@ export default function VendedoresSection({
         </div>
       </div>
 
+      {/* Filters */}
+      <div className="bg-white rounded-lg p-3 border border-[#E2E4E9]">
+        <div className="flex flex-col md:flex-row gap-3 items-start md:items-center">
+          <div className="flex items-center gap-2">
+            <Filter className="w-4 h-4 text-gray-500" />
+            <span className="text-sm font-medium text-gray-700">Filtros:</span>
+          </div>
+
+          {/* Seller Filter */}
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-gray-600">Vendedor:</label>
+            <select
+              value={selectedSellerFilter}
+              onChange={(e) => setSelectedSellerFilter(e.target.value)}
+              className="text-sm border border-gray-300 rounded px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">Todos los vendedores</option>
+              {sellerAnalyticsData?.sellers?.map(seller => (
+                <option key={seller.vendedor} value={seller.vendedor}>
+                  {seller.vendedor}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Date Range Filter */}
+          <div className="flex items-center gap-2">
+            <Calendar className="w-4 h-4 text-gray-500" />
+            <label className="text-sm text-gray-600">Desde:</label>
+            <input
+              type="date"
+              value={dateFrom || defaultDateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="text-sm border border-gray-300 rounded px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <label className="text-sm text-gray-600">Hasta:</label>
+            <input
+              type="date"
+              value={dateTo || defaultDateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="text-sm border border-gray-300 rounded px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          {/* Reset Filters */}
+          <button
+            onClick={() => {
+              setSelectedSellerFilter('all')
+              setDateFrom('')
+              setDateTo('')
+            }}
+            className="text-xs text-gray-500 hover:text-gray-700 underline"
+          >
+            Limpiar filtros
+          </button>
+        </div>
+
+        {/* Filter Summary */}
+        {(selectedSellerFilter !== 'all' || dateFrom || dateTo) && (
+          <div className="mt-2 pt-2 border-t border-gray-100">
+            <div className="flex flex-wrap gap-2 text-xs">
+              {selectedSellerFilter !== 'all' && (
+                <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                  Vendedor: {selectedSellerFilter}
+                </span>
+              )}
+              {(dateFrom || dateTo) && (
+                <span className="bg-green-100 text-green-800 px-2 py-1 rounded">
+                  Período: {dateFrom || defaultDateFrom} al {dateTo || defaultDateTo}
+                </span>
+              )}
+              <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded">
+                {filteredSellers.length} vendedor{filteredSellers.length !== 1 ? 'es' : ''} seleccionado{filteredSellers.length !== 1 ? 's' : ''}
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Report Content */}
-      {activeReport === 'ranking' ? (
+      {filteredSellers.length === 1 ? (
+        <SingleSellerReport
+          seller={filteredSellers[0]}
+          formatCurrency={formatCurrency}
+          dateFrom={dateFrom || defaultDateFrom}
+          dateTo={dateTo || defaultDateTo}
+        />
+      ) : activeReport === 'ranking' ? (
         <div>
           {/* Seller Leaderboard */}
           <div className="bg-white rounded-lg p-4 border border-[#E2E4E9]">
@@ -158,8 +270,8 @@ export default function VendedoresSection({
               <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto mb-2"></div>
               <p className="text-sm text-gray-500">Cargando vendedores...</p>
             </div>
-          ) : sellerAnalyticsData?.sellers && sellerAnalyticsData.sellers.length > 0 ? (
-            sellerAnalyticsData.sellers.map((seller) => (
+          ) : filteredSellers && filteredSellers.length > 0 ? (
+            filteredSellers.map((seller) => (
               <div
                 key={seller.vendedor}
                 className="flex items-center justify-between py-3 border-b border-gray-100 last:border-b-0 cursor-pointer hover:bg-gray-50 rounded px-2"
@@ -198,9 +310,9 @@ export default function VendedoresSection({
       </div>
 
       {/* Selected Seller Details */}
-      {selectedSeller && sellerAnalyticsData && (
+      {selectedSeller && filteredSellers.length > 0 && (
         (() => {
-          const seller = sellerAnalyticsData.sellers.find(s => s.vendedor === selectedSeller)
+          const seller = filteredSellers.find(s => s.vendedor === selectedSeller)
           if (!seller) return null
 
           return (
@@ -336,9 +448,9 @@ export default function VendedoresSection({
       )}
         </div>
       ) : activeReport === 'performance' ? (
-        sellerAnalyticsData?.sellers ? (
+        filteredSellers.length > 0 ? (
           <SellerPerformanceReport
-            sellers={sellerAnalyticsData.sellers}
+            sellers={filteredSellers}
             formatCurrency={formatCurrency}
           />
         ) : (
@@ -347,9 +459,9 @@ export default function VendedoresSection({
           </div>
         )
       ) : activeReport === 'territory' ? (
-        sellerAnalyticsData?.sellers ? (
+        filteredSellers.length > 0 ? (
           <TerritoryAnalysisReport
-            sellers={sellerAnalyticsData.sellers}
+            sellers={filteredSellers}
             formatCurrency={formatCurrency}
           />
         ) : (
@@ -358,9 +470,9 @@ export default function VendedoresSection({
           </div>
         )
       ) : activeReport === 'churn' ? (
-        sellerAnalyticsData?.sellers ? (
+        filteredSellers.length > 0 ? (
           <ChurnRiskReport
-            sellers={sellerAnalyticsData.sellers}
+            sellers={filteredSellers}
             formatCurrency={formatCurrency}
           />
         ) : (
@@ -369,9 +481,9 @@ export default function VendedoresSection({
           </div>
         )
       ) : activeReport === 'velocity' ? (
-        sellerAnalyticsData?.sellers ? (
+        filteredSellers.length > 0 ? (
           <SalesVelocityReport
-            sellers={sellerAnalyticsData.sellers}
+            sellers={filteredSellers}
             formatCurrency={formatCurrency}
           />
         ) : (
@@ -380,9 +492,9 @@ export default function VendedoresSection({
           </div>
         )
       ) : activeReport === 'comparison' ? (
-        sellerAnalyticsData?.sellers ? (
+        filteredSellers.length > 0 ? (
           <SellerComparisonReport
-            sellers={sellerAnalyticsData.sellers}
+            sellers={filteredSellers}
             formatCurrency={formatCurrency}
           />
         ) : (
