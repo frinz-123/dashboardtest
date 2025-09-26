@@ -1,6 +1,9 @@
 import { google } from 'googleapis'
 import { NextResponse } from 'next/server'
 
+// Force dynamic rendering for this API route
+export const dynamic = 'force-dynamic'
+
 const auth = new google.auth.GoogleAuth({
   credentials: {
     type: "service_account",
@@ -171,6 +174,123 @@ export async function GET(req: Request) {
           productBreakdown,
           salesTrend,
           totalEntries: clientEntries.length
+        }
+      })
+    }
+
+    if (action === 'seller-analytics') {
+      console.log('👥 Seller Analytics endpoint called')
+
+      // Get seller-specific analytics
+      const sellerSalesData = await sheets.spreadsheets.values.get({
+        spreadsheetId,
+        range: `${sheetName}!A:AN`,
+      })
+
+      console.log('👥 Seller Analytics - Google Sheets response:', sellerSalesData.data.values?.length, 'rows')
+
+      if (!sellerSalesData.data.values || sellerSalesData.data.values.length < 2) {
+        console.log('⚠️ No data available for seller analytics')
+        return NextResponse.json({
+          success: true,
+          data: {
+            sellers: [],
+            totalSellers: 0
+          }
+        })
+      }
+
+      // Get all rows for processing (like the working analytics API)
+      const allRows = sellerSalesData.data.values.slice(1)
+      // ✅ CORRECTED: Use Column AN (index 39) where vendedor is actually stored
+      const anIndexForVendedor = columnToIndex('AN') // Column AN where vendedor assignments are stored
+      console.log('👥 Seller Analytics - Using Column AN (index', anIndexForVendedor, ') for vendedor data')
+      console.log('👥 Seller Analytics - Headers around Column AN:', sellerSalesData.data.values[0]?.slice(37, 42))
+
+      // First, build client-vendedor mapping using Column AN (like existing analytics)
+      const clientVendedores: Record<string, string> = {}
+      let foundVendedores = 0
+      // Process rows in reverse order (most recent first)
+      for (let i = allRows.length - 1; i >= 0; i--) {
+        const row = allRows[i]
+        const name = row[0]
+        const vendedor = row[anIndexForVendedor] // Using Column AN where vendedor assignments are stored
+        if (name && vendedor && !clientVendedores[name]) {
+          clientVendedores[name] = vendedor
+          foundVendedores++
+          if (foundVendedores <= 5) {
+            console.log(`👤 Client: ${name} -> Vendedor: ${vendedor}`)
+          }
+        }
+      }
+      console.log('📋 Total client-vendedor mappings found:', Object.keys(clientVendedores).length)
+
+      // Now parse entries with products and assign vendedor from mapping
+      const entries = allRows.map((row: any[], rowIndex) => {
+        const products = Object.entries(PRODUCT_COLUMNS).reduce((acc, [col, productName]) => {
+          const colIndex = columnToIndex(col)
+          const quantity = row[colIndex]
+          const parsedQuantity = parseInt(quantity || '0')
+          if (quantity && parsedQuantity > 0) {
+            acc[productName] = parsedQuantity
+          }
+          return acc
+        }, {} as Record<string, number>)
+
+        const clientName = row[0] || ''
+        const vendedor = clientVendedores[clientName] || 'Sin Asignar'
+
+        // Debug first few entries
+        if (rowIndex < 3) {
+          console.log(`👥 Row ${rowIndex} client:`, clientName, 'vendedor from Column AN:', vendedor)
+          console.log(`👥 Row ${rowIndex} has products:`, Object.keys(products).length > 0)
+        }
+
+        return {
+          clientName,
+          date: row[32] || '',
+          total: parseFloat(row[33] || '0'),
+          products,
+          vendedor,
+          userEmail: row[7] || '' // userEmail from Column H, vendedor from Column AN mapping
+        }
+      })
+
+      console.log('👥 All entries before filtering:', entries.length)
+
+      const entriesWithVendedor = entries.filter(entry => entry.vendedor && entry.vendedor !== 'Sin Asignar')
+      console.log('👥 Entries with vendedor:', entriesWithVendedor.length)
+
+      const entriesWithProducts = entries.filter(entry => Object.keys(entry.products).length > 0)
+      console.log('👥 Entries with products:', entriesWithProducts.length)
+
+      const filteredEntries = entries.filter(entry => entry.vendedor && entry.vendedor !== 'Sin Asignar' && Object.keys(entry.products).length > 0)
+      console.log('👥 Entries with both vendedor and products:', filteredEntries.length)
+
+      // Filter to current year using the filtered entries
+      const currentYear = new Date().getFullYear()
+      const yearlyEntries = filteredEntries.filter(entry => {
+        const entryDate = new Date(entry.date)
+        return entryDate.getFullYear() === currentYear
+      })
+
+      console.log('👥 Seller Analytics - Total entries after parsing:', entries.length)
+      console.log('👥 Seller Analytics - Yearly entries with sellers:', yearlyEntries.length)
+
+      // Generate seller analytics
+      const sellerAnalytics = generateSellerAnalytics(yearlyEntries)
+
+      console.log('👥 Generated seller analytics:', {
+        totalSellers: sellerAnalytics.totalSellers,
+        sellersCount: sellerAnalytics.sellers.length
+      })
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          sellers: sellerAnalytics.sellers,
+          totalSellers: sellerAnalytics.totalSellers,
+          period: 'current-year'
         }
       })
     }
@@ -456,6 +576,140 @@ export async function GET(req: Request) {
       error: error instanceof Error ? error.message : 'Internal server error'
     }, { status: 500 })
   }
+}
+
+function generateSellerAnalytics(entries: any[]) {
+  // Group entries by vendedor
+  const salesByVendedor = entries.reduce((acc, entry) => {
+    const vendedor = entry.vendedor || 'Sin Asignar'
+    if (!acc[vendedor]) acc[vendedor] = []
+    acc[vendedor].push(entry)
+    return acc
+  }, {} as Record<string, any[]>)
+
+  console.log('👥 Found sellers:', Object.keys(salesByVendedor))
+
+  // Calculate analytics for each seller
+  const sellerAnalytics = Object.entries(salesByVendedor).map(([vendedor, sales]) => {
+    // Basic metrics
+    const totalSales = sales.reduce((sum, sale) => sum + sale.total, 0)
+    const totalVisits = sales.length
+    const avgTicket = totalSales / totalVisits
+
+    // Client analysis
+    const clientStats = sales.reduce((acc, sale) => {
+      const clientName = sale.clientName
+      if (!acc[clientName]) {
+        acc[clientName] = {
+          totalSales: 0,
+          visitCount: 0,
+          lastVisit: null,
+          dates: []
+        }
+      }
+      acc[clientName].totalSales += sale.total
+      acc[clientName].visitCount += 1
+      acc[clientName].dates.push(sale.date)
+
+      // Update last visit
+      if (!acc[clientName].lastVisit || new Date(sale.date) > new Date(acc[clientName].lastVisit)) {
+        acc[clientName].lastVisit = sale.date
+      }
+      return acc
+    }, {} as Record<string, any>)
+
+    // Best clients (top 10 by revenue)
+    const bestClients = Object.entries(clientStats)
+      .map(([clientName, stats]) => ({
+        clientName,
+        totalSales: stats.totalSales,
+        visitCount: stats.visitCount,
+        avgTicket: stats.totalSales / stats.visitCount,
+        lastVisit: stats.lastVisit,
+        loyaltyScore: stats.visitCount * (stats.totalSales / totalSales) * 100
+      }))
+      .sort((a, b) => b.totalSales - a.totalSales)
+      .slice(0, 10)
+
+    // Product distribution analysis
+    const productStats = sales.reduce((acc, sale) => {
+      Object.entries(sale.products).forEach(([product, quantity]) => {
+        if (!acc[product]) {
+          acc[product] = { quantity: 0, salesCount: 0 }
+        }
+        acc[product].quantity += quantity
+        acc[product].salesCount += 1
+      })
+      return acc
+    }, {} as Record<string, any>)
+
+    const totalProductsSold = Object.values(productStats).reduce((sum: number, stats: any) => sum + stats.quantity, 0)
+
+    const productDistribution = Object.entries(productStats)
+      .map(([product, stats]) => ({
+        product,
+        quantity: stats.quantity,
+        percentage: totalProductsSold > 0 ? (stats.quantity / totalProductsSold) * 100 : 0,
+        salesCount: stats.salesCount
+      }))
+      .sort((a, b) => b.quantity - a.quantity)
+      .slice(0, 15) // Top 15 products
+
+    // Monthly trends (last 6 months)
+    const monthlyTrends = generateSellerMonthlyTrends(sales)
+
+    return {
+      vendedor,
+      totalSales,
+      totalVisits,
+      uniqueClients: Object.keys(clientStats).length,
+      avgTicket,
+      bestClients,
+      productDistribution,
+      monthlyTrends,
+      rank: 0 // Will be set after sorting
+    }
+  })
+
+  // Sort sellers by total sales and assign ranks
+  const rankedSellers = sellerAnalytics
+    .sort((a, b) => b.totalSales - a.totalSales)
+    .map((seller, index) => ({
+      ...seller,
+      rank: index + 1
+    }))
+
+  return {
+    sellers: rankedSellers,
+    totalSellers: rankedSellers.length
+  }
+}
+
+function generateSellerMonthlyTrends(sales: any[]) {
+  const monthlyData: Record<string, { sales: number, visits: number }> = {}
+
+  // Get last 6 months
+  for (let i = 5; i >= 0; i--) {
+    const date = new Date()
+    date.setMonth(date.getMonth() - i)
+    const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+    monthlyData[monthKey] = { sales: 0, visits: 0 }
+  }
+
+  sales.forEach(sale => {
+    const saleDate = new Date(sale.date)
+    const monthKey = `${saleDate.getFullYear()}-${String(saleDate.getMonth() + 1).padStart(2, '0')}`
+    if (monthlyData[monthKey]) {
+      monthlyData[monthKey].sales += sale.total
+      monthlyData[monthKey].visits += 1
+    }
+  })
+
+  return Object.entries(monthlyData).map(([month, data]) => ({
+    month,
+    sales: data.sales,
+    visits: data.visits
+  }))
 }
 
 function columnToIndex(column: string): number {

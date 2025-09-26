@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
-import { Menu, TrendingUp, DollarSign, Package, Calendar, Users, BarChart3, PieChart, Activity, Filter, Trophy, ArrowRight, Target, Lightbulb, AlertTriangle } from 'lucide-react'
+import { Menu, TrendingUp, DollarSign, Package, Calendar, Users, BarChart3, PieChart, Activity, Filter, Trophy, ArrowRight, Target, Lightbulb, AlertTriangle, UserCheck, Award } from 'lucide-react'
 import BlurIn from '@/components/ui/blur-in'
 import SearchInput from '@/components/ui/SearchInput'
 import InputGray from '@/components/ui/InputGray'
@@ -155,6 +155,46 @@ interface AnalyticsData {
   clientVendedores?: Record<string, string>
   // Aggregated products by client code for current year
   productsByCode?: Record<string, Record<string, number>>
+}
+
+interface ClientPerformance {
+  clientName: string
+  totalSales: number
+  visitCount: number
+  avgTicket: number
+  lastVisit: string
+  loyaltyScore: number
+}
+
+interface ProductMix {
+  product: string
+  quantity: number
+  percentage: number
+  salesCount: number
+}
+
+interface MonthlyTrend {
+  month: string
+  sales: number
+  visits: number
+}
+
+interface SellerAnalytics {
+  vendedor: string
+  rank: number
+  totalSales: number
+  totalVisits: number
+  uniqueClients: number
+  avgTicket: number
+  bestClients: ClientPerformance[]
+  productDistribution: ProductMix[]
+  monthlyTrends: MonthlyTrend[]
+}
+
+interface SellerAnalyticsData {
+  sellers: SellerAnalytics[]
+  totalSellers: number
+  period: string
 }
 
 // duplicate removed
@@ -837,9 +877,12 @@ export default function ClientesPage() {
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(false)
-  const [activeTab, setActiveTab] = useState<'overview' | 'entries' | 'products' | 'trends' | 'insights' | 'dashboard'>('dashboard')
+  const [activeTab, setActiveTab] = useState<'overview' | 'entries' | 'products' | 'trends' | 'insights' | 'dashboard' | 'vendedores'>('dashboard')
   const [entriesFilter, setEntriesFilter] = useState<'all' | 'recent' | 'month'>('all')
   const [viewMode, setViewMode] = useState<'dashboard' | 'client'>('dashboard')
+  const [sellerAnalyticsData, setSellerAnalyticsData] = useState<SellerAnalyticsData | null>(null)
+  const [isLoadingSellerAnalytics, setIsLoadingSellerAnalytics] = useState(false)
+  const [selectedSeller, setSelectedSeller] = useState<string>('')
 
   const throttledLocationUpdate = useRef(
     throttle((location: { lat: number, lng: number }) => {
@@ -862,6 +905,7 @@ export default function ClientesPage() {
     if (!isAllowed || status !== 'authenticated') return
     fetchClientNames()
     fetchAnalyticsData()
+    fetchSellerAnalyticsData()
   }, [isAllowed, status])
 
   useEffect(() => {
@@ -925,6 +969,26 @@ export default function ClientesPage() {
     }
   }
 
+  const fetchSellerAnalyticsData = async () => {
+    setIsLoadingSellerAnalytics(true)
+    try {
+      console.log('👥 Fetching seller analytics data...')
+      const response = await fetch('/api/clientes?action=seller-analytics')
+      const data = await response.json()
+      console.log('👥 Frontend received seller analytics data:', data)
+      if (data.success) {
+        console.log('✅ Setting seller analytics data:', data.data)
+        setSellerAnalyticsData(data.data)
+      } else {
+        console.error('❌ Error fetching seller analytics:', data.error)
+      }
+    } catch (error) {
+      console.error('🚨 Error fetching seller analytics data:', error)
+    } finally {
+      setIsLoadingSellerAnalytics(false)
+    }
+  }
+
   const fetchClientData = async (clientName: string) => {
     setIsLoading(true)
     try {
@@ -965,6 +1029,95 @@ export default function ClientesPage() {
     }
 
     return filteredEntries
+  }
+
+  const exportSellerData = (type: 'leaderboard' | 'clients' | 'products', vendedor?: string) => {
+    if (!sellerAnalyticsData) return
+
+    try {
+      let csvContent = ''
+      let filename = ''
+
+      if (type === 'leaderboard') {
+        // Export seller leaderboard
+        const headers = ['Ranking', 'Vendedor', 'Ventas_Totales', 'Clientes_Unicos', 'Total_Visitas', 'Ticket_Promedio']
+        const lines = [headers.join(',')]
+
+        sellerAnalyticsData.sellers.forEach(seller => {
+          const row = [
+            seller.rank.toString(),
+            `"${seller.vendedor}"`,
+            seller.totalSales.toString(),
+            seller.uniqueClients.toString(),
+            seller.totalVisits.toString(),
+            seller.avgTicket.toFixed(2)
+          ]
+          lines.push(row.join(','))
+        })
+
+        csvContent = lines.join('\n')
+        filename = 'ranking_vendedores.csv'
+
+      } else if (type === 'clients' && vendedor) {
+        // Export best clients for specific seller
+        const seller = sellerAnalyticsData.sellers.find(s => s.vendedor === vendedor)
+        if (!seller) return
+
+        const headers = ['Ranking', 'Cliente', 'Ventas_Totales', 'Numero_Visitas', 'Ticket_Promedio', 'Ultima_Visita', 'Score_Lealtad']
+        const lines = [headers.join(',')]
+
+        seller.bestClients.forEach((client, index) => {
+          const row = [
+            (index + 1).toString(),
+            `"${client.clientName}"`,
+            client.totalSales.toString(),
+            client.visitCount.toString(),
+            client.avgTicket.toFixed(2),
+            `"${client.lastVisit}"`,
+            client.loyaltyScore.toFixed(2)
+          ]
+          lines.push(row.join(','))
+        })
+
+        csvContent = lines.join('\n')
+        filename = `mejores_clientes_${vendedor.replace(/[^a-zA-Z0-9]/g, '_')}.csv`
+
+      } else if (type === 'products' && vendedor) {
+        // Export product distribution for specific seller
+        const seller = sellerAnalyticsData.sellers.find(s => s.vendedor === vendedor)
+        if (!seller) return
+
+        const headers = ['Producto', 'Cantidad_Vendida', 'Porcentaje', 'Numero_Ventas']
+        const lines = [headers.join(',')]
+
+        seller.productDistribution.forEach(product => {
+          const row = [
+            `"${product.product}"`,
+            product.quantity.toString(),
+            product.percentage.toFixed(2),
+            product.salesCount.toString()
+          ]
+          lines.push(row.join(','))
+        })
+
+        csvContent = lines.join('\n')
+        filename = `productos_${vendedor.replace(/[^a-zA-Z0-9]/g, '_')}.csv`
+      }
+
+      // Download CSV
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+
+    } catch (error) {
+      console.error('Error exporting seller data:', error)
+    }
   }
 
   // Gate rendering AFTER all hooks are declared to keep hooks order stable
@@ -1127,8 +1280,38 @@ export default function ClientesPage() {
         )}
       </div>
 
+      {/* Dashboard Tab Navigation */}
+      {viewMode === 'dashboard' && (
+        <div className="bg-white rounded-lg mb-3 border border-[#E2E4E9]">
+          <div className="flex overflow-x-auto gap-1 p-2">
+            <button
+              onClick={() => setActiveTab('dashboard')}
+              className={`flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex-shrink-0 whitespace-nowrap ${
+                activeTab === 'dashboard'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-800'
+              }`}
+            >
+              <BarChart3 className="w-4 h-4 mr-2 flex-shrink-0" />
+              Dashboard General
+            </button>
+            <button
+              onClick={() => setActiveTab('vendedores')}
+              className={`flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex-shrink-0 whitespace-nowrap ${
+                activeTab === 'vendedores'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-800'
+              }`}
+            >
+              <UserCheck className="w-4 h-4 mr-2 flex-shrink-0" />
+              Reportes Vendedores
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Main Content */}
-      {viewMode === 'dashboard' ? (
+      {viewMode === 'dashboard' && activeTab === 'dashboard' ? (
         // Dashboard View
         <div className="space-y-3">
           {/* Overall Metrics */}
@@ -1345,6 +1528,205 @@ export default function ClientesPage() {
               isLoading={isLoadingAnalytics}
             />
           </div>
+        </div>
+      ) : viewMode === 'dashboard' && activeTab === 'vendedores' ? (
+        // Seller Analytics View
+        <div className="space-y-3">
+          {/* Seller Leaderboard */}
+          <div className="bg-white rounded-lg p-4 border border-[#E2E4E9]">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-gray-700 flex items-center text-sm">
+                <Trophy className="mr-2 h-4 w-4" /> Ranking de Vendedores
+              </h3>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => exportSellerData('leaderboard')}
+                  className="text-xs border border-gray-300 rounded px-2 py-1 bg-white hover:bg-gray-50"
+                  disabled={isLoadingSellerAnalytics || !sellerAnalyticsData?.sellers}
+                >
+                  Exportar CSV
+                </button>
+                <p className="text-xs text-gray-500">Año actual</p>
+              </div>
+            </div>
+            <div className="space-y-2">
+              {isLoadingSellerAnalytics ? (
+                <div className="text-center py-4">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto mb-2"></div>
+                  <p className="text-sm text-gray-500">Cargando vendedores...</p>
+                </div>
+              ) : sellerAnalyticsData?.sellers && sellerAnalyticsData.sellers.length > 0 ? (
+                sellerAnalyticsData.sellers.slice(0, 10).map((seller) => (
+                  <div
+                    key={seller.vendedor}
+                    className="flex items-center justify-between py-3 border-b border-gray-100 last:border-b-0 cursor-pointer hover:bg-gray-50 rounded px-2"
+                    onClick={() => setSelectedSeller(selectedSeller === seller.vendedor ? '' : seller.vendedor)}
+                  >
+                    <div className="flex items-center">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold mr-3 ${
+                        seller.rank === 1 ? 'bg-yellow-100 text-yellow-800' :
+                        seller.rank === 2 ? 'bg-gray-100 text-gray-800' :
+                        seller.rank === 3 ? 'bg-orange-100 text-orange-800' :
+                        'bg-blue-100 text-blue-800'
+                      }`}>
+                        {seller.rank}
+                      </div>
+                      <div>
+                        <p className="font-medium text-sm text-gray-800">{seller.vendedor}</p>
+                        <p className="text-xs text-gray-500">{seller.uniqueClients} clientes • {seller.totalVisits} visitas</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-semibold text-sm text-green-600">{formatCurrency(seller.totalSales)}</p>
+                      <p className="text-xs text-gray-500">Promedio: {formatCurrency(seller.avgTicket)}</p>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-4">
+                  <p className="text-sm text-gray-500">No hay datos de vendedores disponibles</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Selected Seller Details */}
+          {selectedSeller && sellerAnalyticsData && (
+            (() => {
+              const seller = sellerAnalyticsData.sellers.find(s => s.vendedor === selectedSeller)
+              if (!seller) return null
+
+              return (
+                <div className="space-y-3">
+                  {/* Seller Overview */}
+                  <div className="bg-white rounded-lg p-4 border border-[#E2E4E9]">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="font-semibold text-gray-700 flex items-center text-sm">
+                        <Award className="mr-2 h-4 w-4" /> {seller.vendedor} - Resumen
+                      </h3>
+                      <button
+                        onClick={() => setSelectedSeller('')}
+                        className="text-xs text-gray-500 hover:text-gray-700"
+                      >
+                        Cerrar
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-green-50 rounded-lg p-3">
+                        <div className="flex items-center">
+                          <DollarSign className="w-5 h-5 text-green-600 mr-2" />
+                          <div>
+                            <p className="text-xs text-gray-600">Ventas Totales</p>
+                            <p className="text-lg font-bold text-green-600">{formatCurrency(seller.totalSales)}</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="bg-blue-50 rounded-lg p-3">
+                        <div className="flex items-center">
+                          <Users className="w-5 h-5 text-blue-600 mr-2" />
+                          <div>
+                            <p className="text-xs text-gray-600">Clientes Únicos</p>
+                            <p className="text-lg font-bold text-blue-600">{seller.uniqueClients}</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="bg-purple-50 rounded-lg p-3">
+                        <div className="flex items-center">
+                          <Activity className="w-5 h-5 text-purple-600 mr-2" />
+                          <div>
+                            <p className="text-xs text-gray-600">Visitas Totales</p>
+                            <p className="text-lg font-bold text-purple-600">{seller.totalVisits}</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="bg-orange-50 rounded-lg p-3">
+                        <div className="flex items-center">
+                          <Target className="w-5 h-5 text-orange-600 mr-2" />
+                          <div>
+                            <p className="text-xs text-gray-600">Ticket Promedio</p>
+                            <p className="text-lg font-bold text-orange-600">{formatCurrency(seller.avgTicket)}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Best Clients */}
+                  <div className="bg-white rounded-lg p-4 border border-[#E2E4E9]">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="font-semibold text-gray-700 flex items-center text-sm">
+                        <Users className="mr-2 h-4 w-4" /> Mejores Clientes - {seller.vendedor}
+                      </h3>
+                      <button
+                        onClick={() => exportSellerData('clients', seller.vendedor)}
+                        className="text-xs border border-gray-300 rounded px-2 py-1 bg-white hover:bg-gray-50"
+                      >
+                        Exportar CSV
+                      </button>
+                    </div>
+                    <div className="space-y-2">
+                      {seller.bestClients.slice(0, 8).map((client, index) => (
+                        <div key={client.clientName} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-b-0">
+                          <div className="flex items-center">
+                            <div className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold mr-3 ${
+                              index === 0 ? 'bg-yellow-100 text-yellow-800' :
+                              index === 1 ? 'bg-gray-100 text-gray-800' :
+                              index === 2 ? 'bg-orange-100 text-orange-800' :
+                              'bg-blue-100 text-blue-800'
+                            }`}>
+                              {index + 1}
+                            </div>
+                            <div>
+                              <p className="font-medium text-sm text-gray-800">{client.clientName}</p>
+                              <p className="text-xs text-gray-500">{client.visitCount} visitas</p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-semibold text-sm text-green-600">{formatCurrency(client.totalSales)}</p>
+                            <p className="text-xs text-gray-500">Promedio: {formatCurrency(client.avgTicket)}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Product Distribution */}
+                  <div className="bg-white rounded-lg p-4 border border-[#E2E4E9]">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="font-semibold text-gray-700 flex items-center text-sm">
+                        <Package className="mr-2 h-4 w-4" /> Distribución de Productos - {seller.vendedor}
+                      </h3>
+                      <button
+                        onClick={() => exportSellerData('products', seller.vendedor)}
+                        className="text-xs border border-gray-300 rounded px-2 py-1 bg-white hover:bg-gray-50"
+                      >
+                        Exportar CSV
+                      </button>
+                    </div>
+                    <div className="space-y-2">
+                      {seller.productDistribution.slice(0, 10).map((product) => (
+                        <div key={product.product} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-b-0">
+                          <div className="flex-1">
+                            <p className="font-medium text-sm text-gray-800">{product.product}</p>
+                            <div className="w-full bg-gray-200 rounded-full h-2 mt-1">
+                              <div
+                                className="bg-blue-600 h-2 rounded-full"
+                                style={{ width: `${Math.min(product.percentage, 100)}%` }}
+                              ></div>
+                            </div>
+                          </div>
+                          <div className="text-right ml-4">
+                            <p className="font-semibold text-sm text-blue-600">{product.quantity} unidades</p>
+                            <p className="text-xs text-gray-500">{product.percentage.toFixed(1)}%</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )
+            })()
+          )}
         </div>
       ) : selectedClient && clientData ? (
         <div className="space-y-3">

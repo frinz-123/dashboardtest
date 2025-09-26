@@ -5,7 +5,14 @@
       "Bash(grep:*)",
       "Bash(npm ls:*)",
       "Bash(npm install:*)",
-      "Bash(npm run test:*)"
+      "Bash(npm run test:*)",
+      "Bash(npm run build:*)",
+      "Bash(npm run dev:*)",
+      "Bash(node:*)",
+      "Bash(curl:*)",
+      "Bash(netstat:*)",
+      "Bash(ss:*)",
+      "Bash(lsof:*)"
     ],
     "deny": [],
     "ask": []
