@@ -252,7 +252,11 @@ export async function GET(req: Request) {
           total: parseFloat(row[33] || '0'),
           products,
           vendedor,
-          userEmail: row[7] || '' // userEmail from Column H, vendedor from Column AN mapping
+          userEmail: row[7] || '', // userEmail from Column H, vendedor from Column AN mapping
+          location: {
+            clientLat: row[1] || '', // ClientLatitude
+            clientLng: row[2] || ''  // ClientLongitude
+          }
         }
       })
 
@@ -671,13 +675,19 @@ function generateSellerAnalytics(entries: any[]) {
       .slice(0, 15) // Top 15 products
 
     // 🎯 1. TERRITORY COVERAGE ANALYSIS
+    console.log(`🗺️ Generating territory analysis for ${vendedor} with ${Object.keys(clientStats).length} clients`)
     const territoryAnalysis = generateTerritoryAnalysis(clientStats, sales)
+    console.log(`🗺️ Territory analysis for ${vendedor}:`, territoryAnalysis)
 
     // ⚡ 2. SALES VELOCITY DASHBOARD
+    console.log(`⚡ Generating sales velocity for ${vendedor} with ${sales.length} sales`)
     const salesVelocity = generateSalesVelocityAnalysis(clientStats, sales)
+    console.log(`⚡ Sales velocity for ${vendedor}:`, salesVelocity)
 
     // 🎖️ 3. CLIENT RETENTION & LOYALTY ANALYSIS
+    console.log(`🎖️ Generating retention analysis for ${vendedor}`)
     const retentionAnalysis = generateRetentionAnalysis(clientStats, sales, totalSales)
+    console.log(`🎖️ Retention analysis for ${vendedor}:`, retentionAnalysis)
 
     // Monthly trends (last 6 months)
     const monthlyTrends = generateSellerMonthlyTrends(sales)
@@ -741,6 +751,9 @@ function generateSellerMonthlyTrends(sales: any[]) {
 
 // 🎯 1. TERRITORY COVERAGE ANALYSIS
 function generateTerritoryAnalysis(clientStats: Record<string, any>, sales: any[]) {
+  console.log('🗺️ Territory Analysis - Total clients:', Object.keys(clientStats).length)
+  console.log('🗺️ Territory Analysis - Sample client stats:', Object.entries(clientStats).slice(0, 2))
+
   const clientsWithLocations = Object.entries(clientStats)
     .filter(([_, stats]) => stats.locations && stats.locations.length > 0)
     .map(([clientName, stats]) => ({
@@ -751,6 +764,8 @@ function generateTerritoryAnalysis(clientStats: Record<string, any>, sales: any[
         lng: stats.locations.reduce((sum: number, loc: any) => sum + loc.lng, 0) / stats.locations.length
       }
     }))
+
+  console.log('🗺️ Territory Analysis - Clients with locations:', clientsWithLocations.length)
 
   // Calculate territory boundaries (bounding box)
   const lats = clientsWithLocations.map(client => client.avgLocation.lat).filter(lat => !isNaN(lat))
