@@ -596,7 +596,7 @@ function generateSellerAnalytics(entries: any[]) {
     const totalVisits = sales.length
     const avgTicket = totalSales / totalVisits
 
-    // Client analysis
+    // Client analysis with enhanced location data
     const clientStats = sales.reduce((acc, sale) => {
       const clientName = sale.clientName
       if (!acc[clientName]) {
@@ -604,15 +604,30 @@ function generateSellerAnalytics(entries: any[]) {
           totalSales: 0,
           visitCount: 0,
           lastVisit: null,
-          dates: []
+          firstVisit: null,
+          dates: [],
+          locations: []
         }
       }
       acc[clientName].totalSales += sale.total
       acc[clientName].visitCount += 1
       acc[clientName].dates.push(sale.date)
 
-      // Update last visit
-      if (!acc[clientName].lastVisit || new Date(sale.date) > new Date(acc[clientName].lastVisit)) {
+      // Store location data if available
+      if (sale.location && sale.location.clientLat && sale.location.clientLng) {
+        acc[clientName].locations.push({
+          lat: parseFloat(sale.location.clientLat),
+          lng: parseFloat(sale.location.clientLng),
+          date: sale.date
+        })
+      }
+
+      // Update first and last visit
+      const saleDate = new Date(sale.date)
+      if (!acc[clientName].firstVisit || saleDate < new Date(acc[clientName].firstVisit)) {
+        acc[clientName].firstVisit = sale.date
+      }
+      if (!acc[clientName].lastVisit || saleDate > new Date(acc[clientName].lastVisit)) {
         acc[clientName].lastVisit = sale.date
       }
       return acc
@@ -655,6 +670,15 @@ function generateSellerAnalytics(entries: any[]) {
       .sort((a, b) => b.quantity - a.quantity)
       .slice(0, 15) // Top 15 products
 
+    // 🎯 1. TERRITORY COVERAGE ANALYSIS
+    const territoryAnalysis = generateTerritoryAnalysis(clientStats, sales)
+
+    // ⚡ 2. SALES VELOCITY DASHBOARD
+    const salesVelocity = generateSalesVelocityAnalysis(clientStats, sales)
+
+    // 🎖️ 3. CLIENT RETENTION & LOYALTY ANALYSIS
+    const retentionAnalysis = generateRetentionAnalysis(clientStats, sales, totalSales)
+
     // Monthly trends (last 6 months)
     const monthlyTrends = generateSellerMonthlyTrends(sales)
 
@@ -667,6 +691,9 @@ function generateSellerAnalytics(entries: any[]) {
       bestClients,
       productDistribution,
       monthlyTrends,
+      territoryAnalysis,
+      salesVelocity,
+      retentionAnalysis,
       rank: 0 // Will be set after sorting
     }
   })
@@ -710,6 +737,295 @@ function generateSellerMonthlyTrends(sales: any[]) {
     sales: data.sales,
     visits: data.visits
   }))
+}
+
+// 🎯 1. TERRITORY COVERAGE ANALYSIS
+function generateTerritoryAnalysis(clientStats: Record<string, any>, sales: any[]) {
+  const clientsWithLocations = Object.entries(clientStats)
+    .filter(([_, stats]) => stats.locations && stats.locations.length > 0)
+    .map(([clientName, stats]) => ({
+      clientName,
+      ...stats,
+      avgLocation: {
+        lat: stats.locations.reduce((sum: number, loc: any) => sum + loc.lat, 0) / stats.locations.length,
+        lng: stats.locations.reduce((sum: number, loc: any) => sum + loc.lng, 0) / stats.locations.length
+      }
+    }))
+
+  // Calculate territory boundaries (bounding box)
+  const lats = clientsWithLocations.map(client => client.avgLocation.lat).filter(lat => !isNaN(lat))
+  const lngs = clientsWithLocations.map(client => client.avgLocation.lng).filter(lng => !isNaN(lng))
+
+  const territoryBounds = lats.length > 0 ? {
+    north: Math.max(...lats),
+    south: Math.min(...lats),
+    east: Math.max(...lngs),
+    west: Math.min(...lngs)
+  } : null
+
+  // Calculate territory metrics
+  const territoryCenter = territoryBounds ? {
+    lat: (territoryBounds.north + territoryBounds.south) / 2,
+    lng: (territoryBounds.east + territoryBounds.west) / 2
+  } : null
+
+  // Estimate territory area (rough calculation in km²)
+  const territoryArea = territoryBounds ?
+    Math.abs((territoryBounds.north - territoryBounds.south) * 111) *
+    Math.abs((territoryBounds.east - territoryBounds.west) * 111 * Math.cos(territoryCenter!.lat * Math.PI / 180)) : 0
+
+  // Client density (clients per km²)
+  const clientDensity = territoryArea > 0 ? clientsWithLocations.length / territoryArea : 0
+
+  // Estimate average distance between clients (simplified)
+  let totalDistance = 0
+  let distanceCount = 0
+  for (let i = 0; i < clientsWithLocations.length; i++) {
+    for (let j = i + 1; j < clientsWithLocations.length; j++) {
+      const client1 = clientsWithLocations[i]
+      const client2 = clientsWithLocations[j]
+      const distance = calculateDistance(
+        client1.avgLocation.lat, client1.avgLocation.lng,
+        client2.avgLocation.lat, client2.avgLocation.lng
+      )
+      totalDistance += distance
+      distanceCount++
+    }
+  }
+  const avgDistanceBetweenClients = distanceCount > 0 ? totalDistance / distanceCount : 0
+
+  return {
+    totalClients: clientsWithLocations.length,
+    territoryBounds,
+    territoryCenter,
+    territoryArea: Math.round(territoryArea * 100) / 100,
+    clientDensity: Math.round(clientDensity * 100) / 100,
+    avgDistanceBetweenClients: Math.round(avgDistanceBetweenClients * 100) / 100,
+    coverageScore: Math.min(100, Math.round((clientsWithLocations.length / Math.max(1, territoryArea)) * 50))
+  }
+}
+
+// ⚡ 2. SALES VELOCITY DASHBOARD
+function generateSalesVelocityAnalysis(clientStats: Record<string, any>, sales: any[]) {
+  const now = new Date()
+
+  // Calculate time between visits for repeat clients
+  const visitIntervals: number[] = []
+  const timeToDeal: number[] = []
+
+  Object.values(clientStats).forEach((stats: any) => {
+    if (stats.dates && stats.dates.length > 1) {
+      const sortedDates = stats.dates.map((d: string) => new Date(d)).sort((a: Date, b: Date) => a.getTime() - b.getTime())
+
+      // Calculate intervals between visits
+      for (let i = 1; i < sortedDates.length; i++) {
+        const interval = (sortedDates[i].getTime() - sortedDates[i-1].getTime()) / (1000 * 60 * 60 * 24) // days
+        visitIntervals.push(interval)
+      }
+
+      // Time from first visit to first sale (assuming first visit is prospecting)
+      if (stats.totalSales > 0) {
+        const timeToDealDays = (sortedDates[sortedDates.length - 1].getTime() - sortedDates[0].getTime()) / (1000 * 60 * 60 * 24)
+        timeToDeal.push(timeToDealDays)
+      }
+    }
+  })
+
+  // Calculate averages
+  const avgTimeBetweenVisits = visitIntervals.length > 0 ?
+    visitIntervals.reduce((sum, interval) => sum + interval, 0) / visitIntervals.length : 0
+
+  const avgTimeToDeal = timeToDeal.length > 0 ?
+    timeToDeal.reduce((sum, time) => sum + time, 0) / timeToDeal.length : 0
+
+  // Monthly acceleration/deceleration
+  const monthlyVelocity = calculateMonthlyVelocity(sales)
+
+  // Peak performance analysis
+  const peakAnalysis = calculatePeakPerformance(sales)
+
+  return {
+    avgTimeBetweenVisits: Math.round(avgTimeBetweenVisits * 10) / 10,
+    avgTimeToDeal: Math.round(avgTimeToDeal * 10) / 10,
+    visitFrequency: avgTimeBetweenVisits > 0 ? Math.round((30 / avgTimeBetweenVisits) * 10) / 10 : 0, // visits per month
+    monthlyVelocity,
+    peakAnalysis,
+    velocityScore: Math.min(100, Math.round((1 / Math.max(avgTimeBetweenVisits / 30, 0.1)) * 50)) // Higher frequency = higher score
+  }
+}
+
+// 🎖️ 3. CLIENT RETENTION & LOYALTY ANALYSIS
+function generateRetentionAnalysis(clientStats: Record<string, any>, sales: any[], totalSales: number) {
+  const now = new Date()
+
+  // Calculate client lifecycle metrics
+  const clientMetrics = Object.entries(clientStats).map(([clientName, stats]) => {
+    const daysSinceLastVisit = stats.lastVisit ?
+      (now.getTime() - new Date(stats.lastVisit).getTime()) / (1000 * 60 * 60 * 24) : Infinity
+
+    const customerLifetime = stats.firstVisit && stats.lastVisit ?
+      (new Date(stats.lastVisit).getTime() - new Date(stats.firstVisit).getTime()) / (1000 * 60 * 60 * 24) : 0
+
+    const customerValue = stats.totalSales
+    const visitFrequency = customerLifetime > 0 ? stats.visitCount / (customerLifetime / 30) : 0 // visits per month
+
+    // Loyalty score based on multiple factors
+    const loyaltyScore = Math.min(100,
+      (stats.visitCount * 15) + // Visit frequency weight
+      (customerValue / totalSales * 25) + // Revenue contribution weight
+      (Math.min(customerLifetime / 365, 1) * 35) + // Longevity weight
+      (visitFrequency * 25) // Consistency weight
+    )
+
+    // Churn risk assessment
+    const churnRisk = daysSinceLastVisit > 90 ? 'High' :
+                     daysSinceLastVisit > 60 ? 'Medium' :
+                     daysSinceLastVisit > 30 ? 'Low' : 'Very Low'
+
+    return {
+      clientName,
+      daysSinceLastVisit: Math.round(daysSinceLastVisit),
+      customerLifetime: Math.round(customerLifetime),
+      customerValue,
+      visitFrequency: Math.round(visitFrequency * 10) / 10,
+      loyaltyScore: Math.round(loyaltyScore),
+      churnRisk,
+      stats
+    }
+  })
+
+  // Segment clients by loyalty
+  const loyaltySegments = {
+    champions: clientMetrics.filter(c => c.loyaltyScore >= 80 && c.visitFrequency >= 2),
+    loyalCustomers: clientMetrics.filter(c => c.loyaltyScore >= 60 && c.loyaltyScore < 80),
+    potentialLoyalists: clientMetrics.filter(c => c.loyaltyScore >= 40 && c.loyaltyScore < 60),
+    atRisk: clientMetrics.filter(c => c.churnRisk === 'High' || c.churnRisk === 'Medium'),
+    newCustomers: clientMetrics.filter(c => c.customerLifetime <= 90 && c.visitFrequency >= 1)
+  }
+
+  // Calculate retention metrics
+  const avgCustomerLifetime = clientMetrics.reduce((sum, c) => sum + c.customerLifetime, 0) / clientMetrics.length
+  const avgLoyaltyScore = clientMetrics.reduce((sum, c) => sum + c.loyaltyScore, 0) / clientMetrics.length
+  const retentionRate = clientMetrics.filter(c => c.daysSinceLastVisit <= 90).length / clientMetrics.length * 100
+
+  return {
+    totalClients: clientMetrics.length,
+    avgCustomerLifetime: Math.round(avgCustomerLifetime),
+    avgLoyaltyScore: Math.round(avgLoyaltyScore),
+    retentionRate: Math.round(retentionRate * 10) / 10,
+    loyaltySegments: {
+      champions: loyaltySegments.champions.length,
+      loyalCustomers: loyaltySegments.loyalCustomers.length,
+      potentialLoyalists: loyaltySegments.potentialLoyalists.length,
+      atRisk: loyaltySegments.atRisk.length,
+      newCustomers: loyaltySegments.newCustomers.length
+    },
+    topLoyalClients: clientMetrics
+      .sort((a, b) => b.loyaltyScore - a.loyaltyScore)
+      .slice(0, 10)
+      .map(c => ({
+        clientName: c.clientName,
+        loyaltyScore: c.loyaltyScore,
+        customerValue: c.customerValue,
+        visitCount: c.stats.visitCount,
+        lastVisit: c.stats.lastVisit
+      })),
+    churnRiskClients: clientMetrics
+      .filter(c => c.churnRisk === 'High' || c.churnRisk === 'Medium')
+      .sort((a, b) => b.daysSinceLastVisit - a.daysSinceLastVisit)
+      .slice(0, 10)
+      .map(c => ({
+        clientName: c.clientName,
+        daysSinceLastVisit: c.daysSinceLastVisit,
+        churnRisk: c.churnRisk,
+        customerValue: c.customerValue,
+        lastVisit: c.stats.lastVisit
+      }))
+  }
+}
+
+// Helper functions
+function calculateDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371 // Earth's radius in km
+  const dLat = (lat2 - lat1) * Math.PI / 180
+  const dLng = (lng2 - lng1) * Math.PI / 180
+  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLng/2) * Math.sin(dLng/2)
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
+  return R * c
+}
+
+function calculateMonthlyVelocity(sales: any[]) {
+  const monthlyData: Record<string, { sales: number, visits: number }> = {}
+
+  for (let i = 5; i >= 0; i--) {
+    const date = new Date()
+    date.setMonth(date.getMonth() - i)
+    const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+    monthlyData[monthKey] = { sales: 0, visits: 0 }
+  }
+
+  sales.forEach(sale => {
+    const saleDate = new Date(sale.date)
+    const monthKey = `${saleDate.getFullYear()}-${String(saleDate.getMonth() + 1).padStart(2, '0')}`
+    if (monthlyData[monthKey]) {
+      monthlyData[monthKey].sales += sale.total
+      monthlyData[monthKey].visits += 1
+    }
+  })
+
+  const months = Object.entries(monthlyData)
+  const velocityChanges = []
+  for (let i = 1; i < months.length; i++) {
+    const prevMonth = months[i-1][1]
+    const currMonth = months[i][1]
+    const salesChange = prevMonth.sales > 0 ? ((currMonth.sales - prevMonth.sales) / prevMonth.sales) * 100 : 0
+    const visitsChange = prevMonth.visits > 0 ? ((currMonth.visits - prevMonth.visits) / prevMonth.visits) * 100 : 0
+    velocityChanges.push({
+      month: months[i][0],
+      salesChange: Math.round(salesChange * 10) / 10,
+      visitsChange: Math.round(visitsChange * 10) / 10
+    })
+  }
+
+  return velocityChanges
+}
+
+function calculatePeakPerformance(sales: any[]) {
+  // Analyze performance by day of week and hour
+  const dayPerformance: Record<string, { sales: number, visits: number }> = {
+    'Monday': { sales: 0, visits: 0 },
+    'Tuesday': { sales: 0, visits: 0 },
+    'Wednesday': { sales: 0, visits: 0 },
+    'Thursday': { sales: 0, visits: 0 },
+    'Friday': { sales: 0, visits: 0 },
+    'Saturday': { sales: 0, visits: 0 },
+    'Sunday': { sales: 0, visits: 0 }
+  }
+
+  sales.forEach(sale => {
+    const saleDate = new Date(sale.date)
+    const dayName = saleDate.toLocaleDateString('en-US', { weekday: 'long' })
+    if (dayPerformance[dayName]) {
+      dayPerformance[dayName].sales += sale.total
+      dayPerformance[dayName].visits += 1
+    }
+  })
+
+  const bestDay = Object.entries(dayPerformance)
+    .sort((a, b) => b[1].sales - a[1].sales)[0]
+
+  const bestDayVisits = Object.entries(dayPerformance)
+    .sort((a, b) => b[1].visits - a[1].visits)[0]
+
+  return {
+    bestSalesDay: bestDay ? bestDay[0] : 'N/A',
+    bestSalesDayAmount: bestDay ? Math.round(bestDay[1].sales) : 0,
+    bestVisitsDay: bestDayVisits ? bestDayVisits[0] : 'N/A',
+    bestVisitsDayCount: bestDayVisits ? bestDayVisits[1].visits : 0,
+    dayPerformance
+  }
 }
 
 function columnToIndex(column: string): number {

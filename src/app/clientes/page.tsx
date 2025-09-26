@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
-import { Menu, TrendingUp, DollarSign, Package, Calendar, Users, BarChart3, PieChart, Activity, Filter, Trophy, ArrowRight, Target, Lightbulb, AlertTriangle, UserCheck, Award } from 'lucide-react'
+import { Menu, TrendingUp, DollarSign, Package, Calendar, Users, BarChart3, PieChart, Activity, Filter, Trophy, ArrowRight, Target, Lightbulb, AlertTriangle, UserCheck, Award, MapPin, Clock, Heart, Zap, Shield, Map } from 'lucide-react'
 import BlurIn from '@/components/ui/blur-in'
 import SearchInput from '@/components/ui/SearchInput'
 import InputGray from '@/components/ui/InputGray'
@@ -189,6 +189,52 @@ interface SellerAnalytics {
   bestClients: ClientPerformance[]
   productDistribution: ProductMix[]
   monthlyTrends: MonthlyTrend[]
+  territoryAnalysis: {
+    coverage: {
+      totalArea: number
+      clientDensity: number
+      avgDistance: number
+    }
+    boundaries: {
+      north: number
+      south: number
+      east: number
+      west: number
+    }
+    efficiency: {
+      coverageScore: number
+      description: string
+    }
+  }
+  salesVelocity: {
+    visitFrequency: {
+      avgDaysBetweenVisits: number
+      mostActiveMonth: string
+      visitPattern: string
+    }
+    dealClosure: {
+      avgTimeToClose: number
+      conversionRate: number
+      efficiency: string
+    }
+    peakPerformance: {
+      bestMonth: string
+      bestMonthSales: number
+      bestMonthVisits: number
+    }
+  }
+  retentionAnalysis: {
+    loyaltyScore: number
+    churnRisk: number
+    clientSegments: {
+      champions: number
+      loyalists: number
+      atRisk: number
+      newClients: number
+    }
+    retentionRate: number
+    avgClientLifetime: number
+  }
 }
 
 interface SellerAnalyticsData {
@@ -1723,9 +1769,232 @@ export default function ClientesPage() {
                       ))}
                     </div>
                   </div>
+
+                  {/* 🎯 Territory Coverage Analysis */}
+                  <div className="bg-white rounded-lg p-4 border border-[#E2E4E9]">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="font-semibold text-gray-700 flex items-center text-sm">
+                        <Map className="mr-2 h-4 w-4" /> Análisis de Territorio - {seller.vendedor}
+                      </h3>
+                    </div>
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-3 gap-3">
+                        <div className="bg-blue-50 rounded-lg p-3">
+                          <div className="flex items-center">
+                            <MapPin className="w-4 h-4 text-blue-600 mr-2" />
+                            <div>
+                              <p className="text-xs text-gray-600">Área Total</p>
+                              <p className="text-sm font-bold text-blue-600">{(seller.territoryAnalysis?.coverage?.totalArea || 0).toFixed(1)} km²</p>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="bg-green-50 rounded-lg p-3">
+                          <div className="flex items-center">
+                            <Users className="w-4 h-4 text-green-600 mr-2" />
+                            <div>
+                              <p className="text-xs text-gray-600">Densidad</p>
+                              <p className="text-sm font-bold text-green-600">{(seller.territoryAnalysis?.coverage?.clientDensity || 0).toFixed(1)}/km²</p>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="bg-purple-50 rounded-lg p-3">
+                          <div className="flex items-center">
+                            <Target className="w-4 h-4 text-purple-600 mr-2" />
+                            <div>
+                              <p className="text-xs text-gray-600">Distancia Prom.</p>
+                              <p className="text-sm font-bold text-purple-600">{(seller.territoryAnalysis?.coverage?.avgDistance || 0).toFixed(1)} km</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="bg-gray-50 rounded-lg p-3">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-xs text-gray-600">Eficiencia de Cobertura</p>
+                            <p className="text-sm font-medium text-gray-800">{seller.territoryAnalysis?.efficiency?.description || 'Sin datos'}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-lg font-bold text-blue-600">{(seller.territoryAnalysis?.efficiency?.coverageScore || 0).toFixed(1)}/10</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* ⚡ Sales Velocity Dashboard */}
+                  <div className="bg-white rounded-lg p-4 border border-[#E2E4E9]">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="font-semibold text-gray-700 flex items-center text-sm">
+                        <Zap className="mr-2 h-4 w-4" /> Velocidad de Ventas - {seller.vendedor}
+                      </h3>
+                    </div>
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="bg-yellow-50 rounded-lg p-3">
+                          <div className="flex items-center">
+                            <Clock className="w-4 h-4 text-yellow-600 mr-2" />
+                            <div>
+                              <p className="text-xs text-gray-600">Frecuencia de Visitas</p>
+                              <p className="text-sm font-bold text-yellow-600">{(seller.salesVelocity?.visitFrequency?.avgDaysBetweenVisits || 0).toFixed(1)} días</p>
+                              <p className="text-xs text-gray-500">{seller.salesVelocity?.visitFrequency?.visitPattern || 'Sin datos'}</p>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="bg-green-50 rounded-lg p-3">
+                          <div className="flex items-center">
+                            <Trophy className="w-4 h-4 text-green-600 mr-2" />
+                            <div>
+                              <p className="text-xs text-gray-600">Conversión</p>
+                              <p className="text-sm font-bold text-green-600">{(seller.salesVelocity?.dealClosure?.conversionRate || 0).toFixed(1)}%</p>
+                              <p className="text-xs text-gray-500">{seller.salesVelocity?.dealClosure?.efficiency || 'Sin datos'}</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="bg-gray-50 rounded-lg p-3">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-xs text-gray-600">Mejor Mes: {seller.salesVelocity?.peakPerformance?.bestMonth || 'Sin datos'}</p>
+                            <p className="text-sm font-medium text-gray-800">{seller.salesVelocity?.peakPerformance?.bestMonthVisits || 0} visitas</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm font-bold text-green-600">{formatCurrency(seller.salesVelocity?.peakPerformance?.bestMonthSales || 0)}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 🎖️ Client Retention & Loyalty Analysis */}
+                  <div className="bg-white rounded-lg p-4 border border-[#E2E4E9]">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="font-semibold text-gray-700 flex items-center text-sm">
+                        <Heart className="mr-2 h-4 w-4" /> Retención y Lealtad - {seller.vendedor}
+                      </h3>
+                    </div>
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="bg-red-50 rounded-lg p-3">
+                          <div className="flex items-center">
+                            <Heart className="w-4 h-4 text-red-600 mr-2" />
+                            <div>
+                              <p className="text-xs text-gray-600">Score de Lealtad</p>
+                              <p className="text-sm font-bold text-red-600">{(seller.retentionAnalysis?.loyaltyScore || 0).toFixed(1)}/10</p>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="bg-orange-50 rounded-lg p-3">
+                          <div className="flex items-center">
+                            <AlertTriangle className="w-4 h-4 text-orange-600 mr-2" />
+                            <div>
+                              <p className="text-xs text-gray-600">Riesgo de Abandono</p>
+                              <p className="text-sm font-bold text-orange-600">{(seller.retentionAnalysis?.churnRisk || 0).toFixed(1)}%</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-4 gap-2">
+                        <div className="bg-green-50 rounded-lg p-2 text-center">
+                          <p className="text-xs text-gray-600">Campeones</p>
+                          <p className="text-sm font-bold text-green-600">{seller.retentionAnalysis?.clientSegments?.champions || 0}</p>
+                        </div>
+                        <div className="bg-blue-50 rounded-lg p-2 text-center">
+                          <p className="text-xs text-gray-600">Leales</p>
+                          <p className="text-sm font-bold text-blue-600">{seller.retentionAnalysis?.clientSegments?.loyalists || 0}</p>
+                        </div>
+                        <div className="bg-yellow-50 rounded-lg p-2 text-center">
+                          <p className="text-xs text-gray-600">En Riesgo</p>
+                          <p className="text-sm font-bold text-yellow-600">{seller.retentionAnalysis?.clientSegments?.atRisk || 0}</p>
+                        </div>
+                        <div className="bg-purple-50 rounded-lg p-2 text-center">
+                          <p className="text-xs text-gray-600">Nuevos</p>
+                          <p className="text-sm font-bold text-purple-600">{seller.retentionAnalysis?.clientSegments?.newClients || 0}</p>
+                        </div>
+                      </div>
+                      <div className="bg-gray-50 rounded-lg p-3">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-xs text-gray-600">Retención General</p>
+                            <p className="text-sm font-medium text-gray-800">{(seller.retentionAnalysis?.retentionRate || 0).toFixed(1)}%</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xs text-gray-600">Vida Promedio</p>
+                            <p className="text-sm font-bold text-blue-600">{(seller.retentionAnalysis?.avgClientLifetime || 0).toFixed(1)} meses</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )
             })()
+          )}
+
+          {/* Advanced Analytics Summary */}
+          {sellerAnalyticsData?.sellers && sellerAnalyticsData.sellers.length > 0 && (
+            <div className="bg-white rounded-lg p-4 border border-[#E2E4E9]">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-semibold text-gray-700 flex items-center text-sm">
+                  <Shield className="mr-2 h-4 w-4" /> Resumen de Análisis Avanzados
+                </h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="bg-blue-50 rounded-lg p-3">
+                  <div className="flex items-center">
+                    <Map className="w-5 h-5 text-blue-600 mr-2" />
+                    <div>
+                      <p className="text-xs text-gray-600">Mejor Cobertura Territorial</p>
+                      <p className="text-sm font-bold text-blue-600">
+                        {sellerAnalyticsData.sellers.reduce((best, seller) =>
+                          (seller.territoryAnalysis?.efficiency?.coverageScore || 0) > (best.territoryAnalysis?.efficiency?.coverageScore || 0) ? seller : best
+                        ).vendedor}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        Score: {(sellerAnalyticsData.sellers.reduce((best, seller) =>
+                          (seller.territoryAnalysis?.efficiency?.coverageScore || 0) > (best.territoryAnalysis?.efficiency?.coverageScore || 0) ? seller : best
+                        ).territoryAnalysis?.efficiency?.coverageScore || 0).toFixed(1)}/10
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-yellow-50 rounded-lg p-3">
+                  <div className="flex items-center">
+                    <Zap className="w-5 h-5 text-yellow-600 mr-2" />
+                    <div>
+                      <p className="text-xs text-gray-600">Mayor Velocidad de Ventas</p>
+                      <p className="text-sm font-bold text-yellow-600">
+                        {sellerAnalyticsData.sellers.reduce((best, seller) =>
+                          (seller.salesVelocity?.dealClosure?.conversionRate || 0) > (best.salesVelocity?.dealClosure?.conversionRate || 0) ? seller : best
+                        ).vendedor}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        Conversión: {(sellerAnalyticsData.sellers.reduce((best, seller) =>
+                          (seller.salesVelocity?.dealClosure?.conversionRate || 0) > (best.salesVelocity?.dealClosure?.conversionRate || 0) ? seller : best
+                        ).salesVelocity?.dealClosure?.conversionRate || 0).toFixed(1)}%
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-red-50 rounded-lg p-3">
+                  <div className="flex items-center">
+                    <Heart className="w-5 h-5 text-red-600 mr-2" />
+                    <div>
+                      <p className="text-xs text-gray-600">Mejor Retención de Clientes</p>
+                      <p className="text-sm font-bold text-red-600">
+                        {sellerAnalyticsData.sellers.reduce((best, seller) =>
+                          (seller.retentionAnalysis?.loyaltyScore || 0) > (best.retentionAnalysis?.loyaltyScore || 0) ? seller : best
+                        ).vendedor}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        Lealtad: {(sellerAnalyticsData.sellers.reduce((best, seller) =>
+                          (seller.retentionAnalysis?.loyaltyScore || 0) > (best.retentionAnalysis?.loyaltyScore || 0) ? seller : best
+                        ).retentionAnalysis?.loyaltyScore || 0).toFixed(1)}/10
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           )}
         </div>
       ) : selectedClient && clientData ? (

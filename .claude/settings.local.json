@@ -12,7 +12,8 @@
       "Bash(curl:*)",
       "Bash(netstat:*)",
       "Bash(ss:*)",
-      "Bash(lsof:*)"
+      "Bash(lsof:*)",
+      "Bash(npx tsc:*)"
     ],
     "deny": [],
     "ask": []
