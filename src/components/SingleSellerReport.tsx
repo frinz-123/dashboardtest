@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { User, Calendar, MapPin, Target, TrendingUp, Users, AlertTriangle, Zap, Package } from 'lucide-react'
 
 interface SingleSellerData {
@@ -10,6 +10,11 @@ interface SingleSellerData {
   totalVisits: number
   uniqueClients: number
   avgTicket: number
+  monthlyTrends?: Array<{
+    month: string
+    sales: number
+    visits: number
+  }>
   bestClients: Array<{
     clientName: string
     totalSales: number
@@ -72,19 +77,120 @@ interface SingleSellerReportProps {
   formatCurrency: (amount: number) => string
   dateFrom?: string
   dateTo?: string
+  onSelectClient?: (clientName: string) => void
 }
 
 export default function SingleSellerReport({
   seller,
   formatCurrency,
   dateFrom,
-  dateTo
+  dateTo,
+  onSelectClient
 }: SingleSellerReportProps) {
   const [activeSection, setActiveSection] = useState<'overview' | 'clients' | 'products' | 'velocity' | 'retention' | 'territory'>('overview')
+  const [expandedSegment, setExpandedSegment] = useState<string | null>(null)
 
   const periodLabel = (dateFrom && dateTo)
     ? `${dateFrom} al ${dateTo}`
     : 'Año actual'
+
+  const getWorkingDays = (year: number, monthNumber: number) => {
+    if (Number.isNaN(year) || Number.isNaN(monthNumber)) return 30
+    const totalDays = new Date(year, monthNumber, 0).getDate()
+    let workingDays = 0
+    for (let day = 1; day <= totalDays; day += 1) {
+      const date = new Date(year, monthNumber - 1, day)
+      if (date.getDay() !== 0) {
+        workingDays += 1
+      }
+    }
+    return workingDays
+  }
+
+  const { averageVisitsPerDay, avgClientsPerMonth } = (() => {
+    const trends = seller.monthlyTrends || []
+    if (trends.length === 0) {
+      const assumedWorkingDays = 26
+      const avgVisits = seller.totalVisits > 0 ? seller.totalVisits / assumedWorkingDays : 0
+      return {
+        averageVisitsPerDay: avgVisits.toFixed(1),
+        avgClientsPerMonth: seller.uniqueClients.toFixed(1)
+      }
+    }
+
+    const totals = trends.reduce(
+      (acc, month) => {
+        const visits = month.visits || 0
+        acc.visits += visits
+
+        const [year, monthNumber] = (month.month || '').split('-').map(Number)
+        const workingDays = getWorkingDays(year, monthNumber)
+        acc.days += workingDays
+
+        return acc
+      },
+      { visits: 0, days: 0 }
+    )
+
+    const averagePerDay = totals.days > 0 ? (totals.visits / totals.days) : 0
+    const monthsTracked = trends.length
+    const averageClients = monthsTracked > 0 ? seller.uniqueClients / monthsTracked : seller.uniqueClients
+
+    return {
+      averageVisitsPerDay: averagePerDay.toFixed(1),
+      avgClientsPerMonth: averageClients.toFixed(1)
+    }
+  })()
+
+  const loyaltySegments = seller.retentionAnalysis?.loyaltySegments || {
+    champions: 0,
+    loyalCustomers: 0,
+    potentialLoyalists: 0,
+    atRisk: 0,
+    newCustomers: 0
+  }
+
+  const totalSegmentClients = useMemo(() => (
+    Object.values(loyaltySegments).reduce((sum, count) => sum + (count || 0), 0)
+  ), [loyaltySegments])
+
+  const segmentConfig = useMemo(() => ([
+    {
+      key: 'champions',
+      label: 'Campeones',
+      value: loyaltySegments.champions,
+      color: 'bg-yellow-100 text-yellow-800',
+      description: 'Clientes con compras frecuentes y alto ticket. Mantén programas de reconocimiento e incentivos personalizados.'
+    },
+    {
+      key: 'loyalCustomers',
+      label: 'Leales',
+      value: loyaltySegments.loyalCustomers,
+      color: 'bg-green-100 text-green-800',
+      description: 'Clientes constantes. Refuerza la relación con promociones exclusivas y seguimiento oportuno.'
+    },
+    {
+      key: 'potentialLoyalists',
+      label: 'Potenciales',
+      value: loyaltySegments.potentialLoyalists,
+      color: 'bg-blue-100 text-blue-800',
+      description: 'Clientes con señales positivas. Ofréceles bundles o descuentos para convertirlos en leales.'
+    },
+    {
+      key: 'atRisk',
+      label: 'En Riesgo',
+      value: loyaltySegments.atRisk,
+      color: 'bg-red-100 text-red-800',
+      description: 'Clientes con actividad decreciente. Contacta de inmediato y revisa su historial para ofrecer soluciones.'
+    },
+    {
+      key: 'newCustomers',
+      label: 'Nuevos',
+      value: loyaltySegments.newCustomers,
+      color: 'bg-purple-100 text-purple-800',
+      description: 'Clientes recientes. Da seguimiento cercano durante las primeras semanas para asegurar recompra.'
+    }
+  ]), [loyaltySegments])
 
   return (
     <div className="space-y-4">
@@ -134,7 +240,7 @@ export default function SingleSellerReport({
 
       {/* Content */}
       {activeSection === 'overview' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
           <div className="bg-white rounded-lg p-4 border border-[#E2E4E9]">
             <div className="flex items-center">
               <TrendingUp className="w-8 h-8 text-green-600 mr-3" />
@@ -171,6 +277,25 @@ export default function SingleSellerReport({
               </div>
             </div>
           </div>
+          <div className="bg-white rounded-lg p-4 border border-[#E2E4E9]">
+            <div className="flex items-center">
+              <Calendar className="w-8 h-8 text-indigo-600 mr-3" />
+              <div>
+                <p className="text-sm text-gray-600">Visitas promedio</p>
+                <p className="text-xl font-bold text-indigo-600">{averageVisitsPerDay}</p>
+                <p className="text-xs text-gray-500">Visitas por día</p>
+              </div>
+            </div>
+          </div>
+          <div className="bg-white rounded-lg p-4 border border-[#E2E4E9]">
+            <div className="flex items-center">
+              <Users className="w-8 h-8 text-teal-600 mr-3" />
+              <div>
+                <p className="text-sm text-gray-600">Promedio clientes/mes</p>
+                <p className="text-xl font-bold text-teal-600">{avgClientsPerMonth}</p>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -183,7 +308,13 @@ export default function SingleSellerReport({
             </h3>
             <div className="space-y-2">
               {seller.bestClients.slice(0, 10).map((client, index) => (
-                <div key={client.clientName} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-b-0">
+                <button
+                  key={client.clientName}
+                  type="button"
+                  onClick={() => onSelectClient?.(client.clientName)}
+                  className="w-full text-left"
+                >
+                  <div className="flex items-center justify-between py-2 border-b border-gray-100 last:border-b-0">
                   <div className="flex items-center">
                     <div className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold mr-3 ${
                       index === 0 ? 'bg-yellow-100 text-yellow-800' :
@@ -203,6 +334,7 @@ export default function SingleSellerReport({
                     <p className="text-xs text-gray-500">Promedio: {formatCurrency(client.avgTicket)}</p>
                   </div>
                 </div>
+                </button>
               ))}
             </div>
           </div>
@@ -213,20 +345,125 @@ export default function SingleSellerReport({
               <Target className="mr-2 h-4 w-4" /> Segmentos de Clientes
             </h3>
             <div className="space-y-3">
-              {[
-                { label: 'Campeones', value: seller.retentionAnalysis.loyaltySegments.champions, color: 'bg-yellow-100 text-yellow-800' },
-                { label: 'Leales', value: seller.retentionAnalysis.loyaltySegments.loyalCustomers, color: 'bg-green-100 text-green-800' },
-                { label: 'Potenciales', value: seller.retentionAnalysis.loyaltySegments.potentialLoyalists, color: 'bg-blue-100 text-blue-800' },
-                { label: 'En Riesgo', value: seller.retentionAnalysis.loyaltySegments.atRisk, color: 'bg-red-100 text-red-800' },
-                { label: 'Nuevos', value: seller.retentionAnalysis.loyaltySegments.newCustomers, color: 'bg-purple-100 text-purple-800' }
-              ].map(({ label, value, color }) => (
-                <div key={label} className="flex items-center justify-between py-2">
-                  <span className="text-sm text-gray-700">{label}</span>
-                  <span className={`px-2 py-1 rounded text-sm font-medium ${color}`}>
-                    {value}
-                  </span>
-                </div>
-              ))}
+              {segmentConfig.map(({ key, label, value, color, description }) => {
+                const percentage = totalSegmentClients > 0 ? ((value / totalSegmentClients) * 100).toFixed(0) : '0'
+                const isExpanded = expandedSegment === key
+                return (
+                  <div key={key} className="border border-gray-100 rounded-lg">
+                    <button
+                      type="button"
+                      className="w-full px-3 py-2 flex items-center justify-between"
+                      onClick={() => setExpandedSegment(isExpanded ? null : key)}
+                    >
+                      <span className="text-sm text-gray-700">{label}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-500">{percentage}%</span>
+                        <span className={`px-2 py-1 rounded text-sm font-medium ${color}`}>
+                          {value}
+                        </span>
+                      </div>
+                    </button>
+                    {isExpanded && (
+                      <div className="px-3 pb-3 text-xs text-gray-600 space-y-2">
+                        <p>{description}</p>
+                        {key === 'champions' && seller.retentionAnalysis.topLoyalClients?.length > 0 && (
+                          <div>
+                            <p className="font-medium text-gray-700 mb-1">Top clientes</p>
+                            <div className="space-y-1">
+                              {seller.retentionAnalysis.topLoyalClients.slice(0, 3).map(client => (
+                                <button
+                                  key={client.clientName}
+                                  type="button"
+                                  onClick={() => onSelectClient?.(client.clientName)}
+                                  className="w-full text-left p-2 bg-gray-50 rounded hover:bg-gray-100"
+                                >
+                                  <p className="text-sm text-gray-700">{client.clientName}</p>
+                                  <p className="text-[11px] text-gray-500">{client.visitCount} visitas • {formatCurrency(client.customerValue)}</p>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {key === 'loyalCustomers' && seller.retentionAnalysis.loyalCustomersList?.length > 0 && (
+                          <div>
+                            <p className="font-medium text-gray-700 mb-1">Clientes leales</p>
+                            <div className="space-y-1">
+                              {seller.retentionAnalysis.loyalCustomersList.slice(0, 3).map(client => (
+                                <button
+                                  key={client.clientName}
+                                  type="button"
+                                  onClick={() => onSelectClient?.(client.clientName)}
+                                  className="w-full text-left p-2 bg-green-50 rounded hover:bg-green-100"
+                                >
+                                  <p className="text-sm text-gray-700">{client.clientName}</p>
+                                  <p className="text-[11px] text-gray-500">Score {client.loyaltyScore} • {formatCurrency(client.customerValue)}</p>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {key === 'potentialLoyalists' && seller.retentionAnalysis.potentialLoyalistsList?.length > 0 && (
+                          <div>
+                            <p className="font-medium text-gray-700 mb-1">Convertir en leales</p>
+                            <div className="space-y-1">
+                              {seller.retentionAnalysis.potentialLoyalistsList.slice(0, 3).map(client => (
+                                <button
+                                  key={client.clientName}
+                                  type="button"
+                                  onClick={() => onSelectClient?.(client.clientName)}
+                                  className="w-full text-left p-2 bg-blue-50 rounded hover:bg-blue-100"
+                                >
+                                  <p className="text-sm text-gray-700">{client.clientName}</p>
+                                  <p className="text-[11px] text-gray-500">Score {client.loyaltyScore} • {formatCurrency(client.customerValue)}</p>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {key === 'atRisk' && seller.retentionAnalysis.churnRiskClients?.length > 0 && (
+                          <div>
+                            <p className="font-medium text-gray-700 mb-1">Clientes a recuperar</p>
+                            <div className="space-y-1">
+                              {seller.retentionAnalysis.churnRiskClients.slice(0, 3).map(client => (
+                                <button
+                                  key={client.clientName}
+                                  type="button"
+                                  onClick={() => onSelectClient?.(client.clientName)}
+                                  className="w-full text-left p-2 bg-red-50 rounded hover:bg-red-100"
+                                >
+                                  <p className="text-sm text-gray-700">{client.clientName}</p>
+                                  <p className="text-[11px] text-gray-500">{client.daysSinceLastVisit} días sin visita • {formatCurrency(client.customerValue)}</p>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {key === 'newCustomers' && seller.retentionAnalysis.newCustomersList?.length > 0 && (
+                          <div>
+                            <p className="font-medium text-gray-700 mb-1">Primer seguimiento</p>
+                            <div className="space-y-1">
+                              {seller.retentionAnalysis.newCustomersList.slice(0, 3).map(client => (
+                                <button
+                                  key={client.clientName}
+                                  type="button"
+                                  onClick={() => onSelectClient?.(client.clientName)}
+                                  className="w-full text-left p-2 bg-purple-50 rounded hover:bg-purple-100"
+                                >
+                                  <p className="text-sm text-gray-700">{client.clientName}</p>
+                                  <p className="text-[11px] text-gray-500">Última visita: {client.lastVisit}</p>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {key === 'newCustomers' && (
+                          <p className="text-[11px] text-gray-500">Da seguimiento con una visita dentro de la primera semana para afianzar la relación.</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           </div>
         </div>

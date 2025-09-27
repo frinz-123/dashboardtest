@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
-import { Award, Download, BarChart3, Map, AlertTriangle, Zap, TrendingUp, Filter, Calendar } from 'lucide-react'
+import { useState, useMemo } from 'react'
+import { Award, DollarSign, Users, Activity, Target, Package, Download, BarChart3, Map, AlertTriangle, Zap, TrendingUp, Filter, Calendar } from 'lucide-react'
 import SellerPerformanceReport from './SellerPerformanceReport'
 import TerritoryAnalysisReport from './TerritoryAnalysisReport'
 import ChurnRiskReport from './ChurnRiskReport'
@@ -98,7 +98,6 @@ interface VendedoresSectionProps {
   setSelectedSeller: (seller: string) => void
   exportSellerData: (type: 'leaderboard' | 'clients' | 'products', vendedor?: string) => void
   formatCurrency: (amount: number) => string
-  onSelectClient?: (clientName: string) => void
 }
 
 export default function VendedoresSection({
@@ -107,28 +106,29 @@ export default function VendedoresSection({
   selectedSeller,
   setSelectedSeller,
   exportSellerData,
-  formatCurrency,
-  onSelectClient
+  formatCurrency
 }: VendedoresSectionProps) {
   const [activeReport, setActiveReport] = useState<'ranking' | 'performance' | 'territory' | 'churn' | 'velocity' | 'comparison'>('ranking')
+  const [selectedSellerFilter, setSelectedSellerFilter] = useState<string>('all')
   const [dateFrom, setDateFrom] = useState<string>('')
   const [dateTo, setDateTo] = useState<string>('')
 
-  const filteredSellers = sellerAnalyticsData?.sellers ?? []
+  // Filter sellers based on selected seller and date range
+  const filteredSellers = useMemo(() => {
+    if (!sellerAnalyticsData?.sellers) return []
 
-  const selectedSellerData = useMemo(() => {
-    if (!selectedSeller) return null
-    return filteredSellers.find(seller => seller.vendedor === selectedSeller) ?? null
-  }, [filteredSellers, selectedSeller])
+    let filtered = sellerAnalyticsData.sellers
 
-  const isSingleSellerView = Boolean(selectedSellerData)
-
-  useEffect(() => {
-    if (!selectedSeller) return
-    if (!selectedSellerData) {
-      setSelectedSeller('')
+    // Filter by selected seller
+    if (selectedSellerFilter !== 'all') {
+      filtered = filtered.filter(seller => seller.vendedor === selectedSellerFilter)
     }
-  }, [selectedSeller, selectedSellerData, setSelectedSeller])
+
+    // Note: Date filtering would require API modification to filter raw data
+    // For now, we'll pass the date range to components for display
+
+    return filtered
+  }, [sellerAnalyticsData?.sellers, selectedSellerFilter])
 
   // Get current year for default date range
   const currentYear = new Date().getFullYear()
@@ -221,11 +221,8 @@ export default function VendedoresSection({
           <div className="flex items-center gap-2">
             <label className="text-sm text-gray-600">Vendedor:</label>
             <select
-              value={selectedSeller || 'all'}
-              onChange={(e) => {
-                const value = e.target.value
-                setSelectedSeller(value === 'all' ? '' : value)
-              }}
+              value={selectedSellerFilter}
+              onChange={(e) => setSelectedSellerFilter(e.target.value)}
               className="text-sm border border-gray-300 rounded px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="all">Todos los vendedores</option>
@@ -259,7 +256,7 @@ export default function VendedoresSection({
           {/* Reset Filters */}
           <button
             onClick={() => {
-              setSelectedSeller('')
+              setSelectedSellerFilter('all')
               setDateFrom('')
               setDateTo('')
             }}
@@ -270,12 +267,12 @@ export default function VendedoresSection({
         </div>
 
         {/* Filter Summary */}
-        {(selectedSeller || dateFrom || dateTo) && (
+        {(selectedSellerFilter !== 'all' || dateFrom || dateTo) && (
           <div className="mt-2 pt-2 border-t border-gray-100">
             <div className="flex flex-wrap gap-2 text-xs">
-              {selectedSeller && (
+              {selectedSellerFilter !== 'all' && (
                 <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                  Vendedor: {selectedSeller}
+                  Vendedor: {selectedSellerFilter}
                 </span>
               )}
               {(dateFrom || dateTo) && (
@@ -284,7 +281,7 @@ export default function VendedoresSection({
                 </span>
               )}
               <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded">
-                {filteredSellers.length} vendedor{filteredSellers.length !== 1 ? 'es' : ''} disponible{filteredSellers.length !== 1 ? 's' : ''}
+                {filteredSellers.length} vendedor{filteredSellers.length !== 1 ? 'es' : ''} seleccionado{filteredSellers.length !== 1 ? 's' : ''}
               </span>
             </div>
           </div>
@@ -292,48 +289,13 @@ export default function VendedoresSection({
       </div>
 
       {/* Report Content */}
-      {isSingleSellerView ? (
-        <div className="space-y-3">
-          <div className="bg-white rounded-lg p-4 border border-[#E2E4E9] flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setSelectedSeller('')}
-                className="text-sm text-blue-600 hover:text-blue-700 font-medium"
-              >
-                ← Volver al resumen
-              </button>
-              <span className="text-xs text-gray-500">Visualizando detalle de {selectedSellerData?.vendedor}</span>
-            </div>
-            {selectedSellerData && (
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => exportSellerData('clients', selectedSellerData.vendedor)}
-                  className="text-xs border border-gray-300 rounded px-3 py-2 bg-white hover:bg-gray-50 flex items-center"
-                >
-                  <Download className="w-3 h-3 mr-2" />
-                  Exportar clientes
-                </button>
-                <button
-                  onClick={() => exportSellerData('products', selectedSellerData.vendedor)}
-                  className="text-xs border border-gray-300 rounded px-3 py-2 bg-white hover:bg-gray-50 flex items-center"
-                >
-                  <Download className="w-3 h-3 mr-2" />
-                  Exportar productos
-                </button>
-              </div>
-            )}
-          </div>
-
-          {selectedSellerData && (
-            <SingleSellerReport
-              seller={selectedSellerData as any}
-              formatCurrency={formatCurrency}
-              dateFrom={dateFrom || defaultDateFrom}
-              dateTo={dateTo || defaultDateTo}
-              onSelectClient={onSelectClient}
-            />
-          )}
-        </div>
+      {filteredSellers.length === 1 ? (
+        <SingleSellerReport
+          seller={filteredSellers[0] as any}
+          formatCurrency={formatCurrency}
+          dateFrom={dateFrom || defaultDateFrom}
+          dateTo={dateTo || defaultDateTo}
+        />
       ) : activeReport === 'ranking' ? (
         <div>
           {/* Seller Leaderboard */}
@@ -363,9 +325,7 @@ export default function VendedoresSection({
             filteredSellers.map((seller) => (
               <div
                 key={seller.vendedor}
-                className={`flex items-center justify-between py-3 border-b border-gray-100 last:border-b-0 cursor-pointer rounded px-2 ${
-                  selectedSeller === seller.vendedor ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50'
-                }`}
+                className="flex items-center justify-between py-3 border-b border-gray-100 last:border-b-0 cursor-pointer hover:bg-gray-50 rounded px-2"
                 onClick={() => setSelectedSeller(selectedSeller === seller.vendedor ? '' : seller.vendedor)}
               >
                 <div className="flex items-center">
@@ -400,6 +360,168 @@ export default function VendedoresSection({
         </div>
       </div>
 
+      {/* Selected Seller Details */}
+      {selectedSeller && filteredSellers.length > 0 && (
+        (() => {
+          const seller = filteredSellers.find(s => s.vendedor === selectedSeller)
+          if (!seller) return null
+
+          return (
+            <div className="space-y-3">
+              {/* Seller Overview */}
+              <div className="bg-white rounded-lg p-4 border border-[#E2E4E9]">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-semibold text-gray-700 flex items-center text-sm">
+                    <Award className="mr-2 h-4 w-4" /> {seller.vendedor} - Resumen
+                  </h3>
+                  <button
+                    onClick={() => setSelectedSeller('')}
+                    className="text-xs text-gray-500 hover:text-gray-700"
+                  >
+                    Cerrar
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  <div className="bg-green-50 rounded-lg p-3">
+                    <div className="flex items-center">
+                      <DollarSign className="w-5 h-5 text-green-600 mr-2" />
+                      <div>
+                        <p className="text-xs text-gray-600">Ventas Totales</p>
+                        <p className="text-lg font-bold text-green-600">{formatCurrency(seller.totalSales)}</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="bg-blue-50 rounded-lg p-3">
+                    <div className="flex items-center">
+                      <Users className="w-5 h-5 text-blue-600 mr-2" />
+                      <div>
+                        <p className="text-xs text-gray-600">Clientes Únicos</p>
+                        <p className="text-lg font-bold text-blue-600">{seller.uniqueClients}</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="bg-purple-50 rounded-lg p-3">
+                    <div className="flex items-center">
+                      <Activity className="w-5 h-5 text-purple-600 mr-2" />
+                      <div>
+                        <p className="text-xs text-gray-600">Visitas Totales</p>
+                        <p className="text-lg font-bold text-purple-600">{seller.totalVisits}</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="bg-orange-50 rounded-lg p-3">
+                    <div className="flex items-center">
+                      <Target className="w-5 h-5 text-orange-600 mr-2" />
+                      <div>
+                        <p className="text-xs text-gray-600">Ticket Promedio</p>
+                        <p className="text-lg font-bold text-orange-600">{formatCurrency(seller.avgTicket)}</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="bg-indigo-50 rounded-lg p-3">
+                    <div className="flex items-center">
+                      <Activity className="w-5 h-5 text-indigo-600 mr-2" />
+                      <div>
+                        <p className="text-xs text-gray-600">Visitas Promedio</p>
+                        <p className="text-lg font-bold text-indigo-600">
+                          {(() => {
+                            // Calculate average visits per day from monthly trends
+                            if (!seller.monthlyTrends || seller.monthlyTrends.length === 0) return '0.0'
+
+                            const totalVisits = seller.monthlyTrends.reduce((sum, month) => sum + month.visits, 0)
+                            const totalDays = seller.monthlyTrends.reduce((sum, month) => {
+                              const [year, monthNum] = month.month.split('-').map(Number)
+                              const daysInMonth = new Date(year, monthNum, 0).getDate()
+                              return sum + daysInMonth
+                            }, 0)
+
+                            if (totalDays === 0) return '0.0'
+                            const avgVisitsPerDay = totalVisits / totalDays
+                            return avgVisitsPerDay.toFixed(1)
+                          })()}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Best Clients */}
+              <div className="bg-white rounded-lg p-4 border border-[#E2E4E9]">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-semibold text-gray-700 flex items-center text-sm">
+                    <Users className="mr-2 h-4 w-4" /> Mejores Clientes - {seller.vendedor}
+                  </h3>
+                  <button
+                    onClick={() => exportSellerData('clients', seller.vendedor)}
+                    className="text-xs border border-gray-300 rounded px-2 py-1 bg-white hover:bg-gray-50"
+                  >
+                    Exportar CSV
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {seller.bestClients.slice(0, 8).map((client, index) => (
+                    <div key={client.clientName} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-b-0">
+                      <div className="flex items-center">
+                        <div className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold mr-3 ${
+                          index === 0 ? 'bg-yellow-100 text-yellow-800' :
+                          index === 1 ? 'bg-gray-100 text-gray-800' :
+                          index === 2 ? 'bg-orange-100 text-orange-800' :
+                          'bg-blue-100 text-blue-800'
+                        }`}>
+                          {index + 1}
+                        </div>
+                        <div>
+                          <p className="font-medium text-sm text-gray-800">{client.clientName}</p>
+                          <p className="text-xs text-gray-500">{client.visitCount} visitas</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-semibold text-sm text-green-600">{formatCurrency(client.totalSales)}</p>
+                        <p className="text-xs text-gray-500">Promedio: {formatCurrency(client.avgTicket)}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Product Distribution */}
+              <div className="bg-white rounded-lg p-4 border border-[#E2E4E9]">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-semibold text-gray-700 flex items-center text-sm">
+                    <Package className="mr-2 h-4 w-4" /> Distribución de Productos - {seller.vendedor}
+                  </h3>
+                  <button
+                    onClick={() => exportSellerData('products', seller.vendedor)}
+                    className="text-xs border border-gray-300 rounded px-2 py-1 bg-white hover:bg-gray-50"
+                  >
+                    Exportar CSV
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {seller.productDistribution.slice(0, 10).map((product) => (
+                    <div key={product.product} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-b-0">
+                      <div className="flex-1">
+                        <p className="font-medium text-sm text-gray-800">{product.product}</p>
+                        <div className="w-full bg-gray-200 rounded-full h-2 mt-1">
+                          <div
+                            className="bg-blue-600 h-2 rounded-full"
+                            style={{ width: `${Math.min(product.percentage, 100)}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                      <div className="text-right ml-3">
+                        <p className="font-semibold text-sm text-blue-600">{product.quantity} unidades</p>
+                        <p className="text-xs text-gray-500">{product.percentage.toFixed(1)}%</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )
+        })()
+      )}
         </div>
       ) : activeReport === 'performance' ? (
         filteredSellers.length > 0 ? (

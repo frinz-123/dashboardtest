@@ -918,6 +918,16 @@ function generateRetentionAnalysis(clientStats: Record<string, any>, sales: any[
     newCustomers: clientMetrics.filter(c => c.customerLifetime <= 90 && c.visitFrequency >= 1)
   }
 
+  const mapSegmentClient = (client: typeof clientMetrics[number]) => ({
+    clientName: client.clientName,
+    loyaltyScore: client.loyaltyScore,
+    customerValue: client.customerValue,
+    visitCount: client.stats.visitCount,
+    lastVisit: client.stats.lastVisit,
+    daysSinceLastVisit: client.daysSinceLastVisit,
+    churnRisk: client.churnRisk
+  })
+
   // Calculate retention metrics
   const avgCustomerLifetime = clientMetrics.reduce((sum, c) => sum + c.customerLifetime, 0) / clientMetrics.length
   const avgLoyaltyScore = clientMetrics.reduce((sum, c) => sum + c.loyaltyScore, 0) / clientMetrics.length
@@ -955,7 +965,19 @@ function generateRetentionAnalysis(clientStats: Record<string, any>, sales: any[
         churnRisk: c.churnRisk,
         customerValue: c.customerValue,
         lastVisit: c.stats.lastVisit
-      }))
+      })),
+    loyalCustomersList: loyaltySegments.loyalCustomers
+      .sort((a, b) => b.loyaltyScore - a.loyaltyScore)
+      .slice(0, 10)
+      .map(mapSegmentClient),
+    potentialLoyalistsList: loyaltySegments.potentialLoyalists
+      .sort((a, b) => b.loyaltyScore - a.loyaltyScore)
+      .slice(0, 10)
+      .map(mapSegmentClient),
+    newCustomersList: loyaltySegments.newCustomers
+      .sort((a, b) => b.customerValue - a.customerValue)
+      .slice(0, 10)
+      .map(mapSegmentClient)
   }
 }
 

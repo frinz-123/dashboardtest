@@ -7,7 +7,7 @@ import { Menu, TrendingUp, DollarSign, Package, Calendar, Users, BarChart3, PieC
 import BlurIn from '@/components/ui/blur-in'
 import SearchInput from '@/components/ui/SearchInput'
 import InputGray from '@/components/ui/InputGray'
-import VendedoresSection from '@/components/VendedoresSection'
+import VendedoresSection, { VendedoresAnalyticsData } from '@/components/VendedoresSection'
 
 // Custom ScrollableTabs component for mobile-friendly tab navigation
 function ScrollableTabs({
@@ -927,7 +927,7 @@ export default function ClientesPage() {
   const [activeTab, setActiveTab] = useState<'overview' | 'entries' | 'products' | 'trends' | 'insights' | 'dashboard' | 'vendedores'>('dashboard')
   const [entriesFilter, setEntriesFilter] = useState<'all' | 'recent' | 'month'>('all')
   const [viewMode, setViewMode] = useState<'dashboard' | 'client'>('dashboard')
-  const [sellerAnalyticsData, setSellerAnalyticsData] = useState<SellerAnalyticsData | null>(null)
+  const [sellerAnalyticsData, setSellerAnalyticsData] = useState<VendedoresAnalyticsData | null>(null)
   const [isLoadingSellerAnalytics, setIsLoadingSellerAnalytics] = useState(false)
   const [selectedSeller, setSelectedSeller] = useState<string>('')
 
@@ -1025,7 +1025,14 @@ export default function ClientesPage() {
       console.log('👥 Frontend received seller analytics data:', data)
       if (data.success) {
         console.log('✅ Setting seller analytics data:', data.data)
-        setSellerAnalyticsData(data.data)
+        // Transform the data to match VendedoresAnalyticsData interface
+        const transformedData = {
+          sellers: data.data.sellers,
+          totalSellers: data.data.totalSellers,
+          topSellerName: data.data.sellers.length > 0 ? data.data.sellers[0].vendedor : '',
+          topSellerSales: data.data.sellers.length > 0 ? data.data.sellers[0].totalSales : 0
+        }
+        setSellerAnalyticsData(transformedData)
       } else {
         console.error('❌ Error fetching seller analytics:', data.error)
       }
@@ -1584,6 +1591,10 @@ export default function ClientesPage() {
           setSelectedSeller={setSelectedSeller}
           exportSellerData={exportSellerData}
           formatCurrency={formatCurrency}
+          onSelectClient={(clientName: string) => {
+            setSelectedClient(clientName)
+            setSearchTerm(clientName)
+          }}
         />
       ) : selectedClient && clientData ? (
         <div className="space-y-3">
