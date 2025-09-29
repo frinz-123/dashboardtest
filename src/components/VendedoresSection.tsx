@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { Award, Download, BarChart3, Map, AlertTriangle, Zap, TrendingUp, Filter, Calendar } from 'lucide-react'
 import SellerPerformanceReport from './SellerPerformanceReport'
 import TerritoryAnalysisReport from './TerritoryAnalysisReport'
@@ -8,6 +8,8 @@ import ChurnRiskReport from './ChurnRiskReport'
 import SalesVelocityReport from './SalesVelocityReport'
 import SellerComparisonReport from './SellerComparisonReport'
 import SingleSellerReport from './SingleSellerReport'
+import { getCurrentYearDateRange, debounce } from '@/utils/dateUtils'
+import SellerSkeleton from './ui/SellerSkeleton'
 
 interface BestClient {
   clientName: string
@@ -98,6 +100,7 @@ interface VendedoresSectionProps {
   setSelectedSeller: (seller: string) => void
   exportSellerData: (type: 'leaderboard' | 'clients' | 'products', vendedor?: string) => void
   formatCurrency: (amount: number) => string
+  onRefetchData: (dateFrom?: string, dateTo?: string) => void
   onSelectClient?: (clientName: string) => void
 }
 
@@ -108,13 +111,29 @@ export default function VendedoresSection({
   setSelectedSeller,
   exportSellerData,
   formatCurrency,
+  onRefetchData,
   onSelectClient
 }: VendedoresSectionProps) {
   const [activeReport, setActiveReport] = useState<'ranking' | 'performance' | 'territory' | 'churn' | 'velocity' | 'comparison'>('ranking')
   const [dateFrom, setDateFrom] = useState<string>('')
   const [dateTo, setDateTo] = useState<string>('')
+  const [isFiltersExpanded, setIsFiltersExpanded] = useState(false)
 
   const filteredSellers = sellerAnalyticsData?.sellers ?? []
+
+  // Create debounced refetch function
+  const debouncedRefetch = useRef(
+    debounce((from: string, to: string) => {
+      onRefetchData(from, to)
+    }, 500)
+  ).current
+
+  // Refetch data when date filters change (with debounce)
+  useEffect(() => {
+    if (dateFrom || dateTo) {
+      debouncedRefetch(dateFrom, dateTo)
+    }
+  }, [dateFrom, dateTo, debouncedRefetch])
 
   const selectedSellerData = useMemo(() => {
     if (!selectedSeller) return null
@@ -130,10 +149,8 @@ export default function VendedoresSection({
     }
   }, [selectedSeller, selectedSellerData, setSelectedSeller])
 
-  // Get current year for default date range
-  const currentYear = new Date().getFullYear()
-  const defaultDateFrom = `${currentYear}-01-01`
-  const defaultDateTo = new Date().toISOString().split('T')[0]
+  // Get current year for default date range using utility
+  const { dateFrom: defaultDateFrom, dateTo: defaultDateTo } = getCurrentYearDateRange()
 
   return (
     <div className="space-y-3">
@@ -211,62 +228,90 @@ export default function VendedoresSection({
 
       {/* Filters */}
       <div className="bg-white rounded-lg p-3 border border-[#E2E4E9]">
-        <div className="flex flex-col md:flex-row gap-3 items-start md:items-center">
+        {/* Filter Header (always visible on mobile) */}
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Filter className="w-4 h-4 text-gray-500" />
-            <span className="text-sm font-medium text-gray-700">Filtros:</span>
+            <span className="text-sm font-medium text-gray-700">Filtros</span>
+            {(selectedSeller || dateFrom || dateTo) && (
+              <span className="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
+                {[selectedSeller, dateFrom || dateTo].filter(Boolean).length}
+              </span>
+            )}
           </div>
-
-          {/* Seller Filter */}
-          <div className="flex items-center gap-2">
-            <label className="text-sm text-gray-600">Vendedor:</label>
-            <select
-              value={selectedSeller || 'all'}
-              onChange={(e) => {
-                const value = e.target.value
-                setSelectedSeller(value === 'all' ? '' : value)
-              }}
-              className="text-sm border border-gray-300 rounded px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="all">Todos los vendedores</option>
-              {sellerAnalyticsData?.sellers?.map(seller => (
-                <option key={seller.vendedor} value={seller.vendedor}>
-                  {seller.vendedor}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Date Range Filter */}
-          <div className="flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-gray-500" />
-            <label className="text-sm text-gray-600">Desde:</label>
-            <input
-              type="date"
-              value={dateFrom || defaultDateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              className="text-sm border border-gray-300 rounded px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-            <label className="text-sm text-gray-600">Hasta:</label>
-            <input
-              type="date"
-              value={dateTo || defaultDateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              className="text-sm border border-gray-300 rounded px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            />
-          </div>
-
-          {/* Reset Filters */}
           <button
-            onClick={() => {
-              setSelectedSeller('')
-              setDateFrom('')
-              setDateTo('')
-            }}
-            className="text-xs text-gray-500 hover:text-gray-700 underline"
+            onClick={() => setIsFiltersExpanded(!isFiltersExpanded)}
+            className="md:hidden text-xs text-blue-600 hover:text-blue-700 font-medium"
           >
-            Limpiar filtros
+            {isFiltersExpanded ? 'Ocultar' : 'Mostrar'}
           </button>
+        </div>
+
+        {/* Filter Content (collapsible on mobile, always visible on desktop) */}
+        <div className={`${isFiltersExpanded ? 'block' : 'hidden'} md:block`}>
+          <div className="flex flex-col md:flex-row gap-3 items-start md:items-center mt-3 md:mt-3">
+            {/* Seller Filter */}
+            <div className="flex flex-col md:flex-row md:items-center gap-1 md:gap-2 w-full md:w-auto">
+              <label className="text-xs md:text-sm text-gray-600">Vendedor:</label>
+              <select
+                value={selectedSeller || 'all'}
+                onChange={(e) => {
+                  const value = e.target.value
+                  setSelectedSeller(value === 'all' ? '' : value)
+                }}
+                className="text-sm border border-gray-300 rounded px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 w-full md:w-auto"
+              >
+                <option value="all">Todos los vendedores</option>
+                {sellerAnalyticsData?.sellers?.map(seller => (
+                  <option key={seller.vendedor} value={seller.vendedor}>
+                    {seller.vendedor}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Date Range Filter */}
+            <div className="flex flex-col gap-2 w-full md:w-auto">
+              <div className="flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                <span className="text-xs text-gray-600">Rango de fechas:</span>
+              </div>
+              <div className="flex flex-col sm:flex-row gap-2">
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-gray-600 w-12 flex-shrink-0">Desde:</label>
+                  <input
+                    type="date"
+                    value={dateFrom || defaultDateFrom}
+                    onChange={(e) => setDateFrom(e.target.value)}
+                    className="text-sm border border-gray-300 rounded px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 flex-1"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-gray-600 w-12 flex-shrink-0">Hasta:</label>
+                  <input
+                    type="date"
+                    value={dateTo || defaultDateTo}
+                    onChange={(e) => setDateTo(e.target.value)}
+                    className="text-sm border border-gray-300 rounded px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 flex-1"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Reset Filters */}
+            <button
+              onClick={() => {
+                setSelectedSeller('')
+                setDateFrom('')
+                setDateTo('')
+                // Refetch with no date filters (defaults to current year)
+                onRefetchData()
+              }}
+              className="text-xs text-gray-500 hover:text-gray-700 underline mt-2 md:mt-0 self-start md:self-auto"
+            >
+              Limpiar filtros
+            </button>
+          </div>
         </div>
 
         {/* Filter Summary */}
@@ -353,22 +398,20 @@ export default function VendedoresSection({
             <p className="text-xs text-gray-500">Año actual</p>
           </div>
         </div>
-        <div className="space-y-2">
-          {isLoadingSellerAnalytics ? (
-            <div className="text-center py-4">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto mb-2"></div>
-              <p className="text-sm text-gray-500">Cargando vendedores...</p>
-            </div>
-          ) : filteredSellers && filteredSellers.length > 0 ? (
-            filteredSellers.map((seller) => (
-              <div
-                key={seller.vendedor}
-                className={`flex items-center justify-between py-3 border-b border-gray-100 last:border-b-0 cursor-pointer rounded px-2 ${
-                  selectedSeller === seller.vendedor ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50'
-                }`}
-                onClick={() => setSelectedSeller(selectedSeller === seller.vendedor ? '' : seller.vendedor)}
-              >
-                <div className="flex items-center">
+        <div className="overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0">
+          <div className="space-y-2 min-w-[500px] md:min-w-0">
+            {isLoadingSellerAnalytics ? (
+              <SellerSkeleton />
+            ) : filteredSellers && filteredSellers.length > 0 ? (
+              filteredSellers.map((seller) => (
+                <div
+                  key={seller.vendedor}
+                  className={`flex items-center justify-between py-3 border-b border-gray-100 last:border-b-0 cursor-pointer rounded px-2 ${
+                    selectedSeller === seller.vendedor ? 'bg-blue-50 border border-blue-200' : 'hover:bg-gray-50'
+                  }`}
+                  onClick={() => setSelectedSeller(selectedSeller === seller.vendedor ? '' : seller.vendedor)}
+                >
+                  <div className="flex items-center min-w-0">
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold mr-3 ${
                     seller.rank === 1 ? 'bg-yellow-100 text-yellow-800' :
                     seller.rank === 2 ? 'bg-gray-100 text-gray-800' :
@@ -397,6 +440,7 @@ export default function VendedoresSection({
               <p className="text-sm text-gray-500">No hay datos de vendedores disponibles</p>
             </div>
           )}
+          </div>
         </div>
       </div>
 

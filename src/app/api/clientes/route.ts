@@ -181,6 +181,11 @@ export async function GET(req: Request) {
     if (action === 'seller-analytics') {
       console.log('👥 Seller Analytics endpoint called')
 
+      // Get date range parameters
+      const dateFrom = searchParams.get('dateFrom')
+      const dateTo = searchParams.get('dateTo')
+      console.log('📅 Date filters:', { dateFrom, dateTo })
+
       // Get seller-specific analytics
       const sellerSalesData = await sheets.spreadsheets.values.get({
         spreadsheetId,
@@ -271,30 +276,45 @@ export async function GET(req: Request) {
       const filteredEntries = entries.filter(entry => entry.vendedor && entry.vendedor !== 'Sin Asignar' && Object.keys(entry.products).length > 0)
       console.log('👥 Entries with both vendedor and products:', filteredEntries.length)
 
-      // Filter to current year using the filtered entries
+      // Filter by date range
+      // Default to current year if no date range provided
       const currentYear = new Date().getFullYear()
-      const yearlyEntries = filteredEntries.filter(entry => {
+      const defaultDateFrom = `${currentYear}-01-01`
+      const defaultDateTo = new Date().toISOString().split('T')[0]
+
+      const fromDate = dateFrom ? new Date(dateFrom) : new Date(defaultDateFrom)
+      const toDate = dateTo ? new Date(dateTo) : new Date(defaultDateTo)
+
+      // Set time to end of day for toDate to include the entire day
+      toDate.setHours(23, 59, 59, 999)
+
+      const dateFilteredEntries = filteredEntries.filter(entry => {
         const entryDate = new Date(entry.date)
-        return entryDate.getFullYear() === currentYear
+        return entryDate >= fromDate && entryDate <= toDate
       })
 
       console.log('👥 Seller Analytics - Total entries after parsing:', entries.length)
-      console.log('👥 Seller Analytics - Yearly entries with sellers:', yearlyEntries.length)
+      console.log('👥 Seller Analytics - Date filtered entries:', dateFilteredEntries.length)
+      console.log('👥 Date range used:', { from: fromDate.toISOString().split('T')[0], to: toDate.toISOString().split('T')[0] })
 
       // Generate seller analytics
-      const sellerAnalytics = generateSellerAnalytics(yearlyEntries)
+      const sellerAnalytics = generateSellerAnalytics(dateFilteredEntries)
 
       console.log('👥 Generated seller analytics:', {
         totalSellers: sellerAnalytics.totalSellers,
         sellersCount: sellerAnalytics.sellers.length
       })
 
+      const periodLabel = (dateFrom || dateTo)
+        ? `${dateFrom || defaultDateFrom} al ${dateTo || defaultDateTo}`
+        : 'Año actual'
+
       return NextResponse.json({
         success: true,
         data: {
           sellers: sellerAnalytics.sellers,
           totalSellers: sellerAnalytics.totalSellers,
-          period: 'current-year'
+          period: periodLabel
         }
       })
     }

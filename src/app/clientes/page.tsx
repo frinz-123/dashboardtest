@@ -8,6 +8,7 @@ import BlurIn from '@/components/ui/blur-in'
 import SearchInput from '@/components/ui/SearchInput'
 import InputGray from '@/components/ui/InputGray'
 import VendedoresSection, { VendedoresAnalyticsData } from '@/components/VendedoresSection'
+import ErrorToast from '@/components/ui/ErrorToast'
 
 // Custom ScrollableTabs component for mobile-friendly tab navigation
 function ScrollableTabs({
@@ -930,6 +931,7 @@ export default function ClientesPage() {
   const [sellerAnalyticsData, setSellerAnalyticsData] = useState<VendedoresAnalyticsData | null>(null)
   const [isLoadingSellerAnalytics, setIsLoadingSellerAnalytics] = useState(false)
   const [selectedSeller, setSelectedSeller] = useState<string>('')
+  const [error, setError] = useState<string | null>(null)
 
   const throttledLocationUpdate = useRef(
     throttle((location: { lat: number, lng: number }) => {
@@ -1016,13 +1018,23 @@ export default function ClientesPage() {
     }
   }
 
-  const fetchSellerAnalyticsData = async () => {
+  const fetchSellerAnalyticsData = async (dateFrom?: string, dateTo?: string) => {
     setIsLoadingSellerAnalytics(true)
     try {
-      console.log('👥 Fetching seller analytics data...')
-      const response = await fetch('/api/clientes?action=seller-analytics')
+      console.log('👥 Fetching seller analytics data with date filters:', { dateFrom, dateTo })
+      const params = new URLSearchParams({ action: 'seller-analytics' })
+      if (dateFrom) params.append('dateFrom', dateFrom)
+      if (dateTo) params.append('dateTo', dateTo)
+
+      const response = await fetch(`/api/clientes?${params.toString()}`)
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
       const data = await response.json()
       console.log('👥 Frontend received seller analytics data:', data)
+
       if (data.success) {
         console.log('✅ Setting seller analytics data:', data.data)
         // Transform the data to match VendedoresAnalyticsData interface
@@ -1035,9 +1047,15 @@ export default function ClientesPage() {
         setSellerAnalyticsData(transformedData)
       } else {
         console.error('❌ Error fetching seller analytics:', data.error)
+        setError('No se pudieron cargar los datos de vendedores. Por favor, intenta de nuevo.')
+        // Set empty data on error
+        setSellerAnalyticsData({ sellers: [], totalSellers: 0, topSellerName: '', topSellerSales: 0 })
       }
     } catch (error) {
       console.error('🚨 Error fetching seller analytics data:', error)
+      setError('Error de conexión al cargar datos de vendedores. Verifica tu conexión a internet.')
+      // Set empty data on error
+      setSellerAnalyticsData({ sellers: [], totalSellers: 0, topSellerName: '', topSellerSales: 0 })
     } finally {
       setIsLoadingSellerAnalytics(false)
     }
@@ -1207,6 +1225,14 @@ export default function ClientesPage() {
 
   return (
     <div className="min-h-screen bg-white px-4 py-3 font-sans w-full" style={{ fontFamily: 'Inter, sans-serif', fontSize: '0.8rem' }}>
+      {/* Error Toast */}
+      {error && (
+        <ErrorToast
+          message={error}
+          onClose={() => setError(null)}
+        />
+      )}
+
       <header className="flex justify-between items-center mb-4">
         <div className="flex items-center">
           <div className="w-8 h-8 bg-blue-600 rounded-full mr-2 flex items-center justify-center">
@@ -1591,6 +1617,7 @@ export default function ClientesPage() {
           setSelectedSeller={setSelectedSeller}
           exportSellerData={exportSellerData}
           formatCurrency={formatCurrency}
+          onRefetchData={fetchSellerAnalyticsData}
           onSelectClient={(clientName: string) => {
             setSelectedClient(clientName)
             setSearchTerm(clientName)

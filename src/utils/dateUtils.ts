@@ -41,3 +41,64 @@ export function getCurrentPeriodNumber(date = new Date()): number {
   const { periodNumber } = getCurrentPeriodInfo(date);
   return periodNumber;
 }
+
+/**
+ * Get default date range for current year
+ */
+export function getCurrentYearDateRange(): { dateFrom: string; dateTo: string } {
+  const currentYear = new Date().getFullYear();
+  const dateFrom = `${currentYear}-01-01`;
+  const dateTo = new Date().toISOString().split('T')[0];
+  return { dateFrom, dateTo };
+}
+
+/**
+ * Parse and validate date range, returning Date objects
+ * If no dates provided, defaults to current year
+ */
+export function parseDateRange(dateFrom?: string, dateTo?: string): { fromDate: Date; toDate: Date } {
+  const { dateFrom: defaultFrom, dateTo: defaultTo } = getCurrentYearDateRange();
+
+  const fromDate = dateFrom ? new Date(dateFrom) : new Date(defaultFrom);
+  const toDate = dateTo ? new Date(dateTo) : new Date(defaultTo);
+
+  // Set time to end of day for toDate to include the entire day
+  toDate.setHours(23, 59, 59, 999);
+
+  return { fromDate, toDate };
+}
+
+/**
+ * Format date range for display
+ */
+export function formatDateRange(dateFrom?: string, dateTo?: string): string {
+  const { dateFrom: defaultFrom, dateTo: defaultTo } = getCurrentYearDateRange();
+
+  if (!dateFrom && !dateTo) {
+    return 'Año actual';
+  }
+
+  return `${dateFrom || defaultFrom} al ${dateTo || defaultTo}`;
+}
+
+/**
+ * Debounce function for delaying execution
+ */
+export function debounce<T extends (...args: any[]) => any>(
+  func: T,
+  wait: number
+): (...args: Parameters<T>) => void {
+  let timeout: NodeJS.Timeout | null = null;
+
+  return function(this: any, ...args: Parameters<T>) {
+    const context = this;
+
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+
+    timeout = setTimeout(() => {
+      func.apply(context, args);
+    }, wait);
+  };
+}
