@@ -130,9 +130,11 @@ interface SalesTrend {
 
 interface ClientStats {
   totalSales: number
-  entries: number
+  entries: number  // Total visits (including $0)
+  salesEntries: number  // Only visits with sales
   avgOrder: number
-  lastVisit: string
+  lastVisit: string  // Last visit of any kind
+  lastSaleVisit: string  // Last visit with actual sale
 }
 
 interface ClientData {
@@ -348,14 +350,18 @@ function ClientesDesatendidos({
     const rows = Object.entries(analyticsData.clientStats).map(([client, stats]) => {
       const code = analyticsData.clientCodes?.[client] ?? ''
       const lastDays = daysSince(stats.lastVisit)
+      const conversionRate = stats.entries > 0 ? (stats.salesEntries / stats.entries) * 100 : 0
       return {
         client,
         code,
         totalSales: stats.totalSales || 0,
-        entries: stats.entries || 0,
+        entries: stats.entries || 0,  // Total visits (including $0)
+        salesEntries: stats.salesEntries || 0,  // Only visits with sales
         avgOrder: stats.avgOrder || 0,
-        lastVisit: stats.lastVisit || '',
-        lastDays
+        lastVisit: stats.lastVisit || '',  // Last visit of any kind
+        lastSaleVisit: stats.lastSaleVisit || '',  // Last visit with sale
+        lastDays,
+        conversionRate  // % of visits that resulted in sales
       }
     })
     // Ignore clients with no code
@@ -390,7 +396,7 @@ function ClientesDesatendidos({
         return a.entries - b.entries
       }
       if (sortBy === 'ultimaVisita') {
-        return b.lastDays - a.lastDays
+        return b.lastDays - a.lastDays  // Older visits first
       }
       // score: prioritize low sales, then low entries, then older last visit
       if (a.totalSales !== b.totalSales) return a.totalSales - b.totalSales
@@ -407,9 +413,16 @@ function ClientesDesatendidos({
   return (
     <div>
       <div className="mb-3 space-y-2">
-        <h3 className="font-semibold text-gray-700 flex items-center text-sm">
-          <AlertTriangle className="mr-2 h-4 w-4 text-amber-500" /> Clientes Desatendidos
-        </h3>
+        <div className="flex items-start justify-between">
+          <div>
+            <h3 className="font-semibold text-gray-700 flex items-center text-sm">
+              <AlertTriangle className="mr-2 h-4 w-4 text-amber-500" /> Clientes Desatendidos
+            </h3>
+            <p className="text-xs text-gray-500 mt-1">
+              Visitas incluye todas las visitas (incluso sin venta). Conv. = % de visitas con venta.
+            </p>
+          </div>
+        </div>
         <div>
           <input
             value={query}
@@ -546,6 +559,7 @@ function ClientesDesatendidos({
           <div className="space-y-2">
             {visible.map((row) => {
               const needsAttention = row.lastDays >= 60 || row.entries <= 1
+              const lowConversion = row.conversionRate < 50 && row.entries >= 3
               return (
                 <div
                   key={row.client}
@@ -553,20 +567,31 @@ function ClientesDesatendidos({
                   onClick={() => onSelectClient(row.client)}
                 >
                   <div className="flex items-center flex-1 min-w-0">
-                    <div className={`w-2 h-2 rounded-full mr-3 ${needsAttention ? 'bg-amber-500' : 'bg-gray-300'}`}></div>
+                    <div className={`w-2 h-2 rounded-full mr-3 ${needsAttention ? 'bg-amber-500' : lowConversion ? 'bg-orange-400' : 'bg-gray-300'}`}></div>
                     <div>
                       <p className="font-medium text-sm text-gray-800">{row.client}</p>
                       <p className="text-xs text-gray-500">{row.code || 'Sin código'}</p>
                     </div>
                   </div>
-                  <div className="hidden sm:flex w-[400px] shrink-0 items-center justify-end">
+                  <div className="hidden sm:flex w-[480px] shrink-0 items-center justify-end">
                     <div className="w-[120px] flex flex-col items-end justify-center text-right">
                       <p className="text-xs text-gray-500">Ventas</p>
                       <p className="font-semibold text-sm text-green-600 tabular-nums">{formatCurrency(row.totalSales)}</p>
                     </div>
-                    <div className="w-[80px] flex flex-col items-end justify-center text-right">
+                    <div className="w-[100px] flex flex-col items-end justify-center text-right">
                       <p className="text-xs text-gray-500">Visitas</p>
-                      <p className="font-semibold text-sm text-blue-600 tabular-nums">{row.entries}</p>
+                      <p className="font-semibold text-sm text-blue-600 tabular-nums">
+                        {row.entries}
+                        {row.salesEntries < row.entries && (
+                          <span className="text-[10px] text-gray-500 ml-1">({row.salesEntries}$)</span>
+                        )}
+                      </p>
+                    </div>
+                    <div className="w-[90px] flex flex-col items-end justify-center text-right">
+                      <p className="text-xs text-gray-500">Conv.</p>
+                      <p className={`font-semibold text-sm tabular-nums ${row.conversionRate < 50 ? 'text-orange-600' : 'text-gray-800'}`}>
+                        {row.conversionRate.toFixed(0)}%
+                      </p>
                     </div>
                     <div className="w-[120px] flex flex-col items-end justify-center text-right">
                       <p className="text-xs text-gray-500">Promedio</p>
@@ -577,7 +602,12 @@ function ClientesDesatendidos({
                     <p className="text-xs text-gray-500">Última visita</p>
                     <p className="font-medium text-xs text-gray-700">
                       {row.lastVisit ? formatDate(row.lastVisit) : 'N/D'}
-                      {row.lastDays >= 60 && <span className="ml-2 text-amber-600">· {row.lastDays} días</span>}
+                      {row.lastDays >= 60 && <span className="ml-2 text-amber-600">· {row.lastDays}d</span>}
+                      {row.lastSaleVisit && row.lastSaleVisit !== row.lastVisit && (
+                        <span className="block text-[10px] text-gray-400 mt-0.5">
+                          Venta: {formatDate(row.lastSaleVisit)}
+                        </span>
+                      )}
                     </p>
                   </div>
                 </div>

@@ -368,13 +368,13 @@ export async function GET(req: Request) {
       }
 
       const afIndexForCode = columnToIndex('AF')
-      const entries = salesData.data.values.slice(1).map((row: any[], rowIndex) => {
+      // Parse ALL entries (including $0 sales) - don't filter by products yet
+      const allEntries = salesData.data.values.slice(1).map((row: any[], rowIndex) => {
         const products = Object.entries(PRODUCT_COLUMNS).reduce((acc, [col, productName]) => {
           const colIndex = columnToIndex(col)
           const quantity = row[colIndex]
           const parsedQuantity = parseInt(quantity || '0')
 
-          // Temporarily allow all quantities to debug the issue
           if (quantity && parsedQuantity > 0) {
             acc[productName] = parsedQuantity
           }
@@ -385,35 +385,12 @@ export async function GET(req: Request) {
         const code = codeRaw.trim().toUpperCase()
 
         // Debug: Log products for first few rows
-        if (rowIndex < 5) { // Increased to 5 rows for better debugging
+        if (rowIndex < 5) {
           console.log(`\n🚨 Row ${rowIndex + 1} Analysis:`)
           console.log(`   Client: ${row[0]}`)
           console.log(`   Date: ${row[32]}`)
           console.log(`   Total: ${row[33]}`)
-
-          // Check for suspicious large values in the row
-          const largeValues = []
-          row.forEach((value, index) => {
-            if (value && !isNaN(parseFloat(value)) && parseFloat(value) > 10000) {
-              largeValues.push({ column: indexToColumn(index), index, value: parseFloat(value) })
-            }
-          })
-          if (largeValues.length > 0) {
-            console.log(`   ⚠️  Large values found:`, largeValues)
-          }
-
-          // Log all product columns to see what's wrong
-          const productColumnsDebug = Object.entries(PRODUCT_COLUMNS).map(([col, productName]) => {
-            const colIndex = columnToIndex(col)
-            return {
-              column: col,
-              index: colIndex,
-              value: row[colIndex],
-              parsedValue: parseInt(row[colIndex] || '0')
-            }
-          })
-          console.log(`   📦 Product columns:`, productColumnsDebug)
-
+          console.log(`   Has products: ${Object.keys(products).length > 0}`)
           console.log(`   🎯 Final products:`, products)
         }
 
@@ -422,44 +399,100 @@ export async function GET(req: Request) {
           date: row[32] || '',
           total: parseFloat(row[33] || '0'),
           products,
-          code
+          code,
+          hasSale: Object.keys(products).length > 0 || parseFloat(row[33] || '0') > 0
         }
-      }).filter(entry => Object.keys(entry.products).length > 0) // Only include entries with products
+      })
+
+      // Keep ALL entries for visit tracking (no filter)
+      const entries = allEntries
+
+      // Separate array for entries with actual sales (for product stats)
+      const salesEntries = allEntries.filter(entry => Object.keys(entry.products).length > 0)
 
       const currentYear = new Date().getFullYear()
       console.log('📅 Filtering for year:', currentYear)
 
+      // Filter ALL entries (including $0 visits) by current year
       const yearlyEntries = entries.filter(entry => {
         const entryDate = new Date(entry.date)
         const isCurrentYear = entryDate.getFullYear() === currentYear
-        if (!isCurrentYear && Math.random() < 0.1) { // Log 10% of filtered entries
+        if (!isCurrentYear && Math.random() < 0.1) {
           console.log(`❌ Filtered out entry from ${entryDate.getFullYear()}: ${entry.date}`)
         }
         return isCurrentYear
       })
 
-      console.log('📈 Entries after date filtering:', yearlyEntries.length, 'out of', entries.length)
+      // Filter only sales entries by current year (for product stats)
+      const yearlySalesEntries = salesEntries.filter(entry => {
+        const entryDate = new Date(entry.date)
+        return entryDate.getFullYear() === currentYear
+      })
+
+      console.log('📈 Total visits (all entries):', yearlyEntries.length)
+      console.log('📈 Visits with sales:', yearlySalesEntries.length)
 
       const totalSales = yearlyEntries.reduce((sum, entry) => sum + entry.total, 0)
       const uniqueClients = new Set(yearlyEntries.map(entry => entry.clientName)).size
 
-      // Client statistics
-      const clientStats: Record<string, { totalSales: number, entries: number, avgOrder: number, lastVisit: string }> = {}
+      // Client statistics - Track ALL visits but separate sales metrics
+      const clientStats: Record<string, {
+        totalSales: number
+        entries: number  // Total visits (including $0)
+        salesEntries: number  // Only visits with sales
+        avgOrder: number
+        lastVisit: string  // Last visit of any kind
+        lastSaleVisit: string  // Last visit with actual sale
+      }> = {}
+
+      // First pass: Count ALL visits (including $0)
       yearlyEntries.forEach(entry => {
         if (!clientStats[entry.clientName]) {
-          clientStats[entry.clientName] = { totalSales: 0, entries: 0, avgOrder: 0, lastVisit: '' }
+          clientStats[entry.clientName] = {
+            totalSales: 0,
+            entries: 0,
+            salesEntries: 0,
+            avgOrder: 0,
+            lastVisit: '',
+            lastSaleVisit: ''
+          }
         }
-        clientStats[entry.clientName].totalSales += entry.total
+
+        // Count every visit
         clientStats[entry.clientName].entries += 1
+
+        // Track total sales (even if $0)
+        clientStats[entry.clientName].totalSales += entry.total
+
+        // Update lastVisit with ANY visit
         if (!clientStats[entry.clientName].lastVisit || new Date(entry.date) > new Date(clientStats[entry.clientName].lastVisit)) {
           clientStats[entry.clientName].lastVisit = entry.date
         }
+
+        // Track sales visits separately
+        if (entry.hasSale) {
+          clientStats[entry.clientName].salesEntries += 1
+
+          // Update lastSaleVisit only for visits with sales
+          if (!clientStats[entry.clientName].lastSaleVisit || new Date(entry.date) > new Date(clientStats[entry.clientName].lastSaleVisit)) {
+            clientStats[entry.clientName].lastSaleVisit = entry.date
+          }
+        }
       })
 
-      // Calculate average order
+      // Calculate average order based only on visits with sales (exclude $0 visits)
       Object.values(clientStats).forEach(stats => {
-        stats.avgOrder = stats.totalSales / stats.entries
+        stats.avgOrder = stats.salesEntries > 0 ? stats.totalSales / stats.salesEntries : 0
       })
+
+      console.log('📊 Sample client stats:', Object.entries(clientStats).slice(0, 3).map(([name, stats]) => ({
+        name,
+        totalVisits: stats.entries,
+        salesVisits: stats.salesEntries,
+        conversionRate: `${Math.round((stats.salesEntries / stats.entries) * 100)}%`,
+        lastVisit: stats.lastVisit,
+        lastSaleVisit: stats.lastSaleVisit
+      })))
 
       // Top clients by sales
       const topClients = Object.entries(clientStats)
@@ -467,9 +500,9 @@ export async function GET(req: Request) {
         .sort((a, b) => b.totalSales - a.totalSales)
         .slice(0, 10)
 
-      // Top products
+      // Top products - use only sales entries (with products)
       const productStats: Record<string, { quantity: number, revenue: number }> = {}
-      yearlyEntries.forEach((entry, entryIndex) => {
+      yearlySalesEntries.forEach((entry, entryIndex) => {
         Object.entries(entry.products).forEach(([product, quantity]) => {
           if (!productStats[product]) {
             productStats[product] = { quantity: 0, revenue: 0 }
@@ -559,9 +592,9 @@ export async function GET(req: Request) {
       console.log('📋 Vendedores found during processing:', foundVendedores)
       console.log('📋 Sample mappings:', Object.entries(clientVendedores).slice(0, 5))
 
-      // Aggregate products by per-row code (AF), normalized
+      // Aggregate products by per-row code (AF), normalized - use only sales entries
       const productsByCode: Record<string, Record<string, number>> = {}
-      yearlyEntries.forEach((entry: any) => {
+      yearlySalesEntries.forEach((entry: any) => {
         const code = (entry.code || '').toString().trim().toUpperCase()
         if (!code) return
         if (!productsByCode[code]) productsByCode[code] = {}
