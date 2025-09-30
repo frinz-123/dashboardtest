@@ -931,7 +931,7 @@ export default function Dashboard() {
       </div>
 
       <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
-        
+
         <h2 className="text-gray-700 font-semibold mb-2 flex items-center text-xs">
           <Users className="mr-1.5 h-4 w-4" /> Visitas
         </h2>
@@ -940,6 +940,35 @@ export default function Dashboard() {
         <div className="w-full bg-gray-200 h-1.5 rounded-full">
           <div className={`${visitStatus.color} h-1.5 rounded-full`} style={{ width: `${visitPercentage}%` }}></div>
         </div>
+      </div>
+
+      <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
+        <h2 className="text-gray-700 font-semibold mb-2 flex items-center text-xs">
+          <BarChart2 className="mr-1.5 h-4 w-4" /> Ventas por Código
+        </h2>
+        {Object.keys(salesByType).length > 0 ? (
+          <div className="space-y-2">
+            {Object.entries(salesByType)
+              .sort(([, a], [, b]) => b - a)
+              .map(([codigo, venta]) => {
+                const maxVenta = Math.max(...Object.values(salesByType))
+                const percentage = (venta / maxVenta) * 100
+                return (
+                  <div key={codigo}>
+                    <div className="flex items-center justify-between mb-1">
+                      <p className="text-xs font-medium text-gray-700">{codigo}</p>
+                      <p className="text-xs font-semibold text-gray-900">${venta.toFixed(2)}</p>
+                    </div>
+                    <div className="w-full bg-gray-200 h-1.5 rounded-full">
+                      <div className="bg-blue-500 h-1.5 rounded-full" style={{ width: `${percentage}%` }}></div>
+                    </div>
+                  </div>
+                )
+              })}
+          </div>
+        ) : (
+          <p className="text-xs text-gray-500">No hay ventas en este periodo.</p>
+        )}
       </div>
 
       <div className="bg-white rounded-lg mb-3 border border-[#E2E4E9]">
