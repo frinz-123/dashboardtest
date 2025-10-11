@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { Check, X } from 'lucide-react'
 
 type ToastType = 'success' | 'error' | 'info'
@@ -14,27 +14,51 @@ interface ToastProps {
   duration?: number
 }
 
-export default function Toast({ 
-  type, 
-  title, 
-  message, 
-  isVisible, 
-  onClose, 
-  duration = 4000 
+export default function Toast({
+  type,
+  title,
+  message,
+  isVisible,
+  onClose,
+  duration = 4000
 }: ToastProps) {
   const [isAnimating, setIsAnimating] = useState(false)
+  const timerRef = useRef<NodeJS.Timeout | null>(null)
+  const closeTimerRef = useRef<NodeJS.Timeout | null>(null)
+
+  const clearTimers = () => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current)
+      timerRef.current = null
+    }
+
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current)
+      closeTimerRef.current = null
+    }
+  }
 
   useEffect(() => {
     if (isVisible) {
       setIsAnimating(true)
-      const timer = setTimeout(() => {
-        setIsAnimating(false)
-        setTimeout(onClose, 200) // Allow fade out animation
-      }, duration)
+      clearTimers()
 
-      return () => clearTimeout(timer)
+      timerRef.current = setTimeout(() => {
+        setIsAnimating(false)
+        closeTimerRef.current = setTimeout(onClose, 200) // Allow fade out animation
+      }, duration)
+    }
+
+    return () => {
+      clearTimers()
     }
   }, [isVisible, duration, onClose])
+
+  const handleClose = () => {
+    clearTimers()
+    setIsAnimating(false)
+    closeTimerRef.current = setTimeout(onClose, 200)
+  }
 
   if (!isVisible && !isAnimating) return null
 
@@ -75,7 +99,7 @@ export default function Toast({
             </p>
           </div>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="flex-shrink-0 p-1 rounded-full hover:bg-gray-100 transition-colors"
           >
             <X className="w-4 h-4 text-gray-400" />
