@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react'
 import Link from 'next/link'
-import { Menu, ShoppingCart } from 'lucide-react'
+import { Menu, ShoppingCart, CheckCircle2 } from 'lucide-react'
 import BlurIn from '@/components/ui/blur-in'
 import LabelNumbers from '@/components/ui/labelnumbers'
 import SearchInput from '@/components/ui/SearchInput'
@@ -52,6 +52,20 @@ const MIN_MOVEMENT_THRESHOLD = 5; // Align with map for precise updates
 const MAX_LOCATION_AGE = 30000; // 30 seconds in milliseconds
 const MAX_CLIENT_DISTANCE = 450; // Maximum allowed distance to client in meters
 const ARCHIVE_MARKER = 'archivado no usar';
+
+function normalizeText(value: string): string {
+  if (!value) return '';
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\u00ad/g, '')
+    .replace(/\u00a0/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+const NORMALIZED_ARCHIVE_MARKER = normalizeText(ARCHIVE_MARKER);
 
 function getClientCode(clientName: string): string {
   if (!clientName) return 'EFT'
@@ -135,10 +149,10 @@ const PRICES: ProductPrices = {
     'Molinillo El Rey 30 g': 82.8,
     'Tira Entero': 60,
     'Tira Molido': 55,
-    'Salsa chiltepin Litro': 50,
-    'Salsa Especial Litro': 50,
-    'Salsa Reina Litro': 50,
-    'Salsa Habanera Litro': 50,
+    'Salsa chiltepin Litro': 46,
+    'Salsa Especial Litro': 46,
+    'Salsa Reina Litro': 46,
+    'Salsa Habanera Litro': 46,
     'Michela Mix Tamarindo': 30,
     'Michela Mix Mango': 30,
     'Michela Mix Sandia': 30,
@@ -529,21 +543,21 @@ const PRICES: ProductPrices = {
     'Medio Kilo Chiltepin Entero': 500
   },
   'MERKAHORRO': {
-    'Chiltepin Molido 50 g': 48,
-    'Chiltepin Molido 20 g': 24,
-    'Chiltepin Entero 30 g': 45,
-    'Salsa Chiltepin El rey 195 ml': 16,
-    'Salsa Especial El Rey 195 ml': 16,
-    'Salsa Reina El rey 195 ml': 16,
-    'Salsa Habanera El Rey 195 ml': 16,
+    'Chiltepin Molido 50 g': 45,
+    'Chiltepin Molido 20 g': 22.5,
+    'Chiltepin Entero 30 g': 40,
+    'Salsa Chiltepin El rey 195 ml': 15,
+    'Salsa Especial El Rey 195 ml': 15,
+    'Salsa Reina El rey 195 ml': 15,
+    'Salsa Habanera El Rey 195 ml': 15,
     'Paquete El Rey': 100,
     'Molinillo El Rey 30 g': 90,
     'Tira Entero': 60,
     'Tira Molido': 55,
-    'Salsa chiltepin Litro': 50,
-    'Salsa Especial Litro': 50,
-    'Salsa Reina Litro': 50,
-    'Salsa Habanera Litro': 50,
+    'Salsa chiltepin Litro': 40,
+    'Salsa Especial Litro': 40,
+    'Salsa Reina Litro': 40,
+    'Salsa Habanera Litro': 40,
     'Michela Mix Tamarindo': 30,
     'Michela Mix Mango': 30,
     'Michela Mix Sandia': 30,
@@ -567,6 +581,20 @@ const PRICES: ProductPrices = {
     'Molinillo El Rey 30 g': 105,
     'Tira Entero': 90,
     'Tira Molido': 55,
+    'Salsa chiltepin Litro': 50,
+    'Salsa Especial Litro': 50,
+    'Salsa Reina Litro': 50,
+    'Salsa Habanera Litro': 50,
+    'Michela Mix Tamarindo': 30,
+    'Michela Mix Mango': 30,
+    'Michela Mix Sandia': 30,
+    'Michela Mix Fuego': 30,
+    'Michela Mix Picafresa': 30,
+    'El Rey Mix Original': 60,
+    'El Rey Mix Especial': 60,
+    'Habanero Molido 50 g': 40,
+    'Habanero Molido 20 g': 20,
+    'Medio Kilo Chiltepin Entero': 500
   },
   'MEMIN': {
     'Chiltepin Molido 50 g': 48,
@@ -584,13 +612,38 @@ const PRICES: ProductPrices = {
     'Salsa Especial Litro': 45,
     'Salsa Reina Litro': 45,
     'Salsa Habanera Litro': 45,
+    'Michela Mix Tamarindo': 30,
+    'Michela Mix Mango': 30,
+    'Michela Mix Sandia': 30,
+    'Michela Mix Fuego': 30,
+    'Michela Mix Picafresa': 30,
+    'El Rey Mix Original': 60,
+    'El Rey Mix Especial': 60,
+    'Habanero Molido 50 g': 40,
+    'Habanero Molido 20 g': 20,
+    'Medio Kilo Chiltepin Entero': 500
   }
 }
 
 // Default to EFT prices if client code not found
 const getProductPrice = (clientCode: string, product: string): number => {
-  const priceList = PRICES[clientCode.toUpperCase()] || PRICES['EFT']
-  return priceList[product] || 0
+  const normalizedCode = clientCode.toUpperCase()
+  const priceList = PRICES[normalizedCode] || PRICES['EFT']
+  const price = priceList[product]
+  
+  // 🔍 LOG: Missing price detection
+  if (price === undefined || price === 0) {
+    console.warn('⚠️ PRICE ISSUE:', {
+      clientCode: normalizedCode,
+      product,
+      price: price ?? 'undefined',
+      hasPriceList: !!PRICES[normalizedCode],
+      availableProducts: priceList ? Object.keys(priceList).length : 0,
+      timestamp: new Date().toISOString()
+    })
+  }
+  
+  return price || 0
 }
 
 type Client = {
@@ -767,19 +820,24 @@ export default function FormPage() {
   // Update the search effect to use the debounced search term
   useEffect(() => {
     if (debouncedSearchTerm) {
-      // Optimize filtering by using lowercase once and limiting results
-      const searchLower = debouncedSearchTerm.toLowerCase();
+      const normalizedSearch = normalizeText(debouncedSearchTerm);
       const MAX_RESULTS = 20; // Limit to 20 results for better performance
-      
+
+      console.log('🔎 Buscando clientes normalizados:', {
+        originalTerm: debouncedSearchTerm,
+        normalizedTerm: normalizedSearch,
+        timestamp: new Date().toISOString()
+      });
+
       const filtered = clientNames
         .filter(name => {
           if (!name) return false;
-          const lowerName = name.toLowerCase();
-          if (lowerName.includes('archivado no usar')) return false;
-          return lowerName.includes(searchLower);
+          const normalizedName = normalizeText(name);
+          if (normalizedName.includes(NORMALIZED_ARCHIVE_MARKER)) return false;
+          return normalizedName.includes(normalizedSearch);
         })
         .slice(0, MAX_RESULTS);
-      
+
       setFilteredClients(filtered);
     } else {
       setFilteredClients([]);
@@ -793,6 +851,15 @@ export default function FormPage() {
         const price = getProductPrice(clientCode, product)
         return sum + (price * quantity)
       }, 0)
+      
+      // 🔍 LOG: Display total recalculation
+      console.log('💰 DISPLAY TOTAL UPDATE:', {
+        selectedClient,
+        clientCode,
+        quantities,
+        calculatedTotal: calculatedTotal.toFixed(2),
+        timestamp: new Date().toISOString()
+      })
       
       setTotal(calculatedTotal.toFixed(2))
     }
@@ -832,8 +899,8 @@ export default function FormPage() {
         .map((row: any[]) => {
           const name = row[0]
           if (!name) return null
-          const lowerName = String(name).toLowerCase()
-          if (lowerName.includes(ARCHIVE_MARKER)) return null
+          const normalizedName = normalizeText(String(name))
+          if (normalizedName.includes(NORMALIZED_ARCHIVE_MARKER)) return null
           if (row[1] && row[2]) {
             clients[name] = {
               lat: parseFloat(row[1]),
@@ -945,9 +1012,17 @@ export default function FormPage() {
   // Modify handleSubmit with better error handling
   const handleSubmit = async () => {
     haptics.medium(); // Haptic feedback on submit
-    setIsSubmitting(true);
-    setIsOptimisticSubmit(true); // Optimistic UI
     setValidationErrors({});
+
+    const stateSnapshot = {
+      selectedClient,
+      searchTerm,
+      debouncedSearchTerm,
+      quantities: { ...quantities },
+      total,
+      filteredClients: [...filteredClients],
+      cleyOrderValue,
+    };
 
     try {
       if (!selectedClient) {
@@ -960,17 +1035,22 @@ export default function FormPage() {
         return;
       }
 
+      if (Object.values(quantities).every(qty => qty === 0)) {
+        setValidationErrors(prev => ({ ...prev, products: 'Selecciona al menos un producto' }));
+        return;
+      }
+
       // ✅ VALIDATION: Use cached email if session email is not available
       const sessionEmail = session?.user?.email;
       const fallbackEmail = OVERRIDE_EMAILS[0];
       const finalEmail = sessionEmail || cachedEmail || fallbackEmail;
-      
+
       console.log("🔍 EMAIL VALIDATION:", {
         sessionStatus: session ? 'EXISTS' : 'NULL',
-        sessionEmail: sessionEmail,
-        cachedEmail: cachedEmail,
-        fallbackEmail: fallbackEmail,
-        finalEmail: finalEmail,
+        sessionEmail,
+        cachedEmail,
+        fallbackEmail,
+        finalEmail,
         usingCachedEmail: !sessionEmail && !!cachedEmail,
         overrideEmailsArray: OVERRIDE_EMAILS,
         timestamp: new Date().toISOString()
@@ -987,72 +1067,98 @@ export default function FormPage() {
         return;
       }
 
+      setIsSubmitting(true);
+      setIsOptimisticSubmit(true);
+
       // Log if we're using cached email due to offline/session issues
       if (!sessionEmail && cachedEmail) {
         console.log("📱 OFFLINE MODE: Using cached email for submission:", cachedEmail);
       }
 
-      const clientCode = getClientCode(selectedClient);
+      // 🔧 FIX: Use snapshot client for consistent calculation
+      const clientCode = getClientCode(stateSnapshot.selectedClient);
       const isCley = clientCode.toUpperCase() === 'CLEY';
-      const cleyValue = isCley ? cleyOrderValue : null;
-      
-      console.log("Submitting form with CLEY data:", {
+      const cleyValue = isCley ? stateSnapshot.cleyOrderValue : null;
+      const submittedAt = new Date().toISOString();
+
+      const submissionTotal = Object.entries(stateSnapshot.quantities).reduce((sum, [product, qty]) => {
+        const price = getProductPrice(clientCode, product);
+        return sum + (price * qty);
+      }, 0);
+
+      // 🔍 LOG: Order calculation validation
+      console.log('📊 ORDER CALCULATION:', {
+        snapshotClient: stateSnapshot.selectedClient,
+        currentClient: selectedClient,
         clientCode,
-        isCley,
-        cleyOrderValue,
-        cleyValue,
-        submittingAs: finalEmail
+        products: stateSnapshot.quantities,
+        calculatedTotal: submissionTotal,
+        displayTotal: total,
+        totalMismatch: Math.abs(submissionTotal - parseFloat(total)) > 0.01,
+        timestamp: submittedAt
       });
-      
-      const response = await fetch('/api/submit-form', {
+
+      const submissionPayload = {
+        clientName: stateSnapshot.selectedClient, // 🔧 FIX: Use snapshot client
+        clientCode,
+        products: stateSnapshot.quantities,
+        total: submissionTotal,
+        location: currentLocation,
+        userEmail: finalEmail,
+        date: submittedAt,
+        cleyOrderValue: cleyValue
+      };
+
+      const responsePromise = fetch('/api/submit-form', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          clientName: selectedClient,
-          clientCode: clientCode,
-          products: quantities,
-          total: parseFloat(total),
-          location: currentLocation,
-          userEmail: finalEmail,
-          date: new Date().toISOString(),
-          cleyOrderValue: cleyValue
-        }),
+        body: JSON.stringify(submissionPayload),
       });
 
-      const data = await response.json();
+      setSelectedClient('');
+      setSearchTerm('');
+      setDebouncedSearchTerm('');
+      setQuantities({});
+      setFilteredClients([]);
+      setTotal('0.00');
+      setCleyOrderValue("1");
+      setKey(prev => prev + 1);
+      setTimeout(() => setIsSubmitting(false), 150);
 
-      if (!response.ok) {
-        throw new Error(data.error || 'Error al enviar el pedido');
-      }
-
-      if (data.success) {
-        haptics.success(); // Success haptic
+      // Show success toast immediately (optimistically)
+      setTimeout(() => {
+        haptics.success();
         success(
           'Pedido enviado',
-          'Tu pedido ha sido registrado exitosamente y será procesado pronto.'
+          'Tu pedido ha sido registrado exitosamente y será procesado pronto.',
+          2000  // Toast disappears after 2 seconds
         );
-        // Reset form with delay for better UX
-        setTimeout(() => {
-          setSelectedClient('');
-          setSearchTerm('');
-          setDebouncedSearchTerm('');
-          setQuantities({});
-          setTotal('0.00');
-          setFilteredClients([]);
-          setCleyOrderValue("1");
-          setKey(prev => prev + 1);
-        }, 1000);
+      }, 500);
+
+      const response = await responsePromise;
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.error || 'Error al enviar el pedido');
       }
 
     } catch (error) {
       console.error('Error submitting form:', error);
       haptics.error(); // Error haptic
       setValidationErrors(prev => ({ ...prev, submit: 'Error al enviar el pedido' }));
+      setSelectedClient(stateSnapshot.selectedClient);
+      setSearchTerm(stateSnapshot.searchTerm);
+      setDebouncedSearchTerm(stateSnapshot.debouncedSearchTerm);
+      setQuantities(stateSnapshot.quantities);
+      setTotal(stateSnapshot.total);
+      setFilteredClients(stateSnapshot.filteredClients);
+      setCleyOrderValue(stateSnapshot.cleyOrderValue);
+      setKey(prev => prev + 1);
     } finally {
       setIsSubmitting(false);
-      setIsOptimisticSubmit(false);
+      setTimeout(() => setIsOptimisticSubmit(false), 300);
     }
   };
 
@@ -1342,6 +1448,7 @@ export default function FormPage() {
           !selectedClient || 
           !currentLocation || 
           isSubmitting || 
+          isOptimisticSubmit ||
           (!session?.user?.email && !cachedEmail) ||  // ✅ UPDATED: Allow if we have cached email
           (locationAlert !== null && !isOverrideEmail(session?.user?.email || cachedEmail))
         }
@@ -1380,6 +1487,7 @@ export default function FormPage() {
           message={toast.message}
           isVisible={toast.isVisible}
           onClose={hideToast}
+          duration={toast.duration}
         />
       )}
     </div>

@@ -93,18 +93,19 @@ export function useToast() {
     title: string
     message: string
     isVisible: boolean
+    duration?: number
   } | null>(null)
 
-  const showToast = (type: ToastType, title: string, message: string) => {
-    setToast({ type, title, message, isVisible: true })
+  const showToast = (type: ToastType, title: string, message: string, duration?: number) => {
+    setToast({ type, title, message, isVisible: true, duration })
   }
 
   const hideToast = () => {
     setToast(prev => prev ? { ...prev, isVisible: false } : null)
   }
 
-  const success = (title: string, message: string) => showToast('success', title, message)
-  const error = (title: string, message: string) => showToast('error', title, message)
+  const success = (title: string, message: string, duration?: number) => showToast('success', title, message, duration)
+  const error = (title: string, message: string, duration?: number) => showToast('error', title, message, duration)
 
   return {
     toast,
