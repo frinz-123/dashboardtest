@@ -699,7 +699,6 @@ export default function FormPage() {
   const [validationErrors, setValidationErrors] = useState<{
     client?: string;
     location?: string;
-    products?: string;
     submit?: string;
   }>({});
   const [isOptimisticSubmit, setIsOptimisticSubmit] = useState(false)
@@ -1000,11 +999,6 @@ export default function FormPage() {
       errors.location = 'Se requiere acceso a la ubicación'
     }
 
-    const hasProducts = Object.values(quantities).some(q => q > 0)
-    if (!hasProducts) {
-      errors.products = 'Selecciona al menos un producto'
-    }
-
     setValidationErrors(errors)
     return Object.keys(errors).length === 0
   }
@@ -1032,11 +1026,6 @@ export default function FormPage() {
 
       if (!currentLocation) {
         setValidationErrors(prev => ({ ...prev, location: 'No se pudo obtener la ubicación' }));
-        return;
-      }
-
-      if (Object.values(quantities).every(qty => qty === 0)) {
-        setValidationErrors(prev => ({ ...prev, products: 'Selecciona al menos un producto' }));
         return;
       }
 

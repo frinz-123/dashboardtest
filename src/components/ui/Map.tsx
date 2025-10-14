@@ -59,8 +59,34 @@ export default function Map({ onLocationUpdate, clientLocation }: MapProps) {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [locationError, setLocationError] = useState<string>('')
   const [isAutoUpdating, setIsAutoUpdating] = useState(true)
+  const [locationAccuracy, setLocationAccuracy] = useState<number | null>(null)
   const userMarkerRef = useRef<mapboxgl.Marker | null>(null)
   const clientMarkerRef = useRef<mapboxgl.Marker | null>(null)
+  const bestEffortPosition = useRef<GeolocationPosition | null>(null)
+  const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const isComponentUnmounted = useRef(false)
+  const locationWatchId = useRef<number | null>(null)
+  const accuracyFallbackTimeout = useRef<NodeJS.Timeout | null>(null)
+
+  const HIGH_ACCURACY_THRESHOLD = 40 // meters
+  const HIGH_ACCURACY_TIMEOUT = 12000
+
+  const stopWatchingLocation = () => {
+    if (locationWatchId.current !== null) {
+      navigator.geolocation.clearWatch(locationWatchId.current)
+      locationWatchId.current = null
+    }
+
+    if (accuracyFallbackTimeout.current) {
+      clearTimeout(accuracyFallbackTimeout.current)
+      accuracyFallbackTimeout.current = null
+    }
+
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current)
+      retryTimeoutRef.current = null
+    }
+  }
 
   const createLabeledMarker = (label: string, color: string) => {
     const el = document.createElement('div')
@@ -92,13 +118,20 @@ export default function Map({ onLocationUpdate, clientLocation }: MapProps) {
   }
 
   const getCurrentLocation = () => {
+    if (isComponentUnmounted.current) {
+      return
+    }
+
     if (!navigator.geolocation) {
       setLocationError('Geolocation is not supported by your browser')
       return
     }
 
+    stopWatchingLocation()
     setIsRefreshing(true)
     setLocationError('')
+    setLocationAccuracy(null)
+    bestEffortPosition.current = null
 
     const options = {
       enableHighAccuracy: true,
@@ -106,96 +139,166 @@ export default function Map({ onLocationUpdate, clientLocation }: MapProps) {
       maximumAge: 0  // ✅ Force fresh location data, no caching
     }
 
-    let timeoutId: NodeJS.Timeout
+    let timeoutId: NodeJS.Timeout | null = null
+    let hasResolved = false
 
-    const geolocationPromise = new Promise((resolve, reject) => {
-      navigator.geolocation.getCurrentPosition(resolve, reject, options)
-    })
+    const applyLocation = (position: GeolocationPosition) => {
+      if (isComponentUnmounted.current) return
 
-    // Race between geolocation and a fallback timeout
-    Promise.race([
-      geolocationPromise,
-      new Promise((_, reject) => {
-        timeoutId = setTimeout(() => {
-          reject(new Error('Location request timed out'))
-        }, options.timeout + 1000)
-      })
-    ])
-      .then((position: any) => {
+      if (hasResolved) return
+      hasResolved = true
+
+      if (timeoutId) {
         clearTimeout(timeoutId)
-        const newLocation = {
-          lat: Number(position.coords.latitude.toFixed(5)),
-          lng: Number(position.coords.longitude.toFixed(5))
+      }
+
+      const newLocation = {
+        lat: Number(position.coords.latitude.toFixed(6)),
+        lng: Number(position.coords.longitude.toFixed(6))
+      }
+
+      const shouldUpdateMap = hasSignificantMovement(location, newLocation)
+
+      setLocation(newLocation)
+      setLocationAccuracy(position.coords.accuracy)
+      onLocationUpdate?.(newLocation)
+
+      if (map.current && shouldUpdateMap) {
+        if (userMarkerRef.current) {
+          userMarkerRef.current.remove()
         }
+        userMarkerRef.current = new mapboxgl.Marker({ element: createLabeledMarker('TU', '#2563EB') })
+          .setLngLat([newLocation.lng, newLocation.lat])
+          .addTo(map.current)
 
-        const shouldUpdateMap = hasSignificantMovement(location, newLocation)
-
-        setLocation(newLocation)
-        onLocationUpdate?.(newLocation)
-
-        if (map.current && shouldUpdateMap) {
-          if (userMarkerRef.current) {
-            userMarkerRef.current.remove()
-          }
-          userMarkerRef.current = new mapboxgl.Marker({ element: createLabeledMarker('TU', '#2563EB') })
-            .setLngLat([newLocation.lng, newLocation.lat])
-            .addTo(map.current)
-
-          if (!clientLocation) {
-            map.current.setCenter([newLocation.lng, newLocation.lat])
-          }
+        if (!clientLocation) {
+          map.current.setCenter([newLocation.lng, newLocation.lat])
         }
-        setIsRefreshing(false)
-      })
-      .catch((error) => {
+      }
+
+      setIsRefreshing(false)
+      stopWatchingLocation()
+    }
+
+    const handleGeolocationSuccess = (position: GeolocationPosition) => {
+      if (isComponentUnmounted.current) return
+      if (hasResolved) return
+
+      if (timeoutId) {
         clearTimeout(timeoutId)
-        console.error('Error getting location:', error)
-        let errorMessage = 'Error getting location'
-        
-        if (error.code) {
-          switch (error.code) {
-            case 1:
-              errorMessage = 'Please allow location access to use this feature'
-              break
-            case 2:
-              errorMessage = 'Location information is unavailable'
-              break
-            case 3:
-              errorMessage = 'Intentando obtener ubicación...'
-              setTimeout(() => {
-                getCurrentLocation()
-              }, 1000)
-              break
-          }
-        }
+        timeoutId = null
+      }
 
-        setLocationError(errorMessage)
-        
-        // ✅ Don't set default location automatically - let user know they need to fix location access
-        if (error.code !== 3) {
-          console.warn("⚠️ Location access failed, NOT setting default location");
-          // Don't call onLocationUpdate with default location to prevent form submission with wrong location
+      setLocationAccuracy(position.coords.accuracy)
+
+      if (!bestEffortPosition.current || position.coords.accuracy < bestEffortPosition.current.coords.accuracy) {
+        bestEffortPosition.current = position
+      }
+
+      if (position.coords.accuracy <= HIGH_ACCURACY_THRESHOLD) {
+        applyLocation(position)
+        return
+      }
+
+      if (accuracyFallbackTimeout.current) {
+        clearTimeout(accuracyFallbackTimeout.current)
+      }
+
+      accuracyFallbackTimeout.current = setTimeout(() => {
+        const fallbackPosition = bestEffortPosition.current ?? position
+        applyLocation(fallbackPosition)
+      }, HIGH_ACCURACY_TIMEOUT)
+    }
+
+    const handleGeolocationError = (error: GeolocationPositionError | Error) => {
+      if (isComponentUnmounted.current) return
+      if (hasResolved) return
+      hasResolved = true
+
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+      }
+
+      stopWatchingLocation()
+      console.error('Error getting location:', error)
+      let errorMessage = 'Error getting location'
+
+      if ('code' in error && typeof error.code === 'number') {
+        switch (error.code) {
+          case 1:
+            errorMessage = 'Please allow location access to use this feature'
+            break
+          case 2:
+            errorMessage = 'Location information is unavailable'
+            break
+          case 3:
+            errorMessage = 'Intentando obtener ubicación...'
+            if (retryTimeoutRef.current) {
+              clearTimeout(retryTimeoutRef.current)
+            }
+            retryTimeoutRef.current = setTimeout(() => {
+              getCurrentLocation()
+            }, 1000)
+            break
         }
-        
-        setIsRefreshing(false)
-      })
+      }
+
+      setLocationError(errorMessage)
+
+      // ✅ Don't set default location automatically - let user know they need to fix location access
+      if (!('code' in error) || error.code !== 3) {
+        console.warn("⚠️ Location access failed, NOT setting default location")
+        // Don't call onLocationUpdate with default location to prevent form submission with wrong location
+      }
+
+      setIsRefreshing(false)
+    }
+
+    timeoutId = setTimeout(() => {
+      handleGeolocationError(new Error('Location request timed out'))
+    }, options.timeout + 1000)
+
+    locationWatchId.current = navigator.geolocation.watchPosition(
+      handleGeolocationSuccess,
+      (error) => handleGeolocationError(error),
+      options
+    )
   }
 
   // Request location permission when component mounts
   useEffect(() => {
+    isComponentUnmounted.current = false
+    let isCancelled = false
+
+    const requestLocation = () => {
+      if (!isCancelled) {
+        getCurrentLocation()
+      }
+    }
+
     if (typeof window !== 'undefined' && navigator.permissions) {
-      navigator.permissions.query({ name: 'geolocation' }).then((result) => {
-        if (result.state === 'granted') {
-          getCurrentLocation()
-        } else if (result.state === 'prompt') {
-          // This will trigger the permission prompt
-          getCurrentLocation()
-        } else {
-          setLocationError('Location permission denied')
-        }
-      })
+      navigator.permissions
+        .query({ name: 'geolocation' })
+        .then((result) => {
+          if (isCancelled) return
+
+          if (result.state === 'granted' || result.state === 'prompt') {
+            requestLocation()
+          } else {
+            setLocationError('Location permission denied')
+          }
+        })
+        .catch(() => {
+          requestLocation()
+        })
     } else {
-      getCurrentLocation()
+      requestLocation()
+    }
+
+    return () => {
+      isCancelled = true
+      isComponentUnmounted.current = true
+      stopWatchingLocation()
     }
   }, [])
 
@@ -272,9 +375,16 @@ export default function Map({ onLocationUpdate, clientLocation }: MapProps) {
               {locationError}
             </div>
           ) : location && (
-            <p className="text-xs text-gray-500">
-              Ubicación: {location.lat.toFixed(5)}, {location.lng.toFixed(5)}
-            </p>
+            <div className="flex flex-col text-xs text-gray-500">
+              <span>
+                Ubicación: {location.lat.toFixed(5)}, {location.lng.toFixed(5)}
+              </span>
+              {locationAccuracy !== null && (
+                <span className="text-[10px] text-gray-400">
+                  Precisión: ±{Math.round(locationAccuracy)}m
+                </span>
+              )}
+            </div>
           )}
           {isRefreshing && (
             <span className="text-xs text-blue-500">Actualizando...</span>
