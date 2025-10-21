@@ -78,25 +78,62 @@ export async function POST(req: Request) {
       // Ensure we're explicitly including column AM (the 39th column)
       const range = `Form_Data!A${lastRow}:AM${lastRow}`
 
-      // Format current date as MM/DD/YYYY and capture submission time for column E
+      // Format current date/time using Mazatlan timezone (GMT-7)
       const submissionTimestamp = new Date()
-      const formattedDate = `${submissionTimestamp.getMonth() + 1}/${submissionTimestamp.getDate()}/${submissionTimestamp.getFullYear()}`
-      const formattedTime = submissionTimestamp.toLocaleTimeString('es-MX', {
+      const MAZATLAN_TZ = 'America/Mazatlan'
+
+      const mazatlanParts = new Intl.DateTimeFormat('en-US', {
+        timeZone: MAZATLAN_TZ,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
         hour: '2-digit',
         minute: '2-digit',
         second: '2-digit',
         hour12: false,
-      })
+        timeZoneName: 'short',
+      }).formatToParts(submissionTimestamp)
+
+      const getPart = (type: Intl.DateTimeFormatPartTypes) =>
+        mazatlanParts.find(part => part.type === type)?.value || ''
+
+      const month = getPart('month') || '00'
+      const day = getPart('day') || '00'
+      const year = getPart('year') || '0000'
+      const hour = getPart('hour') || '00'
+      const minute = getPart('minute') || '00'
+      const second = getPart('second') || '00'
+      const timeZoneName = getPart('timeZoneName') || 'GMT'
+
+      const formattedDate = `${month}/${day}/${year}`
+      const formattedTime = `${hour}:${minute}:${second}`
+
+      const offsetMatch = timeZoneName.match(/GMT([+-]\d{1,2})(?::(\d{2}))?/)
+      const rawOffsetHours = offsetMatch ? parseInt(offsetMatch[1], 10) : 0
+      const offsetMinutes = offsetMatch && offsetMatch[2] ? parseInt(offsetMatch[2], 10) : 0
+      const offsetSign = rawOffsetHours >= 0 ? '+' : '-'
+      const absOffsetHours = Math.abs(rawOffsetHours)
+      const isoOffset = `${offsetSign}${String(absOffsetHours).padStart(2, '0')}:${String(offsetMinutes).padStart(2, '0')}`
+
+      const isoDateTime = `${year}-${month}-${day}T${hour}:${minute}:${second}${isoOffset}`
+      const mazatlanDateForPeriod = new Date(isoDateTime)
+
+      const periodSourceDate = Number.isNaN(mazatlanDateForPeriod.getTime())
+        ? submissionTimestamp
+        : mazatlanDateForPeriod
 
       console.log('🕒 SUBMISSION TIMESTAMP VALIDATION:', {
         iso: submissionTimestamp.toISOString(),
         formattedDate,
         formattedTime,
+        isoOffset,
+        mazatlanDateForPeriod: periodSourceDate.toISOString(),
         targetColumn: 'E',
+        timeZone: MAZATLAN_TZ,
       })
 
-      // Get current period and week for column AL
-      const { periodNumber, weekInPeriod } = getCurrentPeriodInfo(submissionTimestamp)
+      // Get current period and week for column AL (aligned to Mazatlan date)
+      const { periodNumber, weekInPeriod } = getCurrentPeriodInfo(periodSourceDate)
       const periodWeekCode = `P${periodNumber}S${weekInPeriod}`
 
       // Create an array with 39 elements (A to AM)
