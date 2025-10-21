@@ -78,12 +78,25 @@ export async function POST(req: Request) {
       // Ensure we're explicitly including column AM (the 39th column)
       const range = `Form_Data!A${lastRow}:AM${lastRow}`
 
-      // Format current date as MM/DD/YYYY
-      const currentDate = new Date()
-      const formattedDate = `${currentDate.getMonth() + 1}/${currentDate.getDate()}/${currentDate.getFullYear()}`
+      // Format current date as MM/DD/YYYY and capture submission time for column E
+      const submissionTimestamp = new Date()
+      const formattedDate = `${submissionTimestamp.getMonth() + 1}/${submissionTimestamp.getDate()}/${submissionTimestamp.getFullYear()}`
+      const formattedTime = submissionTimestamp.toLocaleTimeString('es-MX', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      })
+
+      console.log('🕒 SUBMISSION TIMESTAMP VALIDATION:', {
+        iso: submissionTimestamp.toISOString(),
+        formattedDate,
+        formattedTime,
+        targetColumn: 'E',
+      })
 
       // Get current period and week for column AL
-      const { periodNumber, weekInPeriod } = getCurrentPeriodInfo(currentDate)
+      const { periodNumber, weekInPeriod } = getCurrentPeriodInfo(submissionTimestamp)
       const periodWeekCode = `P${periodNumber}S${weekInPeriod}`
 
       // Create an array with 39 elements (A to AM)
@@ -93,6 +106,8 @@ export async function POST(req: Request) {
       rowData[0] = clientName                                    // Column A
       rowData[1] = clientLat                                    // Column B (Client's stored lat)
       rowData[2] = clientLng                                    // Column C (Client's stored lng)
+      rowData[3] = ''                                           // Column D (Reserved/unused)
+      rowData[4] = formattedTime                                // Column E (Submission time)
       rowData[5] = location.lat.toString()                      // Column F (Current lat)
       rowData[6] = location.lng.toString()                      // Column G (Current lng)
       rowData[7] = userEmail                                    // Column H (Add this line)

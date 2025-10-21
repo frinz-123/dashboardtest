@@ -24,6 +24,7 @@ type Sale = {
   fechaSinHora: string
   email: string
   products: Record<string, number>  // Add this line
+  submissionTime?: string
 }
 
 const emailLabels: Record<string, string> = {
@@ -228,7 +229,8 @@ export default function Dashboard() {
         codigo: row[31],
         fechaSinHora: row[32],
         email: row[7],
-        products: products
+        products: products,
+    submissionTime: row[4] && row[4].trim() !== '' ? row[4] : undefined,
       }
     })
     setSalesData(sales)
@@ -995,7 +997,10 @@ export default function Dashboard() {
               <div className="flex items-center">
                 <div className="text-right mr-1.5">
                   <p className="text-xs font-medium">${sale.venta.toFixed(2)}</p>
-                  <p className="text-xxs text-gray-500">{sale.fechaSinHora}</p>
+                  <p className="text-xxs text-gray-500">
+                    {sale.fechaSinHora}
+                    {sale.submissionTime ? ` • ${sale.submissionTime}` : ''}
+                  </p>
                 </div>
                 <ChevronRight className="h-4 w-3 text-gray-400" />
               </div>
@@ -1057,7 +1062,10 @@ export default function Dashboard() {
                       <div className="flex items-center">
                         <div className="text-left">
                           <p className="text-xs font-medium">${sale.venta.toFixed(2)}</p>
-                          <p className="text-xxs text-gray-500">{sale.fechaSinHora}</p>
+                <p className="text-xxs text-gray-500">
+                  {sale.fechaSinHora}
+                  {sale.submissionTime ? ` • ${sale.submissionTime}` : ''}
+                </p>
                         </div>
                       </div>
                       <ChevronRight className="h-4 w-3 text-gray-400" />
