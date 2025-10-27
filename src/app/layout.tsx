@@ -15,7 +15,7 @@ export const metadata: Metadata = {
   title: "Dashboard El rey",
   description: "Sales dashboard for El rey",
   manifest: "/manifest.json",
-  themeColor: "#3b82f6",
+  themeColor: "#14b8a6",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
