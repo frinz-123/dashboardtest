@@ -37,9 +37,10 @@ const emailLabels: Record<string, string> = {
   'cesar.reyes.ochoa@gmail.com': 'Cesar',
   'arturo.elreychiltepin@gmail.com': 'Arturo Mty',
   'alopezelrey@gmail.com': 'Arlyn',
-  'promotoriaelrey@gmail.com': 'Karla'
+  'promotoriaelrey@gmail.com': 'Karla',
+  'ventas4productoselrey@gmail.com': 'Reyna', 
 }
-
+  
 export default function Dashboard() {
   const { data: session } = useSession()
   const [selectedPeriod, setSelectedPeriod] = useState<TimePeriod>('Diario')
