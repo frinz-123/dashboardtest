@@ -980,7 +980,7 @@ export default function Dashboard() {
             <h2 className="text-gray-700 font-semibold flex items-center text-xs">
               <Clock className="mr-1.5 h-4 w-4" /> Ventas Recientes
             </h2>
-            <button 
+            <button
               className="text-blue-600 text-xs"
               onClick={() => setShowAllSales(!showAllSales)}
             >
@@ -990,7 +990,11 @@ export default function Dashboard() {
         </div>
         <div className="px-3">
           {filteredSales.slice(0, showAllSales ? undefined : 4).map((sale, index) => (
-            <div key={index} className="flex items-center justify-between py-2 border-b last:border-b-0">
+            <div
+              key={index}
+              className="flex items-center justify-between py-2 border-b last:border-b-0 cursor-pointer hover:bg-gray-100"
+              onClick={() => setSelectedSale(sale)}
+            >
               <div>
                 <p className="text-xs font-medium">{sale.clientName}</p>
                 <p className="text-xxs text-gray-500">{sale.codigo}</p>
