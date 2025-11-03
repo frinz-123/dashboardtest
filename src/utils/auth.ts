@@ -22,7 +22,8 @@ export const EMAIL_TO_VENDOR_LABELS: Record<string, string> = {
   'cesar.reyes.ochoa@gmail.com': 'Cesar',
   'arturo.elreychiltepin@gmail.com': 'Arturo Mty',
   'alopezelrey@gmail.com': 'Arlyn',
-  'promotoriaelrey@gmail.com': 'Karla'
+  'promotoriaelrey@gmail.com': 'Karla',
+  'bodegaelrey034@gmail.com': 'Bodega',
 };
 
 export const getVendorLabel = (email: string): string => {
