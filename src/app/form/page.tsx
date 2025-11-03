@@ -689,7 +689,7 @@ export default function FormPage() {
   const [total, setTotal] = useState('0.00')
   const [quantities, setQuantities] = useState<Record<string, number>>({})
   const [clientLocations, setClientLocations] = useState<Record<string, { lat: number, lng: number }>>({})
-  const [currentLocation, setCurrentLocation] = useState<{ lat: number, lng: number } | null>(null)
+  const [currentLocation, setCurrentLocation] = useState<{ lat: number, lng: number, accuracy?: number, timestamp?: number } | null>(null)
   const [locationAlert, setLocationAlert] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [key, setKey] = useState(0)
@@ -704,7 +704,7 @@ export default function FormPage() {
   const [isOptimisticSubmit, setIsOptimisticSubmit] = useState(false)
   
   const throttledLocationUpdate = useRef(
-    throttle((location: { lat: number, lng: number }) => {
+    throttle((location: { lat: number, lng: number, accuracy?: number, timestamp?: number }) => {
       setCurrentLocation(location);
     }, 1000)
   ).current;
@@ -750,10 +750,12 @@ export default function FormPage() {
   };
 
   // Update handleLocationUpdate to use the state
-  const handleLocationUpdate = (location: { lat: number, lng: number }) => {
+  const handleLocationUpdate = (location: { lat: number, lng: number, accuracy?: number, timestamp?: number }) => {
     const limitedLocation = {
       lat: Number(location.lat.toFixed(5)),
-      lng: Number(location.lng.toFixed(5))
+      lng: Number(location.lng.toFixed(5)),
+      accuracy: location.accuracy,
+      timestamp: location.timestamp || Date.now()
     };
 
     if (hasSignificantMovement(currentLocation, limitedLocation)) {

@@ -8,7 +8,7 @@ import 'mapbox-gl/dist/mapbox-gl.css'
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || ''
 
 type MapProps = {
-  onLocationUpdate?: (location: { lat: number, lng: number }) => void;
+  onLocationUpdate?: (location: { lat: number, lng: number, accuracy?: number, timestamp?: number }) => void;
   clientLocation?: { lat: number, lng: number } | null;
 }
 
@@ -161,7 +161,11 @@ export default function Map({ onLocationUpdate, clientLocation }: MapProps) {
 
       setLocation(newLocation)
       setLocationAccuracy(position.coords.accuracy)
-      onLocationUpdate?.(newLocation)
+      onLocationUpdate?.({
+        ...newLocation,
+        accuracy: position.coords.accuracy,
+        timestamp: position.timestamp || Date.now()
+      })
 
       if (map.current && shouldUpdateMap) {
         if (userMarkerRef.current) {

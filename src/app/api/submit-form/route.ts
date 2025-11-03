@@ -16,6 +16,27 @@ const auth = new google.auth.GoogleAuth({
 
 const spreadsheetId = '1a0jZVdKFNWTHDsM-68LT5_OLPMGejAKs9wfCxYqqe_g'
 
+// Location validation constants
+const MAX_LOCATION_ACCURACY = 100 // meters - reject if GPS accuracy is worse than this
+const MAX_LOCATION_AGE = 30000 // 30 seconds in milliseconds - reject if location is older than this
+const MAX_CLIENT_DISTANCE = 450 // meters - maximum allowed distance to client
+
+// Calculate distance between two coordinates using Haversine formula
+function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371e3 // Earth's radius in meters
+  const φ1 = lat1 * Math.PI / 180
+  const φ2 = lat2 * Math.PI / 180
+  const Δφ = (lat2 - lat1) * Math.PI / 180
+  const Δλ = (lon2 - lon1) * Math.PI / 180
+
+  const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+    Math.cos(φ1) * Math.cos(φ2) *
+    Math.sin(Δλ / 2) * Math.sin(Δλ / 2)
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+
+  return R * c
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json()
@@ -35,8 +56,55 @@ export async function POST(req: Request) {
       cleyOrderValue,
       cleyOrderValueType: typeof cleyOrderValue,
       totalProducts: Object.keys(products).length,
-      hasLocation: !!location
+      hasLocation: !!location,
+      locationAccuracy: location?.accuracy,
+      locationTimestamp: location?.timestamp
     });
+
+    // ✅ VALIDATION: Location validation
+    if (!location || !location.lat || !location.lng) {
+      console.error("❌ LOCATION VALIDATION FAILED: Missing location data", {
+        location,
+        timestamp: new Date().toISOString()
+      });
+      return NextResponse.json({
+        success: false,
+        error: 'Ubicación requerida. Por favor, asegúrate de que el GPS esté activado.'
+      }, { status: 400 })
+    }
+
+    // Validate location accuracy
+    if (location.accuracy !== undefined && location.accuracy > MAX_LOCATION_ACCURACY) {
+      console.error("❌ LOCATION VALIDATION FAILED: Poor GPS accuracy", {
+        accuracy: location.accuracy,
+        maxAllowed: MAX_LOCATION_ACCURACY,
+        timestamp: new Date().toISOString(),
+        clientName
+      });
+      return NextResponse.json({
+        success: false,
+        error: `La precisión del GPS es insuficiente (±${Math.round(location.accuracy)}m). Por favor, espera unos segundos para obtener una mejor señal.`
+      }, { status: 400 })
+    }
+
+    // Validate location freshness
+    if (location.timestamp !== undefined) {
+      const locationAge = Date.now() - location.timestamp
+      if (locationAge > MAX_LOCATION_AGE) {
+        console.error("❌ LOCATION VALIDATION FAILED: Stale location", {
+          locationAge,
+          maxAllowed: MAX_LOCATION_AGE,
+          locationTimestamp: location.timestamp,
+          currentTime: Date.now(),
+          timestamp: new Date().toISOString(),
+          clientName
+        });
+        return NextResponse.json({
+          success: false,
+          error: 'La ubicación ha expirado. Por favor, actualiza tu ubicación antes de enviar.'
+        }, { status: 400 })
+      }
+    }
 
     // ✅ VALIDATION: Alert if email looks suspicious
     if (userEmail === 'arturo.elreychiltepin@gmail.com') {
@@ -64,6 +132,41 @@ export async function POST(req: Request) {
         if (clientRow) {
           clientLat = clientRow[1]
           clientLng = clientRow[2]
+        }
+      }
+
+      // ✅ VALIDATION: Validate distance to client (if client location is available)
+      if (clientLat && clientLng) {
+        const clientLatNum = parseFloat(clientLat)
+        const clientLngNum = parseFloat(clientLng)
+        if (!isNaN(clientLatNum) && !isNaN(clientLngNum)) {
+          const distanceToClient = calculateDistance(
+            location.lat,
+            location.lng,
+            clientLatNum,
+            clientLngNum
+          )
+
+          console.log("📍 DISTANCE VALIDATION:", {
+            distance: distanceToClient,
+            maxAllowed: MAX_CLIENT_DISTANCE,
+            clientLocation: { lat: clientLatNum, lng: clientLngNum },
+            userLocation: { lat: location.lat, lng: location.lng },
+            timestamp: new Date().toISOString()
+          })
+
+          if (distanceToClient > MAX_CLIENT_DISTANCE) {
+            console.error("❌ LOCATION VALIDATION FAILED: Too far from client", {
+              distance: distanceToClient,
+              maxAllowed: MAX_CLIENT_DISTANCE,
+              clientName,
+              timestamp: new Date().toISOString()
+            })
+            return NextResponse.json({
+              success: false,
+              error: `Estás demasiado lejos del cliente (${Math.round(distanceToClient)}m). Por favor, acércate a la ubicación del cliente para continuar.`
+            }, { status: 400 })
+          }
         }
       }
 
