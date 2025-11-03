@@ -275,7 +275,7 @@ const PRICES: ProductPrices = {
   'MM': {
     'Chiltepin Molido 50 g': 45,
     'Chiltepin Molido 20 g': 22.5,
-    'Chiltepin Entero 30 g': 45,
+    'Chiltepin Entero 30 g': 40,
     'Salsa Chiltepin El rey 195 ml': 14.5,
     'Salsa Especial El Rey 195 ml': 14.5,
     'Salsa Reina El rey 195 ml': 14.5,
