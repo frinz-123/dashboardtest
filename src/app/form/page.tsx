@@ -19,6 +19,23 @@ const spreadsheetId = process.env.NEXT_PUBLIC_SPREADSHEET_ID
 const sheetName = process.env.NEXT_PUBLIC_SHEET_NAME
 const OVERRIDE_EMAILS = process.env.NEXT_PUBLIC_OVERRIDE_EMAIL?.split(',').map(email => email.trim()) || [];
 
+// Email labels for vendor selection (matching dashboard labels)
+const EMAIL_LABELS: Record<string, string> = {
+  'ventas1productoselrey@gmail.com': 'Ernesto',
+  'ventas2productoselrey@gmail.com': 'Roel',
+  'ventas3productoselrey@gmail.com': 'Lidia',
+  'ventasmztproductoselrey.com@gmail.com': 'Mazatlan',
+  'ventasmochisproductoselrey@gmail.com': 'Mochis',
+  'franzcharbell@gmail.com': 'Franz',
+  'cesar.reyes.ochoa@gmail.com': 'Cesar',
+  'arturo.elreychiltepin@gmail.com': 'Arturo Mty',
+  'alopezelrey@gmail.com': 'Arlyn',
+  'promotoriaelrey@gmail.com': 'Karla',
+  'ventas4productoselrey@gmail.com': 'Reyna',
+  'bodegaelrey034@gmail.com': 'Bodega',
+  'ventas1elrey@gmail.com': 'Ventas1'
+};
+
 // Static list defined once to avoid re-allocating on every render
 const PRODUCTS: string[] = [
   "Chiltepin Molido 50 g",
@@ -702,6 +719,10 @@ export default function FormPage() {
     submit?: string;
   }>({});
   const [isOptimisticSubmit, setIsOptimisticSubmit] = useState(false)
+
+  // Admin override states
+  const [overrideEmail, setOverrideEmail] = useState<string>('')
+  const [overrideDate, setOverrideDate] = useState<string>('')
   
   const throttledLocationUpdate = useRef(
     throttle((location: { lat: number, lng: number, accuracy?: number, timestamp?: number }) => {
@@ -1034,15 +1055,23 @@ export default function FormPage() {
       // ✅ VALIDATION: Use cached email if session email is not available
       const sessionEmail = session?.user?.email;
       const fallbackEmail = OVERRIDE_EMAILS[0];
-      const finalEmail = sessionEmail || cachedEmail || fallbackEmail;
+      const baseEmail = sessionEmail || cachedEmail || fallbackEmail;
+
+      // 🔧 ADMIN OVERRIDE: Use override email if provided by admin user
+      const isAdminOverride = isOverrideEmail(sessionEmail || cachedEmail);
+      const finalEmail = isAdminOverride && overrideEmail ? overrideEmail : baseEmail;
 
       console.log("🔍 EMAIL VALIDATION:", {
         sessionStatus: session ? 'EXISTS' : 'NULL',
         sessionEmail,
         cachedEmail,
         fallbackEmail,
+        baseEmail,
+        isAdminOverride,
+        overrideEmail,
         finalEmail,
         usingCachedEmail: !sessionEmail && !!cachedEmail,
+        usingOverrideEmail: isAdminOverride && !!overrideEmail,
         overrideEmailsArray: OVERRIDE_EMAILS,
         timestamp: new Date().toISOString()
       });
@@ -1050,9 +1079,9 @@ export default function FormPage() {
       // ✅ VALIDATION: Only block if we have no email at all (neither session nor cached)
       if (!finalEmail) {
         console.error("⚠️ CRITICAL: No email available (session, cached, or override)");
-        setValidationErrors(prev => ({ 
-          ...prev, 
-          submit: 'No se pudo determinar el usuario. Por favor, recarga la página e inicia sesión.' 
+        setValidationErrors(prev => ({
+          ...prev,
+          submit: 'No se pudo determinar el usuario. Por favor, recarga la página e inicia sesión.'
         }));
         setIsSubmitting(false);
         return;
@@ -1066,11 +1095,30 @@ export default function FormPage() {
         console.log("📱 OFFLINE MODE: Using cached email for submission:", cachedEmail);
       }
 
+      // Log if admin is using override email
+      if (isAdminOverride && overrideEmail) {
+        console.log("👤 ADMIN OVERRIDE: Using override email for submission:", overrideEmail);
+      }
+
       // 🔧 FIX: Use snapshot client for consistent calculation
       const clientCode = getClientCode(stateSnapshot.selectedClient);
       const isCley = clientCode.toUpperCase() === 'CLEY';
       const cleyValue = isCley ? stateSnapshot.cleyOrderValue : null;
-      const submittedAt = new Date().toISOString();
+
+      // 🔧 ADMIN OVERRIDE: Use override date if provided by admin user
+      const baseDate = new Date().toISOString();
+      const submittedAt = isAdminOverride && overrideDate
+        ? new Date(overrideDate).toISOString()
+        : baseDate;
+
+      // Log if admin is using override date
+      if (isAdminOverride && overrideDate) {
+        console.log("📅 ADMIN OVERRIDE: Using override date for submission:", {
+          overrideDate,
+          submittedAt,
+          baseDate
+        });
+      }
 
       const submissionTotal = Object.entries(stateSnapshot.quantities).reduce((sum, [product, qty]) => {
         const price = getProductPrice(clientCode, product);
@@ -1115,6 +1163,8 @@ export default function FormPage() {
       setFilteredClients([]);
       setTotal('0.00');
       setCleyOrderValue("1");
+      setOverrideEmail(''); // Reset admin override email
+      setOverrideDate(''); // Reset admin override date
       setKey(prev => prev + 1);
       setTimeout(() => setIsSubmitting(false), 150);
 
@@ -1333,6 +1383,69 @@ export default function FormPage() {
           </p>
         )}
       </div>
+
+      {/* Admin Override Section - Only visible for admin users */}
+      {isOverrideEmail(session?.user?.email || cachedEmail) && (
+        <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg mb-3 p-4 border-2 border-purple-200">
+          <div className="flex items-center mb-3">
+            <div className="w-2 h-2 bg-purple-600 rounded-full mr-2 animate-pulse"></div>
+            <h2 className="text-purple-900 font-bold text-sm">MODO ADMIN - Override Controls</h2>
+          </div>
+
+          {/* Email Selector */}
+          <div className="mb-3">
+            <label className="block text-gray-700 font-semibold text-xs mb-2">
+              Seleccionar Vendedor
+            </label>
+            <select
+              value={overrideEmail}
+              onChange={(e) => {
+                haptics.light();
+                setOverrideEmail(e.target.value);
+              }}
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white"
+            >
+              <option value="">Usar email de sesión actual</option>
+              {Object.entries(EMAIL_LABELS).map(([email, label]) => (
+                <option key={email} value={email}>
+                  {label} ({email})
+                </option>
+              ))}
+            </select>
+            {overrideEmail && (
+              <p className="text-xs text-purple-600 mt-1">
+                ✓ Email override activo: {EMAIL_LABELS[overrideEmail] || overrideEmail}
+              </p>
+            )}
+          </div>
+
+          {/* Date Picker */}
+          <div>
+            <label className="block text-gray-700 font-semibold text-xs mb-2">
+              Seleccionar Fecha
+            </label>
+            <input
+              type="datetime-local"
+              value={overrideDate}
+              onChange={(e) => {
+                haptics.light();
+                setOverrideDate(e.target.value);
+              }}
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white"
+            />
+            {overrideDate && (
+              <p className="text-xs text-purple-600 mt-1">
+                ✓ Fecha override activa: {new Date(overrideDate).toLocaleString('es-MX')}
+              </p>
+            )}
+            {!overrideDate && (
+              <p className="text-xs text-gray-500 mt-1">
+                Si no seleccionas una fecha, se usará la fecha y hora actual
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
         <h2 className="text-gray-700 font-semibold text-xs mb-3">Ubicación Actual</h2>
