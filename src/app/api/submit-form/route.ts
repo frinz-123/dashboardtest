@@ -48,15 +48,35 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    const { clientName, products, total, location, clientCode, userEmail, cleyOrderValue } = body
+    const {
+      clientName,
+      products,
+      total,
+      location,
+      clientCode,
+      userEmail,
+      cleyOrderValue,
+      actorEmail,
+      isAdminOverride,
+      overrideTargetEmail
+    } = body
+
+    const adminEmailForValidation = actorEmail ?? userEmail ?? null
+    const isAdmin = isOverrideEmail(adminEmailForValidation)
 
     // ✅ VALIDATION: Enhanced logging for email tracking
     console.log("🔍 FORM SUBMISSION RECEIVED:", {
       timestamp: new Date().toISOString(),
       clientName,
       clientCode,
-      userEmail: userEmail,
+      userEmail,
       userEmailType: typeof userEmail,
+      actorEmail,
+      actorEmailType: typeof actorEmail,
+      adminEmailForValidation,
+      adminEmailIsOverride: isAdmin,
+      isAdminOverrideRequested: !!isAdminOverride,
+      overrideTargetEmail,
       requestHeaders: {
         'user-agent': req.headers.get('user-agent'),
         'referer': req.headers.get('referer')
@@ -81,9 +101,6 @@ export async function POST(req: Request) {
       }, { status: 400 })
     }
 
-    // Check if user is admin with override permissions
-    const isAdmin = isOverrideEmail(userEmail);
-
     // Validate location accuracy (skip for admin override users)
     if (!isAdmin && location.accuracy !== undefined && location.accuracy > MAX_LOCATION_ACCURACY) {
       console.error("❌ LOCATION VALIDATION FAILED: Poor GPS accuracy", {
@@ -105,6 +122,7 @@ export async function POST(req: Request) {
         accuracy: location.accuracy,
         maxAllowed: MAX_LOCATION_ACCURACY,
         userEmail,
+        adminEmailForValidation,
         clientName,
         timestamp: new Date().toISOString()
       });
@@ -138,6 +156,7 @@ export async function POST(req: Request) {
           locationAge,
           maxAllowed: MAX_LOCATION_AGE,
           userEmail,
+          adminEmailForValidation,
           clientName,
           timestamp: new Date().toISOString()
         });
@@ -214,6 +233,7 @@ export async function POST(req: Request) {
               distance: distanceToClient,
               maxAllowed: MAX_CLIENT_DISTANCE,
               userEmail,
+              adminEmailForValidation,
               clientName,
               timestamp: new Date().toISOString()
             });

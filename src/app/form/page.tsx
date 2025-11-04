@@ -1059,6 +1059,7 @@ export default function FormPage() {
 
       // 🔧 ADMIN OVERRIDE: Use override email if provided by admin user
       const isAdminOverride = isOverrideEmail(sessionEmail || cachedEmail);
+      const actorEmail = sessionEmail || cachedEmail || null;
       const finalEmail = isAdminOverride && overrideEmail ? overrideEmail : baseEmail;
 
       console.log("🔍 EMAIL VALIDATION:", {
@@ -1067,6 +1068,7 @@ export default function FormPage() {
         cachedEmail,
         fallbackEmail,
         baseEmail,
+        actorEmail,
         isAdminOverride,
         overrideEmail,
         finalEmail,
@@ -1144,6 +1146,9 @@ export default function FormPage() {
         total: submissionTotal,
         location: currentLocation,
         userEmail: finalEmail,
+        actorEmail,
+        isAdminOverride: isAdminOverride && !!overrideEmail,
+        overrideTargetEmail: overrideEmail || null,
         date: submittedAt,
         cleyOrderValue: cleyValue
       };
