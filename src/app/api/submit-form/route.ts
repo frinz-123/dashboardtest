@@ -16,10 +16,18 @@ const auth = new google.auth.GoogleAuth({
 
 const spreadsheetId = '1a0jZVdKFNWTHDsM-68LT5_OLPMGejAKs9wfCxYqqe_g'
 
+// Admin override emails - users who can bypass GPS validation
+const OVERRIDE_EMAILS = process.env.NEXT_PUBLIC_OVERRIDE_EMAIL?.split(',').map(email => email.trim()) || [];
+
 // Location validation constants
 const MAX_LOCATION_ACCURACY = 100 // meters - reject if GPS accuracy is worse than this
 const MAX_LOCATION_AGE = 30000 // 30 seconds in milliseconds - reject if location is older than this
 const MAX_CLIENT_DISTANCE = 450 // meters - maximum allowed distance to client
+
+// Helper function to check if user is an admin with override permissions
+function isOverrideEmail(email: string | null | undefined): boolean {
+  return email ? OVERRIDE_EMAILS.includes(email) : false;
+}
 
 // Calculate distance between two coordinates using Haversine formula
 function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -73,13 +81,17 @@ export async function POST(req: Request) {
       }, { status: 400 })
     }
 
-    // Validate location accuracy
-    if (location.accuracy !== undefined && location.accuracy > MAX_LOCATION_ACCURACY) {
+    // Check if user is admin with override permissions
+    const isAdmin = isOverrideEmail(userEmail);
+
+    // Validate location accuracy (skip for admin override users)
+    if (!isAdmin && location.accuracy !== undefined && location.accuracy > MAX_LOCATION_ACCURACY) {
       console.error("❌ LOCATION VALIDATION FAILED: Poor GPS accuracy", {
         accuracy: location.accuracy,
         maxAllowed: MAX_LOCATION_ACCURACY,
         timestamp: new Date().toISOString(),
-        clientName
+        clientName,
+        userEmail
       });
       return NextResponse.json({
         success: false,
@@ -87,8 +99,19 @@ export async function POST(req: Request) {
       }, { status: 400 })
     }
 
-    // Validate location freshness
-    if (location.timestamp !== undefined) {
+    // Log if admin bypassed GPS accuracy check
+    if (isAdmin && location.accuracy !== undefined && location.accuracy > MAX_LOCATION_ACCURACY) {
+      console.log("👤 ADMIN OVERRIDE: Bypassing GPS accuracy check", {
+        accuracy: location.accuracy,
+        maxAllowed: MAX_LOCATION_ACCURACY,
+        userEmail,
+        clientName,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    // Validate location freshness (skip for admin override users)
+    if (!isAdmin && location.timestamp !== undefined) {
       const locationAge = Date.now() - location.timestamp
       if (locationAge > MAX_LOCATION_AGE) {
         console.error("❌ LOCATION VALIDATION FAILED: Stale location", {
@@ -97,12 +120,27 @@ export async function POST(req: Request) {
           locationTimestamp: location.timestamp,
           currentTime: Date.now(),
           timestamp: new Date().toISOString(),
-          clientName
+          clientName,
+          userEmail
         });
         return NextResponse.json({
           success: false,
           error: 'La ubicación ha expirado. Por favor, actualiza tu ubicación antes de enviar.'
         }, { status: 400 })
+      }
+    }
+
+    // Log if admin bypassed location age check
+    if (isAdmin && location.timestamp !== undefined) {
+      const locationAge = Date.now() - location.timestamp
+      if (locationAge > MAX_LOCATION_AGE) {
+        console.log("👤 ADMIN OVERRIDE: Bypassing location age check", {
+          locationAge,
+          maxAllowed: MAX_LOCATION_AGE,
+          userEmail,
+          clientName,
+          timestamp: new Date().toISOString()
+        });
       }
     }
 
@@ -155,17 +193,30 @@ export async function POST(req: Request) {
             timestamp: new Date().toISOString()
           })
 
-          if (distanceToClient > MAX_CLIENT_DISTANCE) {
+          // Validate distance to client (skip for admin override users)
+          if (!isAdmin && distanceToClient > MAX_CLIENT_DISTANCE) {
             console.error("❌ LOCATION VALIDATION FAILED: Too far from client", {
               distance: distanceToClient,
               maxAllowed: MAX_CLIENT_DISTANCE,
               clientName,
+              userEmail,
               timestamp: new Date().toISOString()
             })
             return NextResponse.json({
               success: false,
               error: `Estás demasiado lejos del cliente (${Math.round(distanceToClient)}m). Por favor, acércate a la ubicación del cliente para continuar.`
             }, { status: 400 })
+          }
+
+          // Log if admin bypassed distance check
+          if (isAdmin && distanceToClient > MAX_CLIENT_DISTANCE) {
+            console.log("👤 ADMIN OVERRIDE: Bypassing distance validation", {
+              distance: distanceToClient,
+              maxAllowed: MAX_CLIENT_DISTANCE,
+              userEmail,
+              clientName,
+              timestamp: new Date().toISOString()
+            });
           }
         }
       }
