@@ -767,6 +767,32 @@ export default function FormPage() {
 
   const orderDetails = useMemo(() => calculateOrderDetails(), [selectedClient, quantities])
 
+  // 🔍 DIAGNOSTIC: Calculate and log button disabled state
+  const isButtonDisabled = useMemo(() => {
+    const disabled = !selectedClient ||
+      !currentLocation ||
+      isSubmitting ||
+      isOptimisticSubmit ||
+      (!session?.user?.email && !cachedEmail) ||
+      (locationAlert !== null && !isOverrideEmail(session?.user?.email || cachedEmail));
+
+    console.log('🔘 BUTTON STATE CHANGED:', {
+      disabled,
+      reasons: {
+        noClient: !selectedClient,
+        noLocation: !currentLocation,
+        isSubmitting,
+        isOptimisticSubmit,
+        noEmail: (!session?.user?.email && !cachedEmail),
+        locationAlert: locationAlert !== null,
+        locationAlertValue: locationAlert,
+        isOverride: isOverrideEmail(session?.user?.email || cachedEmail)
+      },
+      timestamp: new Date().toISOString()
+    });
+
+    return disabled;
+  }, [selectedClient, currentLocation, isSubmitting, isOptimisticSubmit, session?.user?.email, cachedEmail, locationAlert]);
 
   // Add a debounced search handler
   const debouncedSearch = useRef(
@@ -1143,6 +1169,19 @@ export default function FormPage() {
 
   // 🔧 FIXED: Pessimistic update - only clear form AFTER successful submission
   const handleSubmit = async () => {
+    // 🔍 DIAGNOSTIC: Log button click event
+    console.log('🔘 BUTTON CLICKED - handleSubmit called:', {
+      timestamp: new Date().toISOString(),
+      hasSelectedClient: !!selectedClient,
+      hasCurrentLocation: !!currentLocation,
+      isSubmitting,
+      isOptimisticSubmit,
+      hasSession: !!session?.user?.email,
+      hasCachedEmail: !!cachedEmail,
+      locationAlert,
+      currentLocationAge: currentLocation?.timestamp ? Date.now() - currentLocation.timestamp : null
+    });
+
     haptics.medium(); // Haptic feedback on submit
     setValidationErrors({});
 
@@ -1160,12 +1199,35 @@ export default function FormPage() {
 
     try {
       if (!selectedClient) {
+        console.error('❌ VALIDATION: No client selected');
         setValidationErrors(prev => ({ ...prev, client: 'Selecciona un cliente' }));
         return;
       }
 
       if (!currentLocation) {
+        console.error('❌ VALIDATION: No location available');
         setValidationErrors(prev => ({ ...prev, location: 'No se pudo obtener la ubicación' }));
+        return;
+      }
+
+      // 🔧 LOCATION STALENESS CHECK: Warn if location is getting old
+      const locationAge = currentLocation.timestamp ? Date.now() - currentLocation.timestamp : 0;
+      console.log('📍 LOCATION AGE CHECK:', {
+        locationAge,
+        locationAgeSec: Math.round(locationAge / 1000),
+        maxAllowedMs: MAX_LOCATION_AGE,
+        isStale: locationAge > MAX_LOCATION_AGE,
+        accuracy: currentLocation.accuracy,
+        timestamp: new Date().toISOString()
+      });
+
+      // 🔧 AUTO-REFRESH: If location is older than 25 seconds, it might fail on backend (30s limit)
+      if (locationAge > 25000) {
+        console.warn('⚠️ LOCATION TOO OLD: Will likely fail backend validation (25s+)');
+        setValidationErrors(prev => ({
+          ...prev,
+          location: `Ubicación desactualizada (${Math.round(locationAge / 1000)}s). El mapa se está actualizando automáticamente, espera unos segundos.`
+        }));
         return;
       }
 
@@ -1298,7 +1360,11 @@ export default function FormPage() {
       );
 
     } catch (error: any) {
-      console.error('❌ FINAL SUBMISSION FAILURE:', error);
+      console.error('❌ FINAL SUBMISSION FAILURE:', {
+        error: error.message,
+        stack: error.stack,
+        timestamp: new Date().toISOString()
+      });
       haptics.error();
 
       // Provide specific error message
@@ -1312,8 +1378,20 @@ export default function FormPage() {
       console.log('📝 KEEPING FORM STATE for retry');
 
     } finally {
+      // 🔧 SAFETY: Ensure states are always reset, even if error occurs
+      console.log('🔄 FINALLY BLOCK: Resetting submission states');
       setIsSubmitting(false);
       setIsOptimisticSubmit(false);
+
+      // 🔧 SAFETY: Double-check states are reset after a short delay
+      setTimeout(() => {
+        console.log('🔍 POST-SUBMIT STATE CHECK:', {
+          isSubmitting,
+          isOptimisticSubmit,
+          hasValidationErrors: Object.keys(validationErrors).length > 0,
+          timestamp: new Date().toISOString()
+        });
+      }, 100);
     }
   };
 
@@ -1657,19 +1735,23 @@ export default function FormPage() {
       <div className={`${Object.values(quantities).some(q => q > 0) ? 'mb-80' : 'mb-3'}`}>
         <button
           className={`w-full py-3 rounded-lg font-medium transition-all duration-300 disabled:cursor-not-allowed transform hover:scale-[1.02] active:scale-[0.98] ${
-            isOptimisticSubmit 
-              ? 'bg-green-500 text-white shadow-lg' 
+            isOptimisticSubmit
+              ? 'bg-green-500 text-white shadow-lg'
               : 'bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50'
           }`}
-        onClick={handleSubmit}
-        disabled={
-          !selectedClient || 
-          !currentLocation || 
-          isSubmitting || 
-          isOptimisticSubmit ||
-          (!session?.user?.email && !cachedEmail) ||  // ✅ UPDATED: Allow if we have cached email
-          (locationAlert !== null && !isOverrideEmail(session?.user?.email || cachedEmail))
-        }
+        onClick={(e) => {
+          console.log('🖱️ BUTTON CLICK EVENT:', {
+            disabled: isButtonDisabled,
+            timestamp: new Date().toISOString(),
+            target: e.currentTarget.disabled
+          });
+          if (!isButtonDisabled) {
+            handleSubmit();
+          } else {
+            console.error('❌ BUTTON CLICK BLOCKED - Button is disabled');
+          }
+        }}
+        disabled={isButtonDisabled}
       >
         {isSubmitting ? (
           <div className="flex items-center justify-center">
