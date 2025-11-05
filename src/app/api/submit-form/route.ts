@@ -24,6 +24,20 @@ const MAX_LOCATION_ACCURACY = 100 // meters - reject if GPS accuracy is worse th
 const MAX_LOCATION_AGE = 30000 // 30 seconds in milliseconds - reject if location is older than this
 const MAX_CLIENT_DISTANCE = 450 // meters - maximum allowed distance to client
 
+// 🔧 DEDUPLICATION: In-memory cache for recent submissions (expires after 2 minutes)
+const recentSubmissions = new Map<string, { timestamp: number; data: any }>();
+const DEDUPLICATION_WINDOW = 120000; // 2 minutes
+
+// Clean up old entries periodically
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, entry] of recentSubmissions.entries()) {
+    if (now - entry.timestamp > DEDUPLICATION_WINDOW) {
+      recentSubmissions.delete(id);
+    }
+  }
+}, 60000); // Clean every minute
+
 // Helper function to check if user is an admin with override permissions
 function isOverrideEmail(email: string | null | undefined): boolean {
   return email ? OVERRIDE_EMAILS.includes(email) : false;
@@ -46,6 +60,9 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
 }
 
 export async function POST(req: Request) {
+  const startTime = Date.now();
+  let submissionId: string | undefined;
+
   try {
     const body = await req.json()
     const {
@@ -58,8 +75,33 @@ export async function POST(req: Request) {
       cleyOrderValue,
       actorEmail,
       isAdminOverride,
-      overrideTargetEmail
+      overrideTargetEmail,
+      submissionId: clientSubmissionId,
+      attemptNumber
     } = body
+
+    submissionId = clientSubmissionId;
+
+    // 🔧 DEDUPLICATION: Check if we've seen this submission recently
+    if (submissionId && recentSubmissions.has(submissionId)) {
+      const cached = recentSubmissions.get(submissionId);
+      const age = Date.now() - cached!.timestamp;
+
+      console.log("🔄 DUPLICATE SUBMISSION DETECTED:", {
+        submissionId,
+        age,
+        clientName,
+        timestamp: new Date().toISOString()
+      });
+
+      // Return the cached result
+      return NextResponse.json({
+        success: true,
+        duplicate: true,
+        message: 'Pedido ya procesado (duplicado)',
+        data: cached!.data
+      });
+    }
 
     const adminEmailForValidation = actorEmail ?? userEmail ?? null
     const isAdmin = isOverrideEmail(adminEmailForValidation)
@@ -67,6 +109,8 @@ export async function POST(req: Request) {
     // ✅ VALIDATION: Enhanced logging for email tracking
     console.log("🔍 FORM SUBMISSION RECEIVED:", {
       timestamp: new Date().toISOString(),
+      submissionId,
+      attemptNumber: attemptNumber || 1,
       clientName,
       clientCode,
       userEmail,
@@ -389,19 +433,79 @@ export async function POST(req: Request) {
         },
       })
 
-      return NextResponse.json({ success: true, data: response.data })
+      const processingTime = Date.now() - startTime;
+      const successData = { success: true, data: response.data, processingTime };
+
+      // 🔧 DEDUPLICATION: Cache successful submission
+      if (submissionId) {
+        recentSubmissions.set(submissionId, {
+          timestamp: Date.now(),
+          data: successData
+        });
+      }
+
+      console.log("✅ SUBMISSION SUCCESSFUL:", {
+        submissionId,
+        clientName,
+        processingTime,
+        timestamp: new Date().toISOString()
+      });
+
+      return NextResponse.json(successData);
+
     } catch (error) {
-      console.error('Permission error:', error)
-      return NextResponse.json({ 
-        success: false, 
-        error: 'No tienes permiso para acceder a la hoja de cálculo. Por favor, verifica que la cuenta de servicio tenga acceso.' 
-      }, { status: 403 })
+      console.error('❌ SHEETS API ERROR:', {
+        submissionId,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date().toISOString()
+      });
+
+      // More specific error handling
+      if (error instanceof Error && error.message.includes('permission')) {
+        return NextResponse.json({
+          success: false,
+          error: 'Error de permisos. Contacta al administrador.'
+        }, { status: 403 });
+      }
+
+      return NextResponse.json({
+        success: false,
+        error: 'Error al guardar en la base de datos. Por favor intenta de nuevo.'
+      }, { status: 500 });
     }
   } catch (error) {
-    console.error('Error submitting form:', error)
-    return NextResponse.json({ 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Error al enviar el formulario. Por favor intenta de nuevo.' 
-    }, { status: 500 })
+    const processingTime = Date.now() - startTime;
+
+    console.error('❌ SUBMISSION ERROR:', {
+      submissionId,
+      error: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      processingTime,
+      timestamp: new Date().toISOString()
+    });
+
+    // Provide specific error messages based on error type
+    let errorMessage = 'Error al enviar el formulario. Por favor intenta de nuevo.';
+    let statusCode = 500;
+
+    if (error instanceof Error) {
+      if (error.message.includes('ubicación')) {
+        errorMessage = error.message;
+        statusCode = 400;
+      } else if (error.message.includes('GPS') || error.message.includes('precisión')) {
+        errorMessage = error.message;
+        statusCode = 400;
+      } else if (error.message.includes('lejos')) {
+        errorMessage = error.message;
+        statusCode = 400;
+      }
+    }
+
+    return NextResponse.json({
+      success: false,
+      error: errorMessage,
+      submissionId,
+      processingTime
+    }, { status: statusCode });
   }
 } 
