@@ -1054,7 +1054,94 @@ export default function FormPage() {
     return Object.keys(errors).length === 0
   }
 
-  // Modify handleSubmit with better error handling
+  // 🔧 RETRY MECHANISM: Exponential backoff retry for network resilience
+  const submitWithRetry = async (payload: any, maxRetries = 3): Promise<any> => {
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        console.log(`📤 SUBMISSION ATTEMPT ${attempt + 1}/${maxRetries}:`, {
+          timestamp: new Date().toISOString(),
+          attempt: attempt + 1,
+          clientName: payload.clientName
+        });
+
+        // Create abort controller with timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
+        const response = await fetch('/api/submit-form', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            ...payload,
+            attemptNumber: attempt + 1,
+            submissionId: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+          }),
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        // Parse response
+        const data = await response.json();
+
+        // If validation error (4xx), don't retry - it won't help
+        if (response.status >= 400 && response.status < 500) {
+          console.error(`❌ VALIDATION ERROR (no retry):`, {
+            status: response.status,
+            error: data.error,
+            attempt: attempt + 1
+          });
+          throw new Error(data.error || 'Error de validación');
+        }
+
+        // If server error (5xx) or network error, retry
+        if (!response.ok) {
+          throw new Error(data.error || `Server error: ${response.status}`);
+        }
+
+        // Success!
+        console.log(`✅ SUBMISSION SUCCESS on attempt ${attempt + 1}:`, {
+          timestamp: new Date().toISOString(),
+          attempt: attempt + 1,
+          clientName: payload.clientName
+        });
+
+        return data;
+
+      } catch (error: any) {
+        lastError = error;
+
+        // If it's an abort error (timeout)
+        if (error.name === 'AbortError') {
+          console.error(`⏱️ TIMEOUT on attempt ${attempt + 1}/${maxRetries}`);
+          lastError = new Error('La solicitud tardó demasiado. Reintentando...');
+        } else {
+          console.error(`❌ ERROR on attempt ${attempt + 1}/${maxRetries}:`, {
+            error: error.message,
+            type: error.name
+          });
+        }
+
+        // If this was the last attempt, throw the error
+        if (attempt === maxRetries - 1) {
+          throw lastError;
+        }
+
+        // Wait before retrying with exponential backoff
+        const waitTime = Math.min(1000 * Math.pow(2, attempt), 8000); // Max 8 seconds
+        console.log(`⏳ Waiting ${waitTime}ms before retry ${attempt + 2}...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+      }
+    }
+
+    throw lastError || new Error('Error desconocido al enviar el pedido');
+  };
+
+  // 🔧 FIXED: Pessimistic update - only clear form AFTER successful submission
   const handleSubmit = async () => {
     haptics.medium(); // Haptic feedback on submit
     setValidationErrors({});
@@ -1067,6 +1154,8 @@ export default function FormPage() {
       total,
       filteredClients: [...filteredClients],
       cleyOrderValue,
+      overrideEmail,
+      overrideDate,
     };
 
     try {
@@ -1113,7 +1202,6 @@ export default function FormPage() {
           ...prev,
           submit: 'No se pudo determinar el usuario. Por favor, recarga la página e inicia sesión.'
         }));
-        setIsSubmitting(false);
         return;
       }
 
@@ -1168,7 +1256,7 @@ export default function FormPage() {
       });
 
       const submissionPayload = {
-        clientName: stateSnapshot.selectedClient, // 🔧 FIX: Use snapshot client
+        clientName: stateSnapshot.selectedClient,
         clientCode,
         products: stateSnapshot.quantities,
         total: submissionTotal,
@@ -1181,14 +1269,15 @@ export default function FormPage() {
         cleyOrderValue: cleyValue
       };
 
-      const responsePromise = fetch('/api/submit-form', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(submissionPayload),
-      });
+      // 🔧 NEW: Use retry mechanism with timeout
+      const data = await submitWithRetry(submissionPayload);
 
+      if (!data.success) {
+        throw new Error(data.error || 'Error al enviar el pedido');
+      }
+
+      // ✅ SUCCESS: Only clear form AFTER confirmed success
+      console.log('✅ CLEARING FORM after successful submission');
       setSelectedClient('');
       setSearchTerm('');
       setDebouncedSearchTerm('');
@@ -1196,43 +1285,35 @@ export default function FormPage() {
       setFilteredClients([]);
       setTotal('0.00');
       setCleyOrderValue("1");
-      setOverrideEmail(''); // Reset admin override email
-      setOverrideDate(''); // Reset admin override date
+      setOverrideEmail('');
+      setOverrideDate('');
       setKey(prev => prev + 1);
-      setTimeout(() => setIsSubmitting(false), 150);
 
-      // Show success toast immediately (optimistically)
-      setTimeout(() => {
-        haptics.success();
-        success(
-          'Pedido enviado',
-          'Tu pedido ha sido registrado exitosamente y será procesado pronto.',
-          2000  // Toast disappears after 2 seconds
-        );
-      }, 500);
+      // Show success feedback
+      haptics.success();
+      success(
+        'Pedido enviado',
+        'Tu pedido ha sido registrado exitosamente.',
+        3000
+      );
 
-      const response = await responsePromise;
-      const data = await response.json();
+    } catch (error: any) {
+      console.error('❌ FINAL SUBMISSION FAILURE:', error);
+      haptics.error();
 
-      if (!response.ok || !data.success) {
-        throw new Error(data.error || 'Error al enviar el pedido');
-      }
+      // Provide specific error message
+      const errorMessage = error.message || 'Error al enviar el pedido. Por favor, intenta de nuevo.';
+      setValidationErrors(prev => ({
+        ...prev,
+        submit: errorMessage
+      }));
 
-    } catch (error) {
-      console.error('Error submitting form:', error);
-      haptics.error(); // Error haptic
-      setValidationErrors(prev => ({ ...prev, submit: 'Error al enviar el pedido' }));
-      setSelectedClient(stateSnapshot.selectedClient);
-      setSearchTerm(stateSnapshot.searchTerm);
-      setDebouncedSearchTerm(stateSnapshot.debouncedSearchTerm);
-      setQuantities(stateSnapshot.quantities);
-      setTotal(stateSnapshot.total);
-      setFilteredClients(stateSnapshot.filteredClients);
-      setCleyOrderValue(stateSnapshot.cleyOrderValue);
-      setKey(prev => prev + 1);
+      // Don't restore state - keep form as is so user can retry
+      console.log('📝 KEEPING FORM STATE for retry');
+
     } finally {
       setIsSubmitting(false);
-      setTimeout(() => setIsOptimisticSubmit(false), 300);
+      setIsOptimisticSubmit(false);
     }
   };
 
