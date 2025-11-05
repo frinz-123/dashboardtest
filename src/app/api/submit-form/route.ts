@@ -21,7 +21,7 @@ const OVERRIDE_EMAILS = process.env.NEXT_PUBLIC_OVERRIDE_EMAIL?.split(',').map(e
 
 // Location validation constants
 const MAX_LOCATION_ACCURACY = 100 // meters - reject if GPS accuracy is worse than this
-const MAX_LOCATION_AGE = 30000 // 30 seconds in milliseconds - reject if location is older than this
+const MAX_LOCATION_AGE = 90000 // 90 seconds in milliseconds - reject if location is older than this
 const MAX_CLIENT_DISTANCE = 450 // meters - maximum allowed distance to client
 
 // 🔧 DEDUPLICATION: In-memory cache for recent submissions (expires after 2 minutes)
@@ -106,6 +106,8 @@ export async function POST(req: Request) {
     const adminEmailForValidation = actorEmail ?? userEmail ?? null
     const isAdmin = isOverrideEmail(adminEmailForValidation)
 
+    const locationAge = location?.timestamp ? Date.now() - location.timestamp : null;
+
     // ✅ VALIDATION: Enhanced logging for email tracking
     console.log("🔍 FORM SUBMISSION RECEIVED:", {
       timestamp: new Date().toISOString(),
@@ -130,7 +132,11 @@ export async function POST(req: Request) {
       totalProducts: Object.keys(products).length,
       hasLocation: !!location,
       locationAccuracy: location?.accuracy,
-      locationTimestamp: location?.timestamp
+      locationTimestamp: location?.timestamp,
+      locationAgeMs: locationAge,
+      locationAgeSeconds: locationAge !== null ? Number((locationAge / 1000).toFixed(1)) : null,
+      maxAllowedLocationAgeMs: MAX_LOCATION_AGE,
+      isAdminOverrideEffective: isAdmin
     });
 
     // ✅ VALIDATION: Location validation

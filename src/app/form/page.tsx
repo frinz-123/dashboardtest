@@ -66,7 +66,7 @@ const PRODUCTS: string[] = [
 ]
 
 const MIN_MOVEMENT_THRESHOLD = 5; // Align with map for precise updates
-const MAX_LOCATION_AGE = 30000; // 30 seconds in milliseconds
+const MAX_LOCATION_AGE = 90000; // 90 seconds in milliseconds
 const MAX_CLIENT_DISTANCE = 450; // Maximum allowed distance to client in meters
 const ARCHIVE_MARKER = 'archivado no usar';
 
@@ -1168,6 +1168,22 @@ export default function FormPage() {
         setValidationErrors(prev => ({ ...prev, location: 'No se pudo obtener la ubicación' }));
         return;
       }
+
+      const locationTimestamp = currentLocation.timestamp ?? Date.now();
+      const locationAge = Date.now() - locationTimestamp;
+
+      console.log('🛰️ LOCATION SNAPSHOT:', {
+        lat: currentLocation.lat,
+        lng: currentLocation.lng,
+        accuracy: currentLocation.accuracy,
+        timestamp: currentLocation.timestamp,
+        hasTimestamp: currentLocation.timestamp !== undefined,
+        ageMs: locationAge,
+        ageSeconds: Number((locationAge / 1000).toFixed(1)),
+        maxAllowedAgeMs: MAX_LOCATION_AGE,
+        exceedsMaxAge: locationAge > MAX_LOCATION_AGE,
+        submittedAt: new Date().toISOString()
+      });
 
       // ✅ VALIDATION: Use cached email if session email is not available
       const sessionEmail = session?.user?.email;
