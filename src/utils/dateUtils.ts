@@ -26,9 +26,12 @@ export function getWeekDates(date = new Date()) {
   const { periodStartDate } = getCurrentPeriodInfo(date);
   const daysSinceStart = Math.floor((date.getTime() - periodStartDate.getTime()) / (1000 * 60 * 60 * 24));
   const weekStartOffset = daysSinceStart - (daysSinceStart % 7);
-  
+
   const weekStart = new Date(periodStartDate.getTime() + weekStartOffset * 24 * 60 * 60 * 1000);
+  weekStart.setHours(0, 0, 0, 0);
+
   const weekEnd = new Date(weekStart.getTime() + 6 * 24 * 60 * 60 * 1000);
+  weekEnd.setHours(23, 59, 59, 999);
 
   return { weekStart, weekEnd };
 }
