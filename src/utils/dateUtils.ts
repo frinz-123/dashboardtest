@@ -37,16 +37,14 @@ export function getCurrentPeriodInfo(date = new Date()) {
 }
 
 export function getWeekDates(date = new Date()) {
-  const { periodStartDate, weekInPeriod } = getCurrentPeriodInfo(date);
+  const { periodStartDate } = getCurrentPeriodInfo(date);
+  const daysSinceStart = Math.floor((date.getTime() - periodStartDate.getTime()) / (1000 * 60 * 60 * 24));
+  const weekStartOffset = daysSinceStart - (daysSinceStart % 7);
 
-  // Calculate week start based on which week we're in within the period
-  const weekStart = new Date(periodStartDate);
-  weekStart.setDate(weekStart.getDate() + (weekInPeriod - 1) * DAYS_PER_WEEK);
+  const weekStart = new Date(periodStartDate.getTime() + weekStartOffset * 24 * 60 * 60 * 1000);
   weekStart.setHours(0, 0, 0, 0);
 
-  // Week end is 6 days after week start (inclusive of 7 days total)
-  const weekEnd = new Date(weekStart);
-  weekEnd.setDate(weekEnd.getDate() + 6);
+  const weekEnd = new Date(weekStart.getTime() + 6 * 24 * 60 * 60 * 1000);
   weekEnd.setHours(23, 59, 59, 999);
 
   return { weekStart, weekEnd };
