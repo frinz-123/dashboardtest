@@ -1,17 +1,31 @@
-const PERIOD_START_2024 = new Date('2024-10-05');
+// Create period start at local midnight, not UTC
+const PERIOD_START_2024 = new Date(2024, 9, 5); // October 5, 2024 (month is 0-indexed)
 const WEEKS_PER_PERIOD = 4;
 const DAYS_PER_WEEK = 7;
 
-export function getCurrentPeriodInfo(date = new Date()) {
-  const timeDiff = date.getTime() - PERIOD_START_2024.getTime();
-  const daysSinceStart = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
-  
-  const periodNumber = Math.floor(daysSinceStart / (WEEKS_PER_PERIOD * DAYS_PER_WEEK)) + 11; // Starting from period 11
-  const weekInPeriod = Math.floor((daysSinceStart % (WEEKS_PER_PERIOD * DAYS_PER_WEEK)) / DAYS_PER_WEEK) + 1;
-  const dayInWeek = (daysSinceStart % DAYS_PER_WEEK) + 1;
+// Helper to normalize a date to local midnight
+function toLocalMidnight(date: Date): Date {
+  const normalized = new Date(date);
+  normalized.setHours(0, 0, 0, 0);
+  return normalized;
+}
 
-  const periodStartDate = new Date(PERIOD_START_2024.getTime() + (periodNumber - 11) * WEEKS_PER_PERIOD * DAYS_PER_WEEK * 24 * 60 * 60 * 1000);
-  const periodEndDate = new Date(periodStartDate.getTime() + WEEKS_PER_PERIOD * DAYS_PER_WEEK * 24 * 60 * 60 * 1000 - 1);
+export function getCurrentPeriodInfo(date = new Date()) {
+  const normalizedDate = toLocalMidnight(date);
+  const normalizedPeriodStart = toLocalMidnight(PERIOD_START_2024);
+
+  const timeDiff = normalizedDate.getTime() - normalizedPeriodStart.getTime();
+  const daysSinceStart = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
+
+  const periodNumber = Math.floor(daysSinceStart / (WEEKS_PER_PERIOD * DAYS_PER_WEEK)) + 11; // Starting from period 11
+  const daysIntoPeriod = daysSinceStart % (WEEKS_PER_PERIOD * DAYS_PER_WEEK);
+  const weekInPeriod = Math.floor(daysIntoPeriod / DAYS_PER_WEEK) + 1;
+  const dayInWeek = (daysIntoPeriod % DAYS_PER_WEEK) + 1;
+
+  const periodStartDate = new Date(normalizedPeriodStart.getTime() + (periodNumber - 11) * WEEKS_PER_PERIOD * DAYS_PER_WEEK * 24 * 60 * 60 * 1000);
+  const periodEndDate = new Date(periodStartDate);
+  periodEndDate.setDate(periodEndDate.getDate() + (WEEKS_PER_PERIOD * DAYS_PER_WEEK) - 1);
+  periodEndDate.setHours(23, 59, 59, 999);
 
   return {
     periodNumber,
@@ -23,12 +37,17 @@ export function getCurrentPeriodInfo(date = new Date()) {
 }
 
 export function getWeekDates(date = new Date()) {
-  const { periodStartDate } = getCurrentPeriodInfo(date);
-  const daysSinceStart = Math.floor((date.getTime() - periodStartDate.getTime()) / (1000 * 60 * 60 * 24));
-  const weekStartOffset = daysSinceStart - (daysSinceStart % 7);
-  
-  const weekStart = new Date(periodStartDate.getTime() + weekStartOffset * 24 * 60 * 60 * 1000);
-  const weekEnd = new Date(weekStart.getTime() + 6 * 24 * 60 * 60 * 1000);
+  const { periodStartDate, weekInPeriod } = getCurrentPeriodInfo(date);
+
+  // Calculate week start based on which week we're in within the period
+  const weekStart = new Date(periodStartDate);
+  weekStart.setDate(weekStart.getDate() + (weekInPeriod - 1) * DAYS_PER_WEEK);
+  weekStart.setHours(0, 0, 0, 0);
+
+  // Week end is 6 days after week start (inclusive of 7 days total)
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekEnd.getDate() + 6);
+  weekEnd.setHours(23, 59, 59, 999);
 
   return { weekStart, weekEnd };
 }
