@@ -110,6 +110,7 @@ function getClientCode(clientName: string): string {
     'chata': 'chata',
     'memin': 'memin',
     'querida': 'queri',
+    'merza': 'merz',
   }
 
   for (const [key, code] of Object.entries(codeMap)) {
@@ -483,18 +484,18 @@ const PRICES: ProductPrices = {
     'Chiltepin Molido 50 g': 48,
     'Chiltepin Molido 20 g': 24,
     'Chiltepin Entero 30 g': 45,
-    'Salsa Chiltepin El rey 195 ml': 16,
-    'Salsa Especial El Rey 195 ml': 16,
-    'Salsa Reina El rey 195 ml': 16,
-    'Salsa Habanera El Rey 195 ml': 16,
+    'Salsa Chiltepin El rey 195 ml': 15,
+    'Salsa Especial El Rey 195 ml': 15,
+    'Salsa Reina El rey 195 ml': 15,
+    'Salsa Habanera El Rey 195 ml': 15,
     'Paquete El Rey': 100,
     'Molinillo El Rey 30 g': 90,
     'Tira Entero': 60,
     'Tira Molido': 55,
-    'Salsa chiltepin Litro': 50,
-    'Salsa Especial Litro': 50,
-    'Salsa Reina Litro': 50,
-    'Salsa Habanera Litro': 50,
+    'Salsa chiltepin Litro': 40,
+    'Salsa Especial Litro': 40,
+    'Salsa Reina Litro': 40,
+    'Salsa Habanera Litro': 40,
     'Michela Mix Tamarindo': 30,
     'Michela Mix Mango': 30,
     'Michela Mix Sandia': 30,
@@ -667,6 +668,23 @@ const PRICES: ProductPrices = {
     'Habanero Molido 50 g': 40,
     'Habanero Molido 20 g': 20,
     'Medio Kilo Chiltepin Entero': 500
+  },
+  'MERZ': {
+    'Chiltepin Molido 50 g': 48,
+    'Chiltepin Molido 20 g': 24,
+    'Chiltepin Entero 30 g': 45,
+    'Salsa Chiltepin El rey 195 ml': 16,
+    'Salsa Especial El Rey 195 ml': 16,
+    'Salsa Reina El rey 195 ml': 16,
+    'Salsa Habanera El Rey 195 ml': 16,
+    'Paquete El Rey': 100,
+    'Molinillo El Rey 30 g': 90,
+    'Tira Entero': 60,
+    'Tira Molido': 55,
+    'Salsa chiltepin Litro': 50,
+    'Salsa Especial Litro': 50,
+    'Salsa Reina Litro': 50,
+    'Salsa Habanera Litro': 50,
   }
 }
 
