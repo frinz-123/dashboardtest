@@ -98,6 +98,8 @@ function getClientCode(clientName: string): string {
     'varela': 'frutvarela',
     '2 box': 'CRED',
     '2box': 'CRED',
+    'valdez': 'CRED',
+    'karnemax': 'MAX',
     'izagar': 'izag',
     'teresita': 'tere',
     'teka': 'tere',
@@ -714,7 +716,34 @@ const PRICES: ProductPrices = {
     'Habanero Molido 50 g': 40,
     'Habanero Molido 20 g': 20,
     'Medio Kilo Chiltepin Entero': 500
-  }
+  },
+  'MAX': {
+    'Chiltepin Molido 50 g': 48,
+    'Chiltepin Molido 20 g': 24,
+    'Chiltepin Entero 30 g': 45,
+    'Salsa Chiltepin El rey 195 ml': 16,
+    'Salsa Especial El Rey 195 ml': 16,
+    'Salsa Reina El rey 195 ml': 16,
+    'Salsa Habanera El Rey 195 ml': 16,
+    'Paquete El Rey': 100,
+    'Molinillo El Rey 30 g': 90,
+    'Tira Entero': 60,
+    'Tira Molido': 55,
+    'Salsa chiltepin Litro': 50,
+    'Salsa Especial Litro': 50,
+    'Salsa Reina Litro': 50,
+    'Salsa Habanera Litro': 50,
+    'Michela Mix Tamarindo': 32,
+    'Michela Mix Mango': 32,
+    'Michela Mix Sandia': 32,
+    'Michela Mix Fuego': 32,
+    'Michela Mix Picafresa': 32,
+    'El Rey Mix Original': 60,
+    'El Rey Mix Especial': 60,
+    'Habanero Molido 50 g': 40,
+    'Habanero Molido 20 g': 20,
+    'Medio Kilo Chiltepin Entero': 500
+  },
 }
 
 // Default to EFT prices if client code not found
