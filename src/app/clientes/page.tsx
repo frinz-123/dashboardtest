@@ -364,17 +364,17 @@ function ClientesDesatendidos({
         conversionRate  // % of visits that resulted in sales
       }
     })
-    // Ignore clients with no code
-    .filter(r => !!r.code)
-    // Ignore archived clients
-    .filter(r => !r.client.includes('**ARCHIVADO NO USAR**'))
+      // Ignore clients with no code
+      .filter(r => !!r.code)
+      // Ignore archived clients
+      .filter(r => !r.client.includes('**ARCHIVADO NO USAR**'))
 
     // Filter by query on client or code
     const filtered = query
       ? rows.filter(r =>
-          r.client.toLowerCase().includes(query.toLowerCase()) ||
-          (r.code && r.code.toLowerCase().includes(query.toLowerCase()))
-        )
+        r.client.toLowerCase().includes(query.toLowerCase()) ||
+        (r.code && r.code.toLowerCase().includes(query.toLowerCase()))
+      )
       : rows
 
     const codeFiltered = selectedCodes.length > 0
@@ -383,9 +383,9 @@ function ClientesDesatendidos({
 
     const vendedorFiltered = selectedVendedores.length > 0
       ? codeFiltered.filter(r => {
-          const vendedor = analyticsData?.clientVendedores?.[r.client]
-          return selectedVendedores.includes(vendedor || '')
-        })
+        const vendedor = analyticsData?.clientVendedores?.[r.client]
+        return selectedVendedores.includes(vendedor || '')
+      })
       : codeFiltered
 
     const sorted = [...vendedorFiltered].sort((a, b) => {
@@ -941,7 +941,7 @@ function ProductosPorCodigo({
 export default function ClientesPage() {
   const { data: session, status } = useSession()
   const allowedEmails = useMemo(() => (
-    ['franzcharbell@gmail.com', 'alopezelrey@gmail.com', 'cesar.reyes.ochoa@gmail.com']
+    ['franzcharbell@gmail.com', 'alopezelrey@gmail.com', 'cesar.reyes.ochoa@gmail.com', 'ventas2productoselrey@gmail.com']
   ), [])
   const userEmail = (session?.user?.email || '').toLowerCase()
   const isAllowed = allowedEmails.includes(userEmail)
@@ -1396,22 +1396,20 @@ export default function ClientesPage() {
           <div className="flex overflow-x-auto gap-1 p-2">
             <button
               onClick={() => setActiveTab('dashboard')}
-              className={`flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex-shrink-0 whitespace-nowrap ${
-                activeTab === 'dashboard'
+              className={`flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex-shrink-0 whitespace-nowrap ${activeTab === 'dashboard'
                   ? 'bg-blue-600 text-white shadow-sm'
                   : 'text-gray-600 hover:bg-gray-100 hover:text-gray-800'
-              }`}
+                }`}
             >
               <BarChart3 className="w-4 h-4 mr-2 flex-shrink-0" />
               Dashboard General
             </button>
             <button
               onClick={() => setActiveTab('vendedores')}
-              className={`flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex-shrink-0 whitespace-nowrap ${
-                activeTab === 'vendedores'
+              className={`flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex-shrink-0 whitespace-nowrap ${activeTab === 'vendedores'
                   ? 'bg-blue-600 text-white shadow-sm'
                   : 'text-gray-600 hover:bg-gray-100 hover:text-gray-800'
-              }`}
+                }`}
             >
               <UserCheck className="w-4 h-4 mr-2 flex-shrink-0" />
               Reportes Vendedores
@@ -1508,12 +1506,11 @@ export default function ClientesPage() {
                     }}
                   >
                     <div className="flex items-center">
-                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-3 ${
-                        index === 0 ? 'bg-yellow-100 text-yellow-800' :
-                        index === 1 ? 'bg-gray-100 text-gray-800' :
-                        index === 2 ? 'bg-orange-100 text-orange-800' :
-                        'bg-blue-100 text-blue-800'
-                      }`}>
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-3 ${index === 0 ? 'bg-yellow-100 text-yellow-800' :
+                          index === 1 ? 'bg-gray-100 text-gray-800' :
+                            index === 2 ? 'bg-orange-100 text-orange-800' :
+                              'bg-blue-100 text-blue-800'
+                        }`}>
                         {index + 1}
                       </div>
                       <div>
@@ -2033,7 +2030,7 @@ function InsightsList({ entries, productBreakdown }: { entries: ClientEntry[]; p
 // Utility functions
 function debounce(func: Function, wait: number) {
   let timeout: NodeJS.Timeout
-  return function(this: any, ...args: any[]) {
+  return function (this: any, ...args: any[]) {
     clearTimeout(timeout)
     timeout = setTimeout(() => func.apply(this, args), wait)
   }
@@ -2041,7 +2038,7 @@ function debounce(func: Function, wait: number) {
 
 function throttle(func: Function, limit: number) {
   let inThrottle: boolean
-  return function(this: any, ...args: any[]) {
+  return function (this: any, ...args: any[]) {
     if (!inThrottle) {
       func.apply(this, args)
       inThrottle = true
