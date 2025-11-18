@@ -1,4 +1,4 @@
-type GoalPeriod = 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20;
+type GoalPeriod = 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25;
 
 interface SellerGoal {
   [key: number]: number;
@@ -95,9 +95,9 @@ const sellerGoals: SellerGoals = {
     25: 200000.01, //diciembre 2025
   },
   'promotoriaelrey@gmail.com': { // Karla - Placeholder goals
-    11: 150000.00, 
-    12: 160000.00, 
-    13: 165000.00, 
+    11: 150000.00,
+    12: 160000.00,
+    13: 165000.00,
     14: 170000.00, //enero 2025
     15: 160000.00, //febrero 2025
     16: 155000.00, //marzo 2025
@@ -108,6 +108,40 @@ const sellerGoals: SellerGoals = {
     21: 200000.01, //agosto 2025
     22: 200000.01, //septiembre 2025
     23: 120299.00, //octubre 2025
+    24: 200000.01, //noviembre 2025
+    25: 200000.01, //diciembre 2025
+  },
+  'franzcharbell@gmail.com': { // Franz
+    11: 200000.00,
+    12: 210000.00,
+    13: 215000.00,
+    14: 220000.00, //enero 2025
+    15: 200000.00, //febrero 2025
+    16: 190000.00, //marzo 2025
+    17: 195000.00, //abril 2025
+    18: 200000.00, //mayo 2025
+    19: 180000.00, //junio 2025
+    20: 185000.00, //julio 2025
+    21: 200000.01, //agosto 2025
+    22: 200000.01, //septiembre 2025
+    23: 200000.01, //octubre 2025
+    24: 200000.01, //noviembre 2025
+    25: 200000.01, //diciembre 2025
+  },
+  'ventas4productoselrey@gmail.com': { // Reyna
+    11: 200000.00,
+    12: 210000.00,
+    13: 215000.00,
+    14: 220000.00, //enero 2025
+    15: 200000.00, //febrero 2025
+    16: 190000.00, //marzo 2025
+    17: 195000.00, //abril 2025
+    18: 200000.00, //mayo 2025
+    19: 180000.00, //junio 2025
+    20: 185000.00, //julio 2025
+    21: 200000.01, //agosto 2025
+    22: 200000.01, //septiembre 2025
+    23: 200000.01, //octubre 2025
     24: 200000.01, //noviembre 2025
     25: 200000.01, //diciembre 2025
   },

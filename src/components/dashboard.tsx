@@ -27,21 +27,23 @@ type Sale = {
   submissionTime?: string
 }
 
-const emailLabels: Record<string, string> = {
-  'ventas1productoselrey@gmail.com': 'Ernesto',
-  'ventas2productoselrey@gmail.com': 'Roel',
-  'ventas3productoselrey@gmail.com': 'Lidia',
-  'ventasmztproductoselrey.com@gmail.com': 'Mazatlan',
-  'ventasmochisproductoselrey@gmail.com': 'Mochis',
-  'franzcharbell@gmail.com': 'Franz',
-  'cesar.reyes.ochoa@gmail.com': 'Cesar',
-  'arturo.elreychiltepin@gmail.com': 'Arturo Mty',
-  'alopezelrey@gmail.com': 'Arlyn',
-  'promotoriaelrey@gmail.com': 'Karla',
-  'ventas4productoselrey@gmail.com': 'Reyna', 
-  'bodegaelrey034@gmail.com': 'Bodega',
+type Role = 'vendedor' | 'Bodeguero' | 'Supervisor'
+
+const emailLabels: Record<string, { label: string; role: Role }> = {
+  'ventas1productoselrey@gmail.com': { label: 'Ernesto', role: 'vendedor' },
+  'ventas2productoselrey@gmail.com': { label: 'Roel', role: 'Supervisor' },
+  'ventas3productoselrey@gmail.com': { label: 'Lidia', role: 'vendedor' },
+  'ventasmztproductoselrey.com@gmail.com': { label: 'Mazatlan', role: 'vendedor' },
+  'ventasmochisproductoselrey@gmail.com': { label: 'Mochis', role: 'vendedor' },
+  'franzcharbell@gmail.com': { label: 'Franz', role: 'Supervisor' },
+  'cesar.reyes.ochoa@gmail.com': { label: 'Cesar', role: 'Supervisor' },
+  'arturo.elreychiltepin@gmail.com': { label: 'Arturo Mty', role: 'vendedor' },
+  'alopezelrey@gmail.com': { label: 'Arlyn', role: 'Supervisor' },
+  'promotoriaelrey@gmail.com': { label: 'Karla', role: 'vendedor' },
+  'ventas4productoselrey@gmail.com': { label: 'Reyna', role: 'vendedor' },
+  'bodegaelrey034@gmail.com': { label: 'Bodega', role: 'Bodeguero' },
 }
-  
+
 export default function Dashboard() {
   const { data: session } = useSession()
   const [selectedPeriod, setSelectedPeriod] = useState<TimePeriod>('Diario')
@@ -135,8 +137,8 @@ export default function Dashboard() {
       })
     const previousPeriodTotal = previousPeriodSales.reduce((sum, sale) => sum + sale.venta, 0)
 
-    const difference = previousPeriodTotal !== 0 
-      ? ((currentPeriodTotal - previousPeriodTotal) / previousPeriodTotal) * 100 
+    const difference = previousPeriodTotal !== 0
+      ? ((currentPeriodTotal - previousPeriodTotal) / previousPeriodTotal) * 100
       : 0
     setPercentageDifference(difference)
   }, [salesData, selectedEmail, selectedPeriod])
@@ -146,7 +148,7 @@ export default function Dashboard() {
     console.log('Current Period Number:', currentPeriodNumber)
 
     const { periodStartDate, periodEndDate } = getCurrentPeriodInfo()
-    
+
     const periodSales = salesData
       .filter((sale) => sale.email === selectedEmail)
       .filter((sale) => {
@@ -187,7 +189,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (searchTerm) {
-      const filtered = clientNames.filter(name => 
+      const filtered = clientNames.filter(name =>
         name && name.toLowerCase().includes(searchTerm.toLowerCase())
       )
       setFilteredClientNames(filtered)
@@ -232,7 +234,7 @@ export default function Dashboard() {
         fechaSinHora: row[32],
         email: row[7],
         products: products,
-    submissionTime: row[4] && row[4].trim() !== '' ? row[4] : undefined,
+        submissionTime: row[4] && row[4].trim() !== '' ? row[4] : undefined,
       }
     })
     setSalesData(sales)
@@ -248,8 +250,8 @@ export default function Dashboard() {
           prevSelectedEmail && uniqueEmails.includes(prevSelectedEmail)
             ? prevSelectedEmail
             : sessionEmail && uniqueEmails.includes(sessionEmail)
-            ? sessionEmail
-            : fallbackEmail
+              ? sessionEmail
+              : fallbackEmail
 
         console.log('[Dashboard] Resolving selectedEmail', {
           prevSelectedEmail,
@@ -392,17 +394,26 @@ export default function Dashboard() {
           .filter((sale) => sale.email === email)
           .filter((sale) => filterSalesByDate([sale], selectedPeriod).length > 0)
         const total = userSales.reduce((sum, sale) => sum + sale.venta, 0)
+
+        // Calculate goal progress - always use monthly goal as reference
+        let goal = 0
+        let goalProgress = 0
+        goal = getSellerGoal(email, currentPeriodNumber as 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25)
+        goalProgress = goal > 0 ? (total / goal) * 100 : 0
+
         return {
           email,
-          label: emailLabels[email] || email,
-          total
+          label: emailLabels[email]?.label || email,
+          total,
+          goal,
+          goalProgress
         }
       })
       .filter((item) => item.total > 0)
       .sort((a, b) => b.total - a.total)
 
     return ranked.slice(0, 3)
-  }, [emails, salesData, selectedPeriod])
+  }, [emails, salesData, selectedPeriod, currentPeriodNumber])
 
   const hasLeaderboard = topPerformers.length > 0
 
@@ -550,6 +561,19 @@ export default function Dashboard() {
     }
   }, [salesData, selectedEmail, selectedPeriod, periodInfo])
 
+  const selectableEmails = React.useMemo(() => {
+    if (!session?.user?.email) return emails
+
+    const currentUserEmail = session.user.email
+    const currentUserRole = emailLabels[currentUserEmail]?.role || 'vendedor'
+
+    if (currentUserRole === 'vendedor') {
+      return emails.filter((email) => email === currentUserEmail)
+    }
+
+    return emails
+  }, [emails, session])
+
   return (
     <div className="min-h-screen bg-white px-4 py-4 font-sans w-full" style={{ fontFamily: 'Inter, sans-serif', fontSize: '0.82rem' }}>
       <header className="flex justify-between items-center mb-4">
@@ -574,9 +598,9 @@ export default function Dashboard() {
               value={selectedEmail}
               onChange={(e) => setSelectedEmail(e.target.value)}
             >
-              {emails.map((email) => (
+              {selectableEmails.map((email) => (
                 <option key={email} value={email}>
-                  {emailLabels[email] || email}
+                  {emailLabels[email]?.label || email}
                 </option>
               ))}
             </select>
@@ -660,11 +684,10 @@ export default function Dashboard() {
           {periods.map((period) => (
             <button
               key={period}
-              className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-200 ease-in-out ${
-                selectedPeriod === period
-                  ? 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white'
-                  : 'bg-transparent text-gray-500 hover:text-gray-700'
-              }`}
+              className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-200 ease-in-out ${selectedPeriod === period
+                ? 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white'
+                : 'bg-transparent text-gray-500 hover:text-gray-700'
+                }`}
               onClick={() => setSelectedPeriod(period)}
             >
               {period}
@@ -797,21 +820,20 @@ export default function Dashboard() {
             </span>
           </div>
           <p className="text-xs text-gray-500 mb-3">
-            {emailLabels[selectedEmail] || 'Tu'} cierre {selectedPeriod.toLowerCase()}.
+            {emailLabels[selectedEmail]?.label || 'Tu'} cierre {selectedPeriod.toLowerCase()}.
           </p>
           <div className="flex flex-col sm:flex-row gap-2">
             {insightBadges.map((badge) => (
               <div
                 key={badge.label}
-                className={`flex-1 border rounded-lg px-3 py-2 bg-gradient-to-br from-white to-gray-50 ${
-                  badge.tone === 'positive'
-                    ? 'border-green-200 text-green-700'
-                    : badge.tone === 'negative'
+                className={`flex-1 border rounded-lg px-3 py-2 bg-gradient-to-br from-white to-gray-50 ${badge.tone === 'positive'
+                  ? 'border-green-200 text-green-700'
+                  : badge.tone === 'negative'
                     ? 'border-red-200 text-red-600'
                     : badge.tone === 'warning'
-                    ? 'border-amber-200 text-amber-600'
-                    : 'border-gray-200 text-gray-600'
-                }`}
+                      ? 'border-amber-200 text-amber-600'
+                      : 'border-gray-200 text-gray-600'
+                  }`}
               >
                 <span className="text-[10px] uppercase tracking-wide block">{badge.label}</span>
                 <span className="text-sm font-semibold">{badge.value}</span>
@@ -843,22 +865,20 @@ export default function Dashboard() {
               {topPerformers.map((performer, index) => (
                 <div
                   key={performer.email}
-                  className={`flex items-center justify-between border rounded-lg px-3 py-2 bg-gradient-to-r ${
-                    index === 0
-                      ? 'from-yellow-50 to-amber-100 border-amber-200'
-                      : index === 1
+                  className={`flex items-center justify-between border rounded-lg px-3 py-2 bg-gradient-to-r ${index === 0
+                    ? 'from-yellow-50 to-amber-100 border-amber-200'
+                    : index === 1
                       ? 'from-slate-50 to-slate-100 border-slate-200'
                       : 'from-orange-50 to-orange-100 border-orange-200'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center gap-2">
-                    <span className={`text-xs font-bold w-6 h-6 rounded-full flex items-center justify-center ${
-                      index === 0
-                        ? 'bg-amber-400 text-white'
-                        : index === 1
+                    <span className={`text-xs font-bold w-6 h-6 rounded-full flex items-center justify-center ${index === 0
+                      ? 'bg-amber-400 text-white'
+                      : index === 1
                         ? 'bg-gray-400 text-white'
                         : 'bg-orange-400 text-white'
-                    }`}>
+                      }`}>
                       #{index + 1}
                     </span>
                     <div>
@@ -866,7 +886,11 @@ export default function Dashboard() {
                       <p className="text-xxs text-gray-500">{selectedPeriod} • {periodInfo.periodNumber ? `Periodo ${periodInfo.periodNumber}` : 'Tiempo actual'}</p>
                     </div>
                   </div>
-                  <span className="text-xs font-semibold text-gray-700">{formatCurrency(performer.total)}</span>
+                  <span className="text-xs font-semibold text-gray-700">
+                    {performer.goal > 0
+                      ? `${performer.goalProgress.toFixed(1)}%`
+                      : formatCurrency(performer.total)}
+                  </span>
                 </div>
               ))}
             </div>
@@ -1060,18 +1084,18 @@ export default function Dashboard() {
                 clientSales
                   .sort((a, b) => new Date(b.fechaSinHora).getTime() - new Date(a.fechaSinHora).getTime())
                   .map((sale, index) => (
-                    <div 
-                      key={index} 
+                    <div
+                      key={index}
                       className="flex items-center justify-between py-2 border-b last:border-b-0 cursor-pointer hover:bg-gray-100"
                       onClick={() => setSelectedSale(sale)}
                     >
                       <div className="flex items-center">
                         <div className="text-left">
                           <p className="text-xs font-medium">${sale.venta.toFixed(2)}</p>
-                <p className="text-xxs text-gray-500">
-                  {sale.fechaSinHora}
-                  {sale.submissionTime ? ` • ${sale.submissionTime}` : ''}
-                </p>
+                          <p className="text-xxs text-gray-500">
+                            {sale.fechaSinHora}
+                            {sale.submissionTime ? ` • ${sale.submissionTime}` : ''}
+                          </p>
                         </div>
                       </div>
                       <ChevronRight className="h-4 w-3 text-gray-400" />
@@ -1088,9 +1112,9 @@ export default function Dashboard() {
       </div>
 
       {selectedSale && (
-        <SaleDetailsPopup 
-          sale={selectedSale} 
-          onClose={() => setSelectedSale(null)} 
+        <SaleDetailsPopup
+          sale={selectedSale}
+          onClose={() => setSelectedSale(null)}
         />
       )}
     </div>
