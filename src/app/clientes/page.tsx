@@ -634,10 +634,22 @@ function ClientesDesatendidos({
 // Dashboard widget: Productos por código
 function ProductosPorCodigo({
   analyticsData,
-  isLoading
+  isLoading,
+  dateFilter,
+  setDateFilter,
+  customDateFrom,
+  setCustomDateFrom,
+  customDateTo,
+  setCustomDateTo
 }: {
   analyticsData: AnalyticsData | null
   isLoading: boolean
+  dateFilter: 'currentMonth' | '30d' | '2m' | '6m' | 'year' | 'custom'
+  setDateFilter: (filter: 'currentMonth' | '30d' | '2m' | '6m' | 'year' | 'custom') => void
+  customDateFrom: string
+  setCustomDateFrom: (date: string) => void
+  customDateTo: string
+  setCustomDateTo: (date: string) => void
 }) {
   const [query, setQuery] = useState('')
   const [sortBy, setSortBy] = useState<'quantity' | 'product' | 'code' | 'shareCode'>('quantity')
@@ -759,7 +771,96 @@ function ProductosPorCodigo({
             </button>
           </div>
         </div>
-        <p className="text-xs text-gray-500 mt-1">Resumen de unidades vendidas por producto agrupado por código de cliente (año actual).</p>
+
+        {/* Date Filter Controls */}
+        <div className="mt-3 space-y-2">
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => setDateFilter('currentMonth')}
+              className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
+                dateFilter === 'currentMonth'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Mes Actual
+            </button>
+            <button
+              onClick={() => setDateFilter('30d')}
+              className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
+                dateFilter === '30d'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Últimos 30 días
+            </button>
+            <button
+              onClick={() => setDateFilter('2m')}
+              className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
+                dateFilter === '2m'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Últimos 2 meses
+            </button>
+            <button
+              onClick={() => setDateFilter('6m')}
+              className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
+                dateFilter === '6m'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Últimos 6 meses
+            </button>
+            <button
+              onClick={() => setDateFilter('year')}
+              className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
+                dateFilter === 'year'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Este Año
+            </button>
+            <button
+              onClick={() => setDateFilter('custom')}
+              className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
+                dateFilter === 'custom'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              Personalizado
+            </button>
+          </div>
+
+          {/* Custom Date Range Inputs */}
+          {dateFilter === 'custom' && (
+            <div className="grid grid-cols-2 gap-2 pt-2">
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">Desde</label>
+                <input
+                  type="date"
+                  value={customDateFrom}
+                  onChange={(e) => setCustomDateFrom(e.target.value)}
+                  className="w-full text-xs border border-gray-300 rounded px-2 py-1.5"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">Hasta</label>
+                <input
+                  type="date"
+                  value={customDateTo}
+                  onChange={(e) => setCustomDateTo(e.target.value)}
+                  className="w-full text-xs border border-gray-300 rounded px-2 py-1.5"
+                />
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {isLoading ? (
@@ -955,6 +1056,10 @@ export default function ClientesPage() {
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(false)
+  const [topClientsData, setTopClientsData] = useState<AnalyticsData | null>(null)
+  const [isLoadingTopClients, setIsLoadingTopClients] = useState(false)
+  const [topProductsData, setTopProductsData] = useState<AnalyticsData | null>(null)
+  const [isLoadingTopProducts, setIsLoadingTopProducts] = useState(false)
   const [activeTab, setActiveTab] = useState<'overview' | 'entries' | 'products' | 'trends' | 'insights' | 'dashboard' | 'vendedores'>('dashboard')
   const [entriesFilter, setEntriesFilter] = useState<'all' | 'recent' | 'month'>('all')
   const [viewMode, setViewMode] = useState<'dashboard' | 'client'>('dashboard')
@@ -962,6 +1067,19 @@ export default function ClientesPage() {
   const [isLoadingSellerAnalytics, setIsLoadingSellerAnalytics] = useState(false)
   const [selectedSeller, setSelectedSeller] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
+  const [topClientsDateFilter, setTopClientsDateFilter] = useState<'currentMonth' | '30d' | '2m' | '6m' | 'year' | 'custom'>('year')
+  const [topClientsCustomDateFrom, setTopClientsCustomDateFrom] = useState<string>('')
+  const [topClientsCustomDateTo, setTopClientsCustomDateTo] = useState<string>('')
+  const [showAllTopClients, setShowAllTopClients] = useState(false)
+  const [topProductsDateFilter, setTopProductsDateFilter] = useState<'currentMonth' | '30d' | '2m' | '6m' | 'year' | 'custom'>('year')
+  const [topProductsCustomDateFrom, setTopProductsCustomDateFrom] = useState<string>('')
+  const [topProductsCustomDateTo, setTopProductsCustomDateTo] = useState<string>('')
+  const [showAllTopProducts, setShowAllTopProducts] = useState(false)
+  const [productosPorCodigoData, setProductosPorCodigoData] = useState<AnalyticsData | null>(null)
+  const [isLoadingProductosPorCodigo, setIsLoadingProductosPorCodigo] = useState(false)
+  const [productosPorCodigoDateFilter, setProductosPorCodigoDateFilter] = useState<'currentMonth' | '30d' | '2m' | '6m' | 'year' | 'custom'>('year')
+  const [productosPorCodigoCustomDateFrom, setProductosPorCodigoCustomDateFrom] = useState<string>('')
+  const [productosPorCodigoCustomDateTo, setProductosPorCodigoCustomDateTo] = useState<string>('')
 
   const throttledLocationUpdate = useRef(
     throttle((location: { lat: number, lng: number }) => {
@@ -986,6 +1104,42 @@ export default function ClientesPage() {
     fetchAnalyticsData()
     fetchSellerAnalyticsData()
   }, [isAllowed, status])
+
+  // Fetch top clients data when date filter changes (including initial load)
+  useEffect(() => {
+    if (!isAllowed || status !== 'authenticated') return
+
+    const { startDate, endDate } = getTopClientsDateRange()
+    const dateFrom = startDate.toISOString().split('T')[0]
+    const dateTo = endDate.toISOString().split('T')[0]
+
+    console.log('🔄 Fetching top clients with date range:', { dateFrom, dateTo })
+    fetchTopClientsData(dateFrom, dateTo)
+  }, [topClientsDateFilter, topClientsCustomDateFrom, topClientsCustomDateTo, isAllowed, status])
+
+  // Fetch top products data when date filter changes (including initial load)
+  useEffect(() => {
+    if (!isAllowed || status !== 'authenticated') return
+
+    const { startDate, endDate } = getTopProductsDateRange()
+    const dateFrom = startDate.toISOString().split('T')[0]
+    const dateTo = endDate.toISOString().split('T')[0]
+
+    console.log('🔄 Fetching top products with date range:', { dateFrom, dateTo })
+    fetchTopProductsData(dateFrom, dateTo)
+  }, [topProductsDateFilter, topProductsCustomDateFrom, topProductsCustomDateTo, isAllowed, status])
+
+  // Fetch productos por codigo data when date filter changes (including initial load)
+  useEffect(() => {
+    if (!isAllowed || status !== 'authenticated') return
+
+    const { startDate, endDate } = getProductosPorCodigoDateRange()
+    const dateFrom = startDate.toISOString().split('T')[0]
+    const dateTo = endDate.toISOString().split('T')[0]
+
+    console.log('🔄 Fetching productos por codigo with date range:', { dateFrom, dateTo })
+    fetchProductosPorCodigoData(dateFrom, dateTo)
+  }, [productosPorCodigoDateFilter, productosPorCodigoCustomDateFrom, productosPorCodigoCustomDateTo, isAllowed, status])
 
   useEffect(() => {
     if (debouncedSearchTerm) {
@@ -1028,8 +1182,10 @@ export default function ClientesPage() {
   const fetchAnalyticsData = async () => {
     setIsLoadingAnalytics(true)
     try {
-      console.log('🔍 Fetching analytics data from frontend...')
-      const response = await fetch('/api/clientes?action=analytics')
+      console.log('🔍 Fetching main analytics data (current year)')
+      const params = new URLSearchParams({ action: 'analytics' })
+
+      const response = await fetch(`/api/clientes?${params.toString()}`)
       const data = await response.json()
       console.log('📊 Frontend received analytics data:', data)
       if (data.success) {
@@ -1045,6 +1201,78 @@ export default function ClientesPage() {
       console.error('🚨 Error fetching analytics data:', error)
     } finally {
       setIsLoadingAnalytics(false)
+    }
+  }
+
+  const fetchTopClientsData = async (dateFrom?: string, dateTo?: string) => {
+    setIsLoadingTopClients(true)
+    try {
+      console.log('🔍 Fetching top clients data with date filters:', { dateFrom, dateTo })
+      const params = new URLSearchParams({ action: 'analytics' })
+      if (dateFrom) params.append('dateFrom', dateFrom)
+      if (dateTo) params.append('dateTo', dateTo)
+
+      const response = await fetch(`/api/clientes?${params.toString()}`)
+      const data = await response.json()
+      console.log('📊 Frontend received top clients data:', data)
+      if (data.success) {
+        console.log('✅ Setting top clients data:', data.data)
+        setTopClientsData(data.data)
+      } else {
+        console.error('❌ Error fetching top clients:', data.error)
+      }
+    } catch (error) {
+      console.error('🚨 Error fetching top clients data:', error)
+    } finally {
+      setIsLoadingTopClients(false)
+    }
+  }
+
+  const fetchTopProductsData = async (dateFrom?: string, dateTo?: string) => {
+    setIsLoadingTopProducts(true)
+    try {
+      console.log('🔍 Fetching top products data with date filters:', { dateFrom, dateTo })
+      const params = new URLSearchParams({ action: 'analytics' })
+      if (dateFrom) params.append('dateFrom', dateFrom)
+      if (dateTo) params.append('dateTo', dateTo)
+
+      const response = await fetch(`/api/clientes?${params.toString()}`)
+      const data = await response.json()
+      console.log('📊 Frontend received top products data:', data)
+      if (data.success) {
+        console.log('✅ Setting top products data:', data.data)
+        setTopProductsData(data.data)
+      } else {
+        console.error('❌ Error fetching top products:', data.error)
+      }
+    } catch (error) {
+      console.error('🚨 Error fetching top products data:', error)
+    } finally {
+      setIsLoadingTopProducts(false)
+    }
+  }
+
+  const fetchProductosPorCodigoData = async (dateFrom?: string, dateTo?: string) => {
+    setIsLoadingProductosPorCodigo(true)
+    try {
+      console.log('🔍 Fetching productos por codigo data with date filters:', { dateFrom, dateTo })
+      const params = new URLSearchParams({ action: 'analytics' })
+      if (dateFrom) params.append('dateFrom', dateFrom)
+      if (dateTo) params.append('dateTo', dateTo)
+
+      const response = await fetch(`/api/clientes?${params.toString()}`)
+      const data = await response.json()
+      console.log('📊 Frontend received productos por codigo data:', data)
+      if (data.success) {
+        console.log('✅ Setting productos por codigo data:', data.data)
+        setProductosPorCodigoData(data.data)
+      } else {
+        console.error('❌ Error fetching productos por codigo:', data.error)
+      }
+    } catch (error) {
+      console.error('🚨 Error fetching productos por codigo data:', error)
+    } finally {
+      setIsLoadingProductosPorCodigo(false)
     }
   }
 
@@ -1132,6 +1360,129 @@ export default function ClientesPage() {
 
     return filteredEntries
   }
+
+  const getTopClientsDateRange = () => {
+    const now = new Date()
+    let startDate: Date
+    let endDate = now
+
+    switch (topClientsDateFilter) {
+      case 'currentMonth':
+        // Current calendar month (e.g., Nov 1 - Nov 30)
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1)
+        break
+      case '30d':
+        // Last 30 days (rolling window)
+        startDate = new Date()
+        startDate.setDate(now.getDate() - 30)
+        break
+      case '2m':
+        // Last 2 months (rolling window)
+        startDate = new Date()
+        startDate.setMonth(now.getMonth() - 2)
+        break
+      case '6m':
+        // Last 6 months (rolling window)
+        startDate = new Date()
+        startDate.setMonth(now.getMonth() - 6)
+        break
+      case 'year':
+        // Current calendar year (Jan 1 - Dec 31)
+        startDate = new Date(now.getFullYear(), 0, 1)
+        break
+      case 'custom':
+        if (topClientsCustomDateFrom && topClientsCustomDateTo) {
+          startDate = new Date(topClientsCustomDateFrom)
+          endDate = new Date(topClientsCustomDateTo)
+        } else {
+          startDate = new Date(now.getFullYear(), 0, 1)
+        }
+        break
+      default:
+        startDate = new Date(now.getFullYear(), 0, 1)
+    }
+
+    return { startDate, endDate }
+  }
+
+  const getTopProductsDateRange = () => {
+    const now = new Date()
+    let startDate: Date
+    let endDate = now
+
+    switch (topProductsDateFilter) {
+      case 'currentMonth':
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1)
+        break
+      case '30d':
+        startDate = new Date()
+        startDate.setDate(now.getDate() - 30)
+        break
+      case '2m':
+        startDate = new Date()
+        startDate.setMonth(now.getMonth() - 2)
+        break
+      case '6m':
+        startDate = new Date()
+        startDate.setMonth(now.getMonth() - 6)
+        break
+      case 'year':
+        startDate = new Date(now.getFullYear(), 0, 1)
+        break
+      case 'custom':
+        if (topProductsCustomDateFrom && topProductsCustomDateTo) {
+          startDate = new Date(topProductsCustomDateFrom)
+          endDate = new Date(topProductsCustomDateTo)
+        } else {
+          startDate = new Date(now.getFullYear(), 0, 1)
+        }
+        break
+      default:
+        startDate = new Date(now.getFullYear(), 0, 1)
+    }
+
+    return { startDate, endDate }
+  }
+
+  const getProductosPorCodigoDateRange = () => {
+    const now = new Date()
+    let startDate: Date
+    let endDate = now
+
+    switch (productosPorCodigoDateFilter) {
+      case 'currentMonth':
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1)
+        break
+      case '30d':
+        startDate = new Date()
+        startDate.setDate(now.getDate() - 30)
+        break
+      case '2m':
+        startDate = new Date()
+        startDate.setMonth(now.getMonth() - 2)
+        break
+      case '6m':
+        startDate = new Date()
+        startDate.setMonth(now.getMonth() - 6)
+        break
+      case 'year':
+        startDate = new Date(now.getFullYear(), 0, 1)
+        break
+      case 'custom':
+        if (productosPorCodigoCustomDateFrom && productosPorCodigoCustomDateTo) {
+          startDate = new Date(productosPorCodigoCustomDateFrom)
+          endDate = new Date(productosPorCodigoCustomDateTo)
+        } else {
+          startDate = new Date(now.getFullYear(), 0, 1)
+        }
+        break
+      default:
+        startDate = new Date(now.getFullYear(), 0, 1)
+    }
+
+    return { startDate, endDate }
+  }
+
 
   const exportSellerData = (type: 'leaderboard' | 'clients' | 'products', vendedor?: string) => {
     if (!sellerAnalyticsData) return
@@ -1485,45 +1836,161 @@ export default function ClientesPage() {
           <div className="bg-white rounded-lg p-4 border border-[#E2E4E9]">
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-semibold text-gray-700 flex items-center text-sm">
-                <Trophy className="mr-2 h-4 w-4" /> Top 5 Clientes
+                <Trophy className="mr-2 h-4 w-4" /> Top Clientes
               </h3>
-              <p className="text-xs text-gray-500">Este año</p>
+            </div>
+
+            {/* Date Filter Controls */}
+            <div className="mb-3 space-y-2">
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => setTopClientsDateFilter('currentMonth')}
+                  className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
+                    topClientsDateFilter === 'currentMonth'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  Mes Actual
+                </button>
+                <button
+                  onClick={() => setTopClientsDateFilter('30d')}
+                  className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
+                    topClientsDateFilter === '30d'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  Últimos 30 días
+                </button>
+                <button
+                  onClick={() => setTopClientsDateFilter('2m')}
+                  className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
+                    topClientsDateFilter === '2m'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  Últimos 2 meses
+                </button>
+                <button
+                  onClick={() => setTopClientsDateFilter('6m')}
+                  className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
+                    topClientsDateFilter === '6m'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  Últimos 6 meses
+                </button>
+                <button
+                  onClick={() => setTopClientsDateFilter('year')}
+                  className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
+                    topClientsDateFilter === 'year'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  Este Año
+                </button>
+                <button
+                  onClick={() => setTopClientsDateFilter('custom')}
+                  className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
+                    topClientsDateFilter === 'custom'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  Personalizado
+                </button>
+              </div>
+
+              {/* Custom Date Range Inputs */}
+              {topClientsDateFilter === 'custom' && (
+                <div className="grid grid-cols-2 gap-2 pt-2">
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">Desde</label>
+                    <input
+                      type="date"
+                      value={topClientsCustomDateFrom}
+                      onChange={(e) => setTopClientsCustomDateFrom(e.target.value)}
+                      className="w-full text-xs border border-gray-300 rounded px-2 py-1.5"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">Hasta</label>
+                    <input
+                      type="date"
+                      value={topClientsCustomDateTo}
+                      onChange={(e) => setTopClientsCustomDateTo(e.target.value)}
+                      className="w-full text-xs border border-gray-300 rounded px-2 py-1.5"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
             <div className="space-y-2">
-              {isLoadingAnalytics ? (
+              {isLoadingTopClients ? (
                 <div className="text-center py-4">
                   <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto mb-2"></div>
                   <p className="text-sm text-gray-500">Cargando clientes...</p>
                 </div>
-              ) : analyticsData?.topClients && analyticsData.topClients.length > 0 ? (
-                analyticsData.topClients.slice(0, 5).map((client, index) => (
-                  <div
-                    key={client.client}
-                    className="flex items-center justify-between py-2 border-b border-gray-100 last:border-b-0 cursor-pointer hover:bg-gray-50 rounded"
-                    onClick={() => {
-                      setSelectedClient(client.client);
-                      setSearchTerm(client.client);
-                    }}
-                  >
-                    <div className="flex items-center">
-                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-3 ${index === 0 ? 'bg-yellow-100 text-yellow-800' :
-                          index === 1 ? 'bg-gray-100 text-gray-800' :
-                            index === 2 ? 'bg-orange-100 text-orange-800' :
-                              'bg-blue-100 text-blue-800'
-                        }`}>
-                        {index + 1}
+              ) : topClientsData?.topClients && topClientsData.topClients.length > 0 ? (
+                <>
+                  {topClientsData.topClients.slice(0, showAllTopClients ? 40 : 5).map((client, index) => (
+                    <div
+                      key={client.client}
+                      className="flex items-center justify-between py-2 border-b border-gray-100 last:border-b-0 cursor-pointer hover:bg-gray-50 rounded"
+                      onClick={() => {
+                        setSelectedClient(client.client);
+                        setSearchTerm(client.client);
+                      }}
+                    >
+                      <div className="flex items-center">
+                        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-3 ${index === 0 ? 'bg-yellow-100 text-yellow-800' :
+                            index === 1 ? 'bg-gray-100 text-gray-800' :
+                              index === 2 ? 'bg-orange-100 text-orange-800' :
+                                'bg-blue-100 text-blue-800'
+                          }`}>
+                          {index + 1}
+                        </div>
+                        <div>
+                          <p className="font-medium text-sm text-gray-800">{client.client}</p>
+                          <p className="text-xs text-gray-500">{client.entries} pedidos</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-medium text-sm text-gray-800">{client.client}</p>
-                        <p className="text-xs text-gray-500">{client.entries} pedidos</p>
+                      <div className="text-right">
+                        <p className="font-semibold text-sm text-green-600">{formatCurrency(client.totalSales)}</p>
+                        <p className="text-xs text-gray-500">Promedio: {formatCurrency(client.avgOrder)}</p>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p className="font-semibold text-sm text-green-600">{formatCurrency(client.totalSales)}</p>
-                      <p className="text-xs text-gray-500">Promedio: {formatCurrency(client.avgOrder)}</p>
+                  ))}
+
+                  {/* Ver más button */}
+                  {topClientsData.topClients.length > 5 && (
+                    <div className="pt-2">
+                      <button
+                        onClick={() => setShowAllTopClients(!showAllTopClients)}
+                        className="w-full text-xs font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 py-2 rounded-md transition-colors flex items-center justify-center gap-1"
+                      >
+                        {showAllTopClients ? (
+                          <>
+                            Ver menos
+                            <ArrowRight className="h-3 w-3 transform rotate-90" />
+                          </>
+                        ) : (
+                          <>
+                            Ver más
+                            <ArrowRight className="h-3 w-3 transform -rotate-90" />
+                          </>
+                        )}
+                      </button>
+                      <p className="text-xs text-gray-500 text-center mt-1">
+                        Mostrando {showAllTopClients ? Math.min(40, topClientsData.topClients.length) : 5} de {topClientsData.topClients.length} clientes
+                      </p>
                     </div>
-                  </div>
-                ))
+                  )}
+                </>
               ) : (
                 <div className="text-center py-4">
                   <p className="text-sm text-gray-500">No hay datos de clientes disponibles</p>
@@ -1534,46 +2001,152 @@ export default function ClientesPage() {
 
           {/* Top Products */}
           <div className="bg-white rounded-lg p-4 border border-[#E2E4E9]">
-            <h3 className="font-semibold text-gray-700 mb-3 flex items-center text-sm">
-              <Package className="mr-2 h-4 w-4" /> Productos Más Vendidos
-            </h3>
-            <div className="space-y-3">
-              {(() => {
-                console.log('🎯 Rendering top products section:', {
-                  isLoading: isLoadingAnalytics,
-                  hasAnalyticsData: !!analyticsData,
-                  topProducts: analyticsData?.topProducts,
-                  topProductsLength: analyticsData?.topProducts?.length
-                })
-                return null
-              })()}
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-gray-700 flex items-center text-sm">
+                <Package className="mr-2 h-4 w-4" /> Productos Más Vendidos
+              </h3>
+            </div>
 
-              {isLoadingAnalytics ? (
+            {/* Date Filter Controls */}
+            <div className="mb-3 space-y-2">
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => setTopProductsDateFilter('currentMonth')}
+                  className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
+                    topProductsDateFilter === 'currentMonth'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  Mes Actual
+                </button>
+                <button
+                  onClick={() => setTopProductsDateFilter('30d')}
+                  className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
+                    topProductsDateFilter === '30d'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  Últimos 30 días
+                </button>
+                <button
+                  onClick={() => setTopProductsDateFilter('2m')}
+                  className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
+                    topProductsDateFilter === '2m'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  Últimos 2 meses
+                </button>
+                <button
+                  onClick={() => setTopProductsDateFilter('6m')}
+                  className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
+                    topProductsDateFilter === '6m'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  Últimos 6 meses
+                </button>
+                <button
+                  onClick={() => setTopProductsDateFilter('year')}
+                  className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
+                    topProductsDateFilter === 'year'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  Este Año
+                </button>
+                <button
+                  onClick={() => setTopProductsDateFilter('custom')}
+                  className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
+                    topProductsDateFilter === 'custom'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  Personalizado
+                </button>
+              </div>
+
+              {/* Custom Date Range Inputs */}
+              {topProductsDateFilter === 'custom' && (
+                <div className="grid grid-cols-2 gap-2 pt-2">
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">Desde</label>
+                    <input
+                      type="date"
+                      value={topProductsCustomDateFrom}
+                      onChange={(e) => setTopProductsCustomDateFrom(e.target.value)}
+                      className="w-full text-xs border border-gray-300 rounded px-2 py-1.5"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-600 mb-1">Hasta</label>
+                    <input
+                      type="date"
+                      value={topProductsCustomDateTo}
+                      onChange={(e) => setTopProductsCustomDateTo(e.target.value)}
+                      className="w-full text-xs border border-gray-300 rounded px-2 py-1.5"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              {isLoadingTopProducts ? (
                 <div className="text-center py-4">
                   <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto mb-2"></div>
                   <p className="text-sm text-gray-500">Cargando productos...</p>
                 </div>
-              ) : analyticsData?.topProducts && analyticsData.topProducts.length > 0 ? (
-                analyticsData.topProducts.slice(0, 5).map((product) => (
-                  <div key={product.product} className="flex justify-between items-center py-2 border-b border-gray-100 last:border-b-0">
-                    <div className="flex-1">
-                      <p className="font-medium text-sm text-gray-800">{product.product}</p>
+              ) : topProductsData?.topProducts && topProductsData.topProducts.length > 0 ? (
+                <>
+                  {topProductsData.topProducts.slice(0, showAllTopProducts ? 40 : 5).map((product, index) => (
+                    <div key={product.product} className="flex justify-between items-center py-2 border-b border-gray-100 last:border-b-0">
+                      <div className="flex items-center flex-1">
+                        <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-3 bg-purple-100 text-purple-800">
+                          {index + 1}
+                        </div>
+                        <p className="font-medium text-sm text-gray-800">{product.product}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-semibold text-sm text-blue-600">{product.quantity} unidades</p>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <p className="font-semibold text-sm text-blue-600">{product.quantity} unidades</p>
+                  ))}
+
+                  {/* Ver más button */}
+                  {topProductsData.topProducts.length > 5 && (
+                    <div className="pt-2">
+                      <button
+                        onClick={() => setShowAllTopProducts(!showAllTopProducts)}
+                        className="w-full text-xs font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 py-2 rounded-md transition-colors flex items-center justify-center gap-1"
+                      >
+                        {showAllTopProducts ? (
+                          <>
+                            Ver menos
+                            <ArrowRight className="h-3 w-3 transform rotate-90" />
+                          </>
+                        ) : (
+                          <>
+                            Ver más
+                            <ArrowRight className="h-3 w-3 transform -rotate-90" />
+                          </>
+                        )}
+                      </button>
+                      <p className="text-xs text-gray-500 text-center mt-1">
+                        Mostrando {showAllTopProducts ? Math.min(40, topProductsData.topProducts.length) : 5} de {topProductsData.topProducts.length} productos
+                      </p>
                     </div>
-                  </div>
-                ))
+                  )}
+                </>
               ) : (
                 <div className="text-center py-4">
-                  <p className="text-sm text-gray-500">
-                    No hay datos de productos disponibles
-                    {analyticsData && (
-                      <span className="block text-xs text-red-500 mt-1">
-                        Debug: topProducts = {JSON.stringify(analyticsData.topProducts)}
-                      </span>
-                    )}
-                  </p>
+                  <p className="text-sm text-gray-500">No hay datos de productos disponibles</p>
                 </div>
               )}
             </div>
@@ -1631,8 +2204,14 @@ export default function ClientesPage() {
           {/* Productos por código */}
           <div className="bg-white rounded-lg p-4 border border-[#E2E4E9]">
             <ProductosPorCodigo
-              analyticsData={analyticsData}
-              isLoading={isLoadingAnalytics}
+              analyticsData={productosPorCodigoData}
+              isLoading={isLoadingProductosPorCodigo}
+              dateFilter={productosPorCodigoDateFilter}
+              setDateFilter={setProductosPorCodigoDateFilter}
+              customDateFrom={productosPorCodigoCustomDateFrom}
+              setCustomDateFrom={setProductosPorCodigoCustomDateFrom}
+              customDateTo={productosPorCodigoCustomDateTo}
+              setCustomDateTo={setProductosPorCodigoCustomDateTo}
             />
           </div>
         </div>

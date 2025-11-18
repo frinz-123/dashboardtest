@@ -320,6 +320,11 @@ export async function GET(req: Request) {
     }
 
     if (action === 'analytics') {
+      // Get date range parameters
+      const dateFrom = searchParams.get('dateFrom')
+      const dateTo = searchParams.get('dateTo')
+      console.log('📅 Analytics date filters:', { dateFrom, dateTo })
+
       // Get overall analytics
       const salesData = await sheets.spreadsheets.values.get({
         spreadsheetId,
@@ -410,24 +415,48 @@ export async function GET(req: Request) {
       // Separate array for entries with actual sales (for product stats)
       const salesEntries = allEntries.filter(entry => Object.keys(entry.products).length > 0)
 
-      const currentYear = new Date().getFullYear()
-      console.log('📅 Filtering for year:', currentYear)
+      // Apply date filtering
+      let yearlyEntries: any[]
+      let yearlySalesEntries: any[]
 
-      // Filter ALL entries (including $0 visits) by current year
-      const yearlyEntries = entries.filter(entry => {
-        const entryDate = new Date(entry.date)
-        const isCurrentYear = entryDate.getFullYear() === currentYear
-        if (!isCurrentYear && Math.random() < 0.1) {
-          console.log(`❌ Filtered out entry from ${entryDate.getFullYear()}: ${entry.date}`)
-        }
-        return isCurrentYear
-      })
+      if (dateFrom && dateTo) {
+        const startDate = new Date(dateFrom)
+        const endDate = new Date(dateTo)
+        endDate.setHours(23, 59, 59, 999) // Include the entire end date
+        console.log('📅 Filtering by custom date range:', { startDate, endDate })
 
-      // Filter only sales entries by current year (for product stats)
-      const yearlySalesEntries = salesEntries.filter(entry => {
-        const entryDate = new Date(entry.date)
-        return entryDate.getFullYear() === currentYear
-      })
+        // Filter ALL entries (including $0 visits) by date range
+        yearlyEntries = entries.filter(entry => {
+          const entryDate = new Date(entry.date)
+          return entryDate >= startDate && entryDate <= endDate
+        })
+
+        // Filter only sales entries by date range (for product stats)
+        yearlySalesEntries = salesEntries.filter(entry => {
+          const entryDate = new Date(entry.date)
+          return entryDate >= startDate && entryDate <= endDate
+        })
+      } else {
+        // Default to current year
+        const currentYear = new Date().getFullYear()
+        console.log('📅 Filtering for year:', currentYear)
+
+        // Filter ALL entries (including $0 visits) by current year
+        yearlyEntries = entries.filter(entry => {
+          const entryDate = new Date(entry.date)
+          const isCurrentYear = entryDate.getFullYear() === currentYear
+          if (!isCurrentYear && Math.random() < 0.1) {
+            console.log(`❌ Filtered out entry from ${entryDate.getFullYear()}: ${entry.date}`)
+          }
+          return isCurrentYear
+        })
+
+        // Filter only sales entries by current year (for product stats)
+        yearlySalesEntries = salesEntries.filter(entry => {
+          const entryDate = new Date(entry.date)
+          return entryDate.getFullYear() === currentYear
+        })
+      }
 
       console.log('📈 Total visits (all entries):', yearlyEntries.length)
       console.log('📈 Visits with sales:', yearlySalesEntries.length)
@@ -498,7 +527,7 @@ export async function GET(req: Request) {
       const topClients = Object.entries(clientStats)
         .map(([client, stats]) => ({ client, ...stats }))
         .sort((a, b) => b.totalSales - a.totalSales)
-        .slice(0, 10)
+        .slice(0, 50)
 
       // Top products - use only sales entries (with products)
       const productStats: Record<string, { quantity: number, revenue: number }> = {}
