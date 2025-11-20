@@ -9,6 +9,7 @@ import SearchInput from '@/components/ui/SearchInput'
 import InputGray from '@/components/ui/InputGray'
 import VendedoresSection, { VendedoresAnalyticsData } from '@/components/VendedoresSection'
 import ErrorToast from '@/components/ui/ErrorToast'
+import ProductsAreaChart from '@/components/ProductsAreaChart'
 
 // Custom ScrollableTabs component for mobile-friendly tab navigation
 function ScrollableTabs({
@@ -777,61 +778,55 @@ function ProductosPorCodigo({
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => setDateFilter('currentMonth')}
-              className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
-                dateFilter === 'currentMonth'
+              className={`px-3 py-1.5 text-xs rounded-md transition-colors ${dateFilter === 'currentMonth'
                   ? 'bg-blue-600 text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
+                }`}
             >
               Mes Actual
             </button>
             <button
               onClick={() => setDateFilter('30d')}
-              className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
-                dateFilter === '30d'
+              className={`px-3 py-1.5 text-xs rounded-md transition-colors ${dateFilter === '30d'
                   ? 'bg-blue-600 text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
+                }`}
             >
               Últimos 30 días
             </button>
             <button
               onClick={() => setDateFilter('2m')}
-              className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
-                dateFilter === '2m'
+              className={`px-3 py-1.5 text-xs rounded-md transition-colors ${dateFilter === '2m'
                   ? 'bg-blue-600 text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
+                }`}
             >
               Últimos 2 meses
             </button>
             <button
               onClick={() => setDateFilter('6m')}
-              className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
-                dateFilter === '6m'
+              className={`px-3 py-1.5 text-xs rounded-md transition-colors ${dateFilter === '6m'
                   ? 'bg-blue-600 text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
+                }`}
             >
               Últimos 6 meses
             </button>
             <button
               onClick={() => setDateFilter('year')}
-              className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
-                dateFilter === 'year'
+              className={`px-3 py-1.5 text-xs rounded-md transition-colors ${dateFilter === 'year'
                   ? 'bg-blue-600 text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
+                }`}
             >
               Este Año
             </button>
             <button
               onClick={() => setDateFilter('custom')}
-              className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
-                dateFilter === 'custom'
+              className={`px-3 py-1.5 text-xs rounded-md transition-colors ${dateFilter === 'custom'
                   ? 'bg-blue-600 text-white'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
+                }`}
             >
               Personalizado
             </button>
@@ -1001,6 +996,9 @@ function ProductosPorCodigo({
                   })}
                 </div>
               )}
+
+              {/* Chart */}
+              <ProductsAreaChart data={visibleRows} />
 
               {/* Table */}
               <div className="overflow-x-auto">
@@ -1748,8 +1746,8 @@ export default function ClientesPage() {
             <button
               onClick={() => setActiveTab('dashboard')}
               className={`flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex-shrink-0 whitespace-nowrap ${activeTab === 'dashboard'
-                  ? 'bg-blue-600 text-white shadow-sm'
-                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-800'
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'text-gray-600 hover:bg-gray-100 hover:text-gray-800'
                 }`}
             >
               <BarChart3 className="w-4 h-4 mr-2 flex-shrink-0" />
@@ -1758,8 +1756,8 @@ export default function ClientesPage() {
             <button
               onClick={() => setActiveTab('vendedores')}
               className={`flex items-center px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex-shrink-0 whitespace-nowrap ${activeTab === 'vendedores'
-                  ? 'bg-blue-600 text-white shadow-sm'
-                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-800'
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'text-gray-600 hover:bg-gray-100 hover:text-gray-800'
                 }`}
             >
               <UserCheck className="w-4 h-4 mr-2 flex-shrink-0" />
@@ -1845,61 +1843,55 @@ export default function ClientesPage() {
               <div className="flex flex-wrap gap-2">
                 <button
                   onClick={() => setTopClientsDateFilter('currentMonth')}
-                  className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
-                    topClientsDateFilter === 'currentMonth'
+                  className={`px-3 py-1.5 text-xs rounded-md transition-colors ${topClientsDateFilter === 'currentMonth'
                       ? 'bg-blue-600 text-white'
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
+                    }`}
                 >
                   Mes Actual
                 </button>
                 <button
                   onClick={() => setTopClientsDateFilter('30d')}
-                  className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
-                    topClientsDateFilter === '30d'
+                  className={`px-3 py-1.5 text-xs rounded-md transition-colors ${topClientsDateFilter === '30d'
                       ? 'bg-blue-600 text-white'
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
+                    }`}
                 >
                   Últimos 30 días
                 </button>
                 <button
                   onClick={() => setTopClientsDateFilter('2m')}
-                  className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
-                    topClientsDateFilter === '2m'
+                  className={`px-3 py-1.5 text-xs rounded-md transition-colors ${topClientsDateFilter === '2m'
                       ? 'bg-blue-600 text-white'
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
+                    }`}
                 >
                   Últimos 2 meses
                 </button>
                 <button
                   onClick={() => setTopClientsDateFilter('6m')}
-                  className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
-                    topClientsDateFilter === '6m'
+                  className={`px-3 py-1.5 text-xs rounded-md transition-colors ${topClientsDateFilter === '6m'
                       ? 'bg-blue-600 text-white'
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
+                    }`}
                 >
                   Últimos 6 meses
                 </button>
                 <button
                   onClick={() => setTopClientsDateFilter('year')}
-                  className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
-                    topClientsDateFilter === 'year'
+                  className={`px-3 py-1.5 text-xs rounded-md transition-colors ${topClientsDateFilter === 'year'
                       ? 'bg-blue-600 text-white'
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
+                    }`}
                 >
                   Este Año
                 </button>
                 <button
                   onClick={() => setTopClientsDateFilter('custom')}
-                  className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
-                    topClientsDateFilter === 'custom'
+                  className={`px-3 py-1.5 text-xs rounded-md transition-colors ${topClientsDateFilter === 'custom'
                       ? 'bg-blue-600 text-white'
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
+                    }`}
                 >
                   Personalizado
                 </button>
@@ -1948,9 +1940,9 @@ export default function ClientesPage() {
                     >
                       <div className="flex items-center">
                         <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-3 ${index === 0 ? 'bg-yellow-100 text-yellow-800' :
-                            index === 1 ? 'bg-gray-100 text-gray-800' :
-                              index === 2 ? 'bg-orange-100 text-orange-800' :
-                                'bg-blue-100 text-blue-800'
+                          index === 1 ? 'bg-gray-100 text-gray-800' :
+                            index === 2 ? 'bg-orange-100 text-orange-800' :
+                              'bg-blue-100 text-blue-800'
                           }`}>
                           {index + 1}
                         </div>
@@ -2012,61 +2004,55 @@ export default function ClientesPage() {
               <div className="flex flex-wrap gap-2">
                 <button
                   onClick={() => setTopProductsDateFilter('currentMonth')}
-                  className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
-                    topProductsDateFilter === 'currentMonth'
+                  className={`px-3 py-1.5 text-xs rounded-md transition-colors ${topProductsDateFilter === 'currentMonth'
                       ? 'bg-blue-600 text-white'
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
+                    }`}
                 >
                   Mes Actual
                 </button>
                 <button
                   onClick={() => setTopProductsDateFilter('30d')}
-                  className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
-                    topProductsDateFilter === '30d'
+                  className={`px-3 py-1.5 text-xs rounded-md transition-colors ${topProductsDateFilter === '30d'
                       ? 'bg-blue-600 text-white'
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
+                    }`}
                 >
                   Últimos 30 días
                 </button>
                 <button
                   onClick={() => setTopProductsDateFilter('2m')}
-                  className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
-                    topProductsDateFilter === '2m'
+                  className={`px-3 py-1.5 text-xs rounded-md transition-colors ${topProductsDateFilter === '2m'
                       ? 'bg-blue-600 text-white'
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
+                    }`}
                 >
                   Últimos 2 meses
                 </button>
                 <button
                   onClick={() => setTopProductsDateFilter('6m')}
-                  className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
-                    topProductsDateFilter === '6m'
+                  className={`px-3 py-1.5 text-xs rounded-md transition-colors ${topProductsDateFilter === '6m'
                       ? 'bg-blue-600 text-white'
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
+                    }`}
                 >
                   Últimos 6 meses
                 </button>
                 <button
                   onClick={() => setTopProductsDateFilter('year')}
-                  className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
-                    topProductsDateFilter === 'year'
+                  className={`px-3 py-1.5 text-xs rounded-md transition-colors ${topProductsDateFilter === 'year'
                       ? 'bg-blue-600 text-white'
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
+                    }`}
                 >
                   Este Año
                 </button>
                 <button
                   onClick={() => setTopProductsDateFilter('custom')}
-                  className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
-                    topProductsDateFilter === 'custom'
+                  className={`px-3 py-1.5 text-xs rounded-md transition-colors ${topProductsDateFilter === 'custom'
                       ? 'bg-blue-600 text-white'
                       : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  }`}
+                    }`}
                 >
                   Personalizado
                 </button>
