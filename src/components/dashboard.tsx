@@ -1,7 +1,7 @@
 'use client'
 import React, { useState, useEffect } from 'react'
-import { ChevronDown, BarChart2, Users, Clock, ChevronRight, Target, Menu, Search } from 'lucide-react'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
+import { ChevronDown, BarChart2, Users, Clock, ChevronRight, Target, Menu, Search, TrendingUp, TrendingDown, CheckCircle2 } from 'lucide-react'
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts'
 import { CircularProgressbar, buildStyles } from 'react-circular-progressbar'
 import 'react-circular-progressbar/dist/styles.css'
 import BlurIn from './ui/blur-in'
@@ -11,6 +11,8 @@ import { motion } from 'framer-motion'
 import SaleDetailsPopup from './SaleDetailsPopup'
 import Link from 'next/link'
 import { useSession, signOut } from 'next-auth/react'
+import StatisticCard11 from './statistic-card-11'
+import GoalDetailsDialog from './goal-details-dialog'
 
 const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY
 const spreadsheetId = process.env.NEXT_PUBLIC_SPREADSHEET_ID
@@ -62,6 +64,7 @@ export default function Dashboard() {
   const [searchTerm, setSearchTerm] = useState('')
   const [filteredClientNames, setFilteredClientNames] = useState<string[]>([])
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null)
+  const [isGoalDetailsOpen, setIsGoalDetailsOpen] = useState(false)
 
   const periods: TimePeriod[] = ['Diario', 'Ayer', 'Semanal', 'Mensual']
 
@@ -574,6 +577,16 @@ export default function Dashboard() {
     return emails
   }, [emails, session])
 
+  const currentPeriodFilteredSales = React.useMemo(() => {
+    const { periodStartDate, periodEndDate } = getCurrentPeriodInfo()
+    return salesData
+      .filter((sale) => sale.email === selectedEmail)
+      .filter((sale) => {
+        const saleDate = new Date(sale.fechaSinHora)
+        return isDateInPeriod(saleDate, periodStartDate, periodEndDate)
+      })
+  }, [salesData, selectedEmail])
+
   return (
     <div className="min-h-screen bg-white px-4 py-4 font-sans w-full" style={{ fontFamily: 'Inter, sans-serif', fontSize: '0.82rem' }}>
       <header className="flex justify-between items-center mb-4">
@@ -696,35 +709,44 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="bg-white rounded-xl mb-3 p-5 border border-[#E2E4E9]/70">
-        <h2 className="text-gray-500 text-xs mb-0.5">Vendido</h2>
-        <div className="flex items-center">
-          <span className="text-2xl font-bold mr-2">${totalSales.toFixed(2)}</span>
-          <span className={`text-xs px-1.5 py-0.5 rounded-full ${percentageDifference >= 0 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-            {percentageDifference >= 0 ? '+' : ''}{percentageDifference.toFixed(2)}%
-          </span>
+      <div className="bg-white mb-3 overflow-hidden -mx-4">
+        <div className="px-9 pt-5 pb-0">
+          <h2 className="text-gray-500 text-xs mb-0.5">Vendido</h2>
+          <div className="flex items-center">
+            <span className="text-4xl font-bold mr-2">${totalSales.toFixed(2)}</span>
+            <span className={`text-xs px-1.5 py-0.5 rounded-full ${percentageDifference >= 0 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+              {percentageDifference >= 0 ? '+' : ''}{percentageDifference.toFixed(2)}%
+            </span>
+          </div>
+          {selectedPeriod === 'Mensual' && (
+            <p className="text-xs text-gray-500 mt-1">
+              Periodo {getCurrentPeriodInfo().periodNumber}, Semana {getCurrentPeriodInfo().weekInPeriod}
+            </p>
+          )}
         </div>
-        {selectedPeriod === 'Mensual' && (
-          <p className="text-xs text-gray-500 mt-1">
-            Periodo {getCurrentPeriodInfo().periodNumber}, Semana {getCurrentPeriodInfo().weekInPeriod}
-          </p>
-        )}
         <div className="mt-3 h-[180px] w-full">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={chartData}>
-              <XAxis
-                dataKey="x"
-                tickFormatter={(value) => value}
-                tick={{ fontSize: 9 }}
-              />
-              <YAxis hide />
+            <AreaChart data={chartData} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id="colorVenta" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                </linearGradient>
+              </defs>
               <Tooltip
                 formatter={(value: number) => [`$${value.toFixed(2)}`, 'Venta']}
                 labelFormatter={(label) => label}
-                contentStyle={{ fontSize: '10px' }}
+                contentStyle={{ fontSize: '10px', borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
               />
-              <Bar dataKey="venta" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-            </BarChart>
+              <Area
+                type="monotone"
+                dataKey="venta"
+                stroke="#3b82f6"
+                fillOpacity={1}
+                fill="url(#colorVenta)"
+                strokeWidth={2}
+              />
+            </AreaChart>
           </ResponsiveContainer>
         </div>
       </div>
@@ -812,48 +834,17 @@ export default function Dashboard() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-3">
-        <div className="bg-white rounded-xl p-4 border border-[#E2E4E9]/70">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="text-xs font-semibold text-gray-700">Resumen Personalizado</h2>
-            <span className="text-[10px] uppercase tracking-wide text-blue-500 font-semibold bg-blue-50 px-2 py-0.5 rounded-full">
-              Insights
-            </span>
-          </div>
-          <p className="text-xs text-gray-500 mb-3">
-            {emailLabels[selectedEmail]?.label || 'Tu'} cierre {selectedPeriod.toLowerCase()}.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-2">
-            {insightBadges.map((badge) => (
-              <div
-                key={badge.label}
-                className={`flex-1 border rounded-lg px-3 py-2 bg-gradient-to-br from-white to-gray-50 ${badge.tone === 'positive'
-                  ? 'border-green-200 text-green-700'
-                  : badge.tone === 'negative'
-                    ? 'border-red-200 text-red-600'
-                    : badge.tone === 'warning'
-                      ? 'border-amber-200 text-amber-600'
-                      : 'border-gray-200 text-gray-600'
-                  }`}
-              >
-                <span className="text-[10px] uppercase tracking-wide block">{badge.label}</span>
-                <span className="text-sm font-semibold">{badge.value}</span>
-              </div>
-            ))}
-          </div>
-          {currentGoal ? (
-            <div className="mt-3 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-lg px-3 py-2 text-xs text-blue-700">
-              {currentVsGoalDelta >= 0
-                ? `Vas delante de la meta por ${formatCurrency(currentVsGoalDelta)}. Excelente ritmo.`
-                : `Necesitas ${formatCurrency(Math.abs(currentVsGoalDelta))} para alcanzar la meta.`}
-            </div>
-          ) : (
-            <div className="mt-3 bg-gradient-to-r from-gray-100 to-gray-200 border border-gray-200 rounded-lg px-3 py-2 text-xs text-gray-600">
-              No hay meta definida para este periodo.
-            </div>
-          )}
-        </div>
+        <StatisticCard11
+          title="Avance de meta"
+          currentValue={currentPeriodSales}
+          goalValue={currentGoal}
+          periodLabel={selectedPeriod.toLowerCase()}
+          renewsOn={periodInfo.periodEndDate.toLocaleDateString('es-ES', { month: 'long', day: 'numeric', year: 'numeric' })}
+          formatCurrency={formatCurrency}
+          onViewDetails={() => setIsGoalDetailsOpen(true)}
+        />
 
-        <div className="bg-white rounded-xl p-4 border border-[#E2E4E9]/70">
+        <div className="bg-white rounded-xl p-3 border border-[#E2E4E9]/70">
           <div className="flex items-center justify-between mb-2">
             <h2 className="text-xs font-semibold text-gray-700">Actividad del Equipo</h2>
             <span className="text-[10px] uppercase tracking-wide text-purple-500 font-semibold bg-purple-50 px-2 py-0.5 rounded-full">
@@ -902,62 +893,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="bg-white rounded-xl p-4 border border-[#E2E4E9]/70 mb-3">
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="text-xs font-semibold text-gray-700">Clientes a Vigilar</h2>
-          <span className="text-[10px] uppercase tracking-wide text-emerald-500 font-semibold bg-emerald-50 px-2 py-0.5 rounded-full">
-            Inteligencia
-          </span>
-        </div>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 text-xs text-gray-600">
-          <div>
-            <h3 className="text-xxs uppercase tracking-wide text-gray-500 mb-2">Necesitan atención</h3>
-            <div className="space-y-1.5">
-              {clientInsights.attentionClients.length > 0 ? (
-                clientInsights.attentionClients.map((client) => (
-                  <div key={client.client} className="border border-amber-200 bg-amber-50 rounded-lg px-3 py-2">
-                    <p className="text-sm font-semibold text-amber-700">{client.client}</p>
-                    <p className="text-xxs text-amber-600">Última compra hace {client.daysSinceLastPurchase} días</p>
-                  </div>
-                ))
-              ) : (
-                <p className="text-xxs text-gray-500">Sin alertas recientes en clientes activos.</p>
-              )}
-            </div>
-          </div>
-          <div>
-            <h3 className="text-xxs uppercase tracking-wide text-gray-500 mb-2">Mayor crecimiento</h3>
-            <div className="space-y-1.5">
-              {clientInsights.topGrowth.length > 0 ? (
-                clientInsights.topGrowth.map((client) => (
-                  <div key={client.client} className="border border-green-200 bg-green-50 rounded-lg px-3 py-2">
-                    <p className="text-sm font-semibold text-green-700">{client.client}</p>
-                    <p className="text-xxs text-green-600">Última venta vs anterior +{formatCurrency(client.deltaFromPreviousSale as number)}</p>
-                  </div>
-                ))
-              ) : (
-                <p className="text-xxs text-gray-500">Aún no hay tendencias positivas.</p>
-              )}
-            </div>
-          </div>
-          <div>
-            <h3 className="text-xxs uppercase tracking-wide text-gray-500 mb-2">Mayor caída</h3>
-            <div className="space-y-1.5">
-              {clientInsights.topDecline.length > 0 ? (
-                clientInsights.topDecline.map((client) => (
-                  <div key={client.client} className="border border-red-200 bg-red-50 rounded-lg px-3 py-2">
-                    <p className="text-sm font-semibold text-red-700">{client.client}</p>
-                    <p className="text-xxs text-red-600">Última venta vs anterior {formatCurrency(client.deltaFromPreviousSale as number)}</p>
-                  </div>
-                ))
-              ) : (
-                <p className="text-xxs text-gray-500">Sin caídas relevantes detectadas.</p>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
       <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
 
         <h2 className="text-gray-700 font-semibold mb-2 flex items-center text-xs">
@@ -997,6 +932,120 @@ export default function Dashboard() {
         ) : (
           <p className="text-xs text-gray-500">No hay ventas en este periodo.</p>
         )}
+      </div>
+
+      <div className="bg-white rounded-xl p-3 border border-[#E2E4E9]/70 mb-3 shadow-sm">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900">Clientes a Vigilar</h2>
+            <p className="text-xs text-gray-500 mt-1">Insights automáticos basados en comportamiento de compra</p>
+          </div>
+          <span className="inline-flex items-center rounded-full bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-700 ring-1 ring-inset ring-indigo-700/10">
+            Inteligencia
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* At Risk Section */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="p-1.5 rounded-md bg-amber-100 text-amber-600">
+                <Clock className="h-4 w-4" />
+              </div>
+              <h3 className="text-xs font-medium text-gray-900 uppercase tracking-wide">Necesitan Atención</h3>
+            </div>
+            <div className="space-y-3">
+              {clientInsights.attentionClients.length > 0 ? (
+                clientInsights.attentionClients.map((client) => (
+                  <div key={client.client} className="group flex items-start gap-3 p-3 rounded-lg border border-gray-100 bg-gray-50/50 hover:bg-white hover:border-gray-200 hover:shadow-sm transition-all duration-200">
+                    <div className="h-8 w-8 rounded-full bg-white border border-gray-200 flex items-center justify-center text-xs font-bold text-gray-500 shadow-sm shrink-0">
+                      {client.client.substring(0, 2).toUpperCase()}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-gray-900 truncate group-hover:text-indigo-600 transition-colors">{client.client}</p>
+                      <p className="text-xs text-amber-600 mt-0.5 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                        Ausente por {client.daysSinceLastPurchase} días
+                      </p>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="flex flex-col items-center justify-center py-8 text-center border border-dashed border-gray-200 rounded-lg bg-gray-50/30">
+                  <div className="p-2 rounded-full bg-gray-100 mb-2">
+                    <CheckCircle2 className="h-4 w-4 text-gray-400" />
+                  </div>
+                  <p className="text-xs text-gray-500">Todos los clientes activos</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Growth Section */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="p-1.5 rounded-md bg-emerald-100 text-emerald-600">
+                <TrendingUp className="h-4 w-4" />
+              </div>
+              <h3 className="text-xs font-medium text-gray-900 uppercase tracking-wide">En Crecimiento</h3>
+            </div>
+            <div className="space-y-3">
+              {clientInsights.topGrowth.length > 0 ? (
+                clientInsights.topGrowth.map((client) => (
+                  <div key={client.client} className="group flex items-start gap-3 p-3 rounded-lg border border-gray-100 bg-gray-50/50 hover:bg-white hover:border-gray-200 hover:shadow-sm transition-all duration-200">
+                    <div className="h-8 w-8 rounded-full bg-emerald-50 border border-emerald-100 flex items-center justify-center text-xs font-bold text-emerald-600 shadow-sm shrink-0">
+                      <TrendingUp className="h-3.5 w-3.5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-gray-900 truncate group-hover:text-emerald-700 transition-colors">{client.client}</p>
+                      <p className="text-xs text-emerald-600 mt-0.5 font-medium">
+                        +{formatCurrency(client.deltaFromPreviousSale as number)} vs anterior
+                      </p>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="flex flex-col items-center justify-center py-8 text-center border border-dashed border-gray-200 rounded-lg bg-gray-50/30">
+                  <p className="text-xs text-gray-500">Sin tendencias de crecimiento</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Decline Section */}
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="p-1.5 rounded-md bg-rose-100 text-rose-600">
+                <TrendingDown className="h-4 w-4" />
+              </div>
+              <h3 className="text-xs font-medium text-gray-900 uppercase tracking-wide">En Riesgo</h3>
+            </div>
+            <div className="space-y-3">
+              {clientInsights.topDecline.length > 0 ? (
+                clientInsights.topDecline.map((client) => (
+                  <div key={client.client} className="group flex items-start gap-3 p-3 rounded-lg border border-gray-100 bg-gray-50/50 hover:bg-white hover:border-gray-200 hover:shadow-sm transition-all duration-200">
+                    <div className="h-8 w-8 rounded-full bg-rose-50 border border-rose-100 flex items-center justify-center text-xs font-bold text-rose-600 shadow-sm shrink-0">
+                      <TrendingDown className="h-3.5 w-3.5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-gray-900 truncate group-hover:text-rose-700 transition-colors">{client.client}</p>
+                      <p className="text-xs text-rose-600 mt-0.5 font-medium">
+                        {formatCurrency(client.deltaFromPreviousSale as number)} vs anterior
+                      </p>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="flex flex-col items-center justify-center py-8 text-center border border-dashed border-gray-200 rounded-lg bg-gray-50/30">
+                  <div className="p-2 rounded-full bg-gray-100 mb-2">
+                    <CheckCircle2 className="h-4 w-4 text-gray-400" />
+                  </div>
+                  <p className="text-xs text-gray-500">Sin caídas significativas</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="bg-white rounded-lg mb-3 border border-[#E2E4E9]">
@@ -1117,6 +1166,16 @@ export default function Dashboard() {
           onClose={() => setSelectedSale(null)}
         />
       )}
+
+      <GoalDetailsDialog
+        isOpen={isGoalDetailsOpen}
+        onClose={() => setIsGoalDetailsOpen(false)}
+        currentSales={currentPeriodSales}
+        goal={currentGoal}
+        periodInfo={getCurrentPeriodInfo()}
+        salesData={currentPeriodFilteredSales}
+        formatCurrency={formatCurrency}
+      />
     </div>
   )
 }
