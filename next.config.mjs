@@ -81,7 +81,7 @@ export default withPWA({
     {
       urlPattern: /\/api\/.*$/i,
       handler: 'NetworkFirst',
-      method: 'GET',
+      method: 'GET', // Only cache GET requests to API
       options: {
         cacheName: 'apis',
         expiration: {
@@ -92,8 +92,20 @@ export default withPWA({
       }
     },
     {
+      // 🔒 CRITICAL: Exclude POST requests from any caching/interception
+      // This prevents Workbox from interfering with form submissions
+      urlPattern: /\/api\/submit-form/i,
+      handler: 'NetworkOnly', // Never cache, never timeout - let the request complete naturally
+      method: 'POST',
+      options: {
+        cacheName: 'form-submissions',
+        // No networkTimeoutSeconds - let POST requests run to completion
+      }
+    },
+    {
       urlPattern: /.*/i,
       handler: 'NetworkFirst',
+      method: 'GET', // 🔒 CRITICAL: Only apply to GET requests
       options: {
         cacheName: 'others',
         expiration: {

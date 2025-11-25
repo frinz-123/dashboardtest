@@ -77,7 +77,9 @@ export async function POST(req: Request) {
       isAdminOverride,
       overrideTargetEmail,
       submissionId: clientSubmissionId,
-      attemptNumber
+      attemptNumber,
+      date: overrideDateString,
+      overridePeriod
     } = body
 
     submissionId = clientSubmissionId;
@@ -298,12 +300,34 @@ export async function POST(req: Request) {
       })
 
       const lastRow = currentData.data.values ? currentData.data.values.length + 1 : 2
-      
+
       // Ensure we're explicitly including column AM (the 39th column)
       const range = `Form_Data!A${lastRow}:AM${lastRow}`
 
       // Format current date/time using Mazatlan timezone (GMT-7)
-      const submissionTimestamp = new Date()
+      // 🔧 ADMIN OVERRIDE: Use override date if provided by admin user
+      let submissionTimestamp: Date;
+      if (isAdmin && overrideDateString) {
+        submissionTimestamp = new Date(overrideDateString);
+        console.log("📅 ADMIN DATE OVERRIDE: Using override date", {
+          overrideDateString,
+          parsedDate: submissionTimestamp.toISOString(),
+          isValidDate: !isNaN(submissionTimestamp.getTime()),
+          adminEmail: adminEmailForValidation,
+          timestamp: new Date().toISOString()
+        });
+
+        // Validate the parsed date
+        if (isNaN(submissionTimestamp.getTime())) {
+          console.warn("⚠️ INVALID OVERRIDE DATE: Falling back to current time", {
+            overrideDateString,
+            adminEmail: adminEmailForValidation
+          });
+          submissionTimestamp = new Date();
+        }
+      } else {
+        submissionTimestamp = new Date();
+      }
       const MAZATLAN_TZ = 'America/Mazatlan'
 
       const mazatlanParts = new Intl.DateTimeFormat('en-US', {
@@ -357,11 +381,33 @@ export async function POST(req: Request) {
       })
 
       // Get current period and week for column AL (aligned to Mazatlan date)
-      const { periodNumber, weekInPeriod } = getCurrentPeriodInfo(periodSourceDate)
-      const periodWeekCode = `P${periodNumber}S${weekInPeriod}`
+      // 🔧 ADMIN OVERRIDE: Use override period if provided by admin user
+      let periodWeekCode: string;
+      if (isAdmin && overridePeriod && overridePeriod.trim()) {
+        periodWeekCode = overridePeriod.trim();
+        console.log("📅 ADMIN PERIOD OVERRIDE: Using override period", {
+          overridePeriod,
+          adminEmail: adminEmailForValidation,
+          timestamp: new Date().toISOString()
+        });
+      } else {
+        const { periodNumber, weekInPeriod } = getCurrentPeriodInfo(periodSourceDate)
+        periodWeekCode = `P${periodNumber}S${weekInPeriod}`
+      }
 
-      // Create an array with 39 elements (A to AM)
-      const rowData = new Array(39).fill('')
+      // Generate Month_Year format (e.g., NOV_25) for column AO
+      const monthYearFormatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: MAZATLAN_TZ,
+        month: 'short',
+        year: '2-digit'
+      });
+      const myParts = monthYearFormatter.formatToParts(periodSourceDate);
+      const mPart = myParts.find(p => p.type === 'month')?.value || '';
+      const yPart = myParts.find(p => p.type === 'year')?.value || '';
+      const monthYearCode = `${mPart}_${yPart}`.toUpperCase().replace('.', '');
+
+      // Create an array with 41 elements (A to AO)
+      const rowData = new Array(41).fill('')
 
       // Set the values according to the mapping
       rowData[0] = clientName                                    // Column A
@@ -401,37 +447,28 @@ export async function POST(req: Request) {
       rowData[35] = products['Habanero Molido 50 g'] || ''     // Column AJ
       rowData[36] = products['Habanero Molido 20 g'] || ''     // Column AK
       rowData[37] = periodWeekCode                             // Column AL - Always use the period/week code here
-      
+
       // CLEY order value for Column AM (index 38)
-      // Always set a value for column AM to ensure it's included in the update
       if (clientCode.toUpperCase() === 'CLEY' && cleyOrderValue) {
         const amValue = cleyOrderValue === "1" ? "No" : "Si";
-        console.log("Setting AM column for CLEY:", { 
-          clientCode, 
-          cleyOrderValue, 
-          amValue 
-        });
         rowData[38] = amValue;     // Column AM - CLEY Order value
       } else {
-        console.log("Not setting AM column:", { 
-          clientCode: clientCode.toUpperCase(), 
-          isCley: clientCode.toUpperCase() === 'CLEY',
-          hasCleyValue: !!cleyOrderValue,
-          cleyOrderValue
-        });
         rowData[38] = ""; // Empty string but explicitly set to ensure column AM is included
       }
+
+      rowData[40] = monthYearCode; // Column AO - Month_Year code (e.g. NOV_25)
 
       console.log("Final row data:", {
         columnAL: rowData[37],
         columnAM: rowData[38],
+        columnAO: rowData[40],
         fullArrayLength: rowData.length
       });
 
       // Try using append instead of update to handle the column range better
       const response = await sheets.spreadsheets.values.append({
         spreadsheetId,
-        range: 'Form_Data!A:AM',
+        range: 'Form_Data!A:AO',
         valueInputOption: 'USER_ENTERED',
         insertDataOption: 'INSERT_ROWS',
         requestBody: {
@@ -514,4 +551,4 @@ export async function POST(req: Request) {
       processingTime
     }, { status: statusCode });
   }
-} 
+}

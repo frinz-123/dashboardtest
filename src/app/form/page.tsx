@@ -751,7 +751,7 @@ const getProductPrice = (clientCode: string, product: string): number => {
   const normalizedCode = clientCode.toUpperCase()
   const priceList = PRICES[normalizedCode] || PRICES['EFT']
   const price = priceList[product]
-  
+
   // 🔍 LOG: Missing price detection
   if (price === undefined || price === 0) {
     console.warn('⚠️ PRICE ISSUE:', {
@@ -763,7 +763,7 @@ const getProductPrice = (clientCode: string, product: string): number => {
       timestamp: new Date().toISOString()
     })
   }
-  
+
   return price || 0
 }
 
@@ -776,15 +776,15 @@ type Client = {
 // Update the calculateDistance function to be more precise
 const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
   const R = 6371e3; // Earth's radius in meters
-  const φ1 = lat1 * Math.PI/180;
-  const φ2 = lat2 * Math.PI/180;
-  const Δφ = (lat2-lat1) * Math.PI/180;
-  const Δλ = (lon2-lon1) * Math.PI/180;
+  const φ1 = lat1 * Math.PI / 180;
+  const φ2 = lat2 * Math.PI / 180;
+  const Δφ = (lat2 - lat1) * Math.PI / 180;
+  const Δλ = (lon2 - lon1) * Math.PI / 180;
 
-  const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
-          Math.cos(φ1) * Math.cos(φ2) *
-          Math.sin(Δλ/2) * Math.sin(Δλ/2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+    Math.cos(φ1) * Math.cos(φ2) *
+    Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
   return R * c;
 };
@@ -792,7 +792,7 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
 // Add a debounce utility function near the throttle function at the bottom
 function debounce(func: Function, wait: number) {
   let timeout: NodeJS.Timeout;
-  return function(this: any, ...args: any[]) {
+  return function (this: any, ...args: any[]) {
     clearTimeout(timeout);
     timeout = setTimeout(() => func.apply(this, args), wait);
   };
@@ -824,10 +824,16 @@ export default function FormPage() {
   }>({});
   const [isOptimisticSubmit, setIsOptimisticSubmit] = useState(false)
 
+  // 🔧 CRITICAL: Ref-based guard for immediate double-click prevention
+  const isSubmittingRef = useRef(false);
+  // Track current submission to detect duplicate attempts
+  const currentSubmissionIdRef = useRef<string | null>(null);
+
   // Admin override states
   const [overrideEmail, setOverrideEmail] = useState<string>('')
   const [overrideDate, setOverrideDate] = useState<string>('')
-  
+  const [overridePeriod, setOverridePeriod] = useState<string>('')
+
   const throttledLocationUpdate = useRef(
     throttle((location: { lat: number, lng: number, accuracy?: number, timestamp?: number }) => {
       setCurrentLocation(location);
@@ -920,14 +926,14 @@ export default function FormPage() {
   // ✅ VALIDATION: Monitor session changes and cache email when available
   useEffect(() => {
     const sessionEmail = session?.user?.email;
-    
+
     // Cache the email when we have a valid session
     if (sessionEmail) {
       localStorage.setItem('userEmail', sessionEmail);
       setCachedEmail(sessionEmail);
       console.log("💾 CACHED EMAIL:", sessionEmail);
     }
-    
+
     console.log("🔍 SESSION MONITOR:", {
       timestamp: new Date().toISOString(),
       sessionExists: !!session,
@@ -977,7 +983,7 @@ export default function FormPage() {
         const price = getProductPrice(clientCode, product)
         return sum + (price * quantity)
       }, 0)
-      
+
       // 🔍 LOG: Display total recalculation
       console.log('💰 DISPLAY TOTAL UPDATE:', {
         selectedClient,
@@ -986,7 +992,7 @@ export default function FormPage() {
         calculatedTotal: calculatedTotal.toFixed(2),
         timestamp: new Date().toISOString()
       })
-      
+
       setTotal(calculatedTotal.toFixed(2))
     }
   }, [selectedClient, quantities])
@@ -1036,14 +1042,14 @@ export default function FormPage() {
           return name
         })
         .filter(Boolean)
-      
+
       const uniqueNames = Array.from(new Set(names))
       setClientNames(uniqueNames as string[])
       setClientLocations(clients)
 
       try {
         localStorage.setItem(
-          'clientData', 
+          'clientData',
           JSON.stringify({ names: uniqueNames, locations: clients })
         )
       } catch (e) {
@@ -1085,13 +1091,13 @@ export default function FormPage() {
     } else if (value < (quantities[product] || 0)) {
       haptics.light();
     }
-    
+
     setQuantities(prev => {
       const newQuantities = {
         ...prev,
         [product]: value >= 0 ? value : 0  // Allow zero values, just prevent negative
       };
-      
+
       // Recalculate total immediately after quantity change
       if (selectedClient) {
         const clientCode = getClientCode(selectedClient);
@@ -1099,11 +1105,11 @@ export default function FormPage() {
           const price = getProductPrice(clientCode, prod);
           return sum + (price * qty);
         }, 0);
-        
+
         // Use setTimeout to avoid state update conflicts
         setTimeout(() => setTotal(newTotal.toFixed(2)), 0);
       }
-      
+
       return newQuantities;
     });
   };
@@ -1131,20 +1137,50 @@ export default function FormPage() {
   }
 
   // 🔧 RETRY MECHANISM: Exponential backoff retry for network resilience
-  const submitWithRetry = async (payload: any, maxRetries = 3): Promise<any> => {
+  // CRITICAL FIX: submissionId is now passed in, NOT generated per-attempt
+  // CRITICAL FIX 2: No timeout-based abort when tab is hidden (prevents alt-tab double submission)
+  const submitWithRetry = async (payload: any, submissionId: string, maxRetries = 3): Promise<any> => {
     let lastError: Error | null = null;
+
+    console.log(`🔒 SUBMISSION STARTED with ID: ${submissionId}`, {
+      timestamp: new Date().toISOString(),
+      clientName: payload.clientName,
+      tabVisible: typeof document !== 'undefined' ? !document.hidden : 'unknown'
+    });
 
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
         console.log(`📤 SUBMISSION ATTEMPT ${attempt + 1}/${maxRetries}:`, {
           timestamp: new Date().toISOString(),
           attempt: attempt + 1,
-          clientName: payload.clientName
+          submissionId, // Same ID for all attempts
+          clientName: payload.clientName,
+          tabVisible: typeof document !== 'undefined' ? !document.hidden : 'unknown'
         });
 
-        // Create abort controller with timeout
+        // Create abort controller - but ONLY use timeout when tab is visible
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+        let timeoutId: NodeJS.Timeout | null = null;
+
+        // 🔒 CRITICAL: Don't set timeout if tab is hidden - prevents alt-tab issues
+        // When tab is hidden, browser throttles timers unpredictably
+        const setupTimeout = () => {
+          if (typeof document !== 'undefined' && !document.hidden) {
+            timeoutId = setTimeout(() => {
+              // Double-check tab is still visible before aborting
+              if (typeof document !== 'undefined' && !document.hidden) {
+                console.log(`⏱️ TIMEOUT: Aborting request (tab visible)`, { submissionId, attempt: attempt + 1 });
+                controller.abort();
+              } else {
+                console.log(`⏱️ TIMEOUT SKIPPED: Tab is hidden, not aborting`, { submissionId, attempt: attempt + 1 });
+              }
+            }, 30000);
+          } else {
+            console.log(`⏱️ TIMEOUT NOT SET: Tab is hidden`, { submissionId, attempt: attempt + 1 });
+          }
+        };
+
+        setupTimeout();
 
         const response = await fetch('/api/submit-form', {
           method: 'POST',
@@ -1154,12 +1190,12 @@ export default function FormPage() {
           body: JSON.stringify({
             ...payload,
             attemptNumber: attempt + 1,
-            submissionId: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+            submissionId // CRITICAL: Same ID for all retry attempts
           }),
           signal: controller.signal,
         });
 
-        clearTimeout(timeoutId);
+        if (timeoutId) clearTimeout(timeoutId);
 
         // Parse response
         const data = await response.json();
@@ -1169,7 +1205,8 @@ export default function FormPage() {
           console.error(`❌ VALIDATION ERROR (no retry):`, {
             status: response.status,
             error: data.error,
-            attempt: attempt + 1
+            attempt: attempt + 1,
+            submissionId
           });
           throw new Error(data.error || 'Error de validación');
         }
@@ -1183,7 +1220,9 @@ export default function FormPage() {
         console.log(`✅ SUBMISSION SUCCESS on attempt ${attempt + 1}:`, {
           timestamp: new Date().toISOString(),
           attempt: attempt + 1,
-          clientName: payload.clientName
+          submissionId,
+          clientName: payload.clientName,
+          wasDuplicate: data.duplicate || false
         });
 
         return data;
@@ -1193,12 +1232,18 @@ export default function FormPage() {
 
         // If it's an abort error (timeout)
         if (error.name === 'AbortError') {
-          console.error(`⏱️ TIMEOUT on attempt ${attempt + 1}/${maxRetries}`);
+          // 🔒 CRITICAL: If tab is hidden, don't retry - wait for user to come back
+          if (typeof document !== 'undefined' && document.hidden) {
+            console.log(`⏱️ ABORT while tab hidden - NOT retrying, waiting for visibility`, { submissionId });
+            throw new Error('La pestaña está en segundo plano. Por favor, regresa a la aplicación.');
+          }
+          console.error(`⏱️ TIMEOUT on attempt ${attempt + 1}/${maxRetries}`, { submissionId });
           lastError = new Error('La solicitud tardó demasiado. Reintentando...');
         } else {
           console.error(`❌ ERROR on attempt ${attempt + 1}/${maxRetries}:`, {
             error: error.message,
-            type: error.name
+            type: error.name,
+            submissionId
           });
         }
 
@@ -1207,9 +1252,15 @@ export default function FormPage() {
           throw lastError;
         }
 
+        // 🔒 CRITICAL: Don't retry if tab is hidden
+        if (typeof document !== 'undefined' && document.hidden) {
+          console.log(`⏸️ Tab hidden - pausing retries`, { submissionId, attempt: attempt + 1 });
+          throw new Error('La pestaña está en segundo plano. Por favor, regresa e intenta de nuevo.');
+        }
+
         // Wait before retrying with exponential backoff
         const waitTime = Math.min(1000 * Math.pow(2, attempt), 8000); // Max 8 seconds
-        console.log(`⏳ Waiting ${waitTime}ms before retry ${attempt + 2}...`);
+        console.log(`⏳ Waiting ${waitTime}ms before retry ${attempt + 2}...`, { submissionId });
         await new Promise(resolve => setTimeout(resolve, waitTime));
       }
     }
@@ -1219,6 +1270,21 @@ export default function FormPage() {
 
   // 🔧 FIXED: Pessimistic update - only clear form AFTER successful submission
   const handleSubmit = async () => {
+    // 🔒 CRITICAL: Immediate ref-based guard against double-clicks
+    // This check happens BEFORE any async operations or state updates
+    if (isSubmittingRef.current) {
+      console.warn('⚠️ DOUBLE-CLICK PREVENTED: Submission already in progress', {
+        currentSubmissionId: currentSubmissionIdRef.current
+      });
+      return;
+    }
+    isSubmittingRef.current = true;
+
+    // Generate stable submissionId ONCE at the start - used for all retry attempts
+    const submissionId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    currentSubmissionIdRef.current = submissionId;
+    console.log(`🆔 GENERATED SUBMISSION ID: ${submissionId}`);
+
     haptics.medium(); // Haptic feedback on submit
     setValidationErrors({});
 
@@ -1232,16 +1298,19 @@ export default function FormPage() {
       cleyOrderValue,
       overrideEmail,
       overrideDate,
+      overridePeriod,
     };
 
     try {
       if (!selectedClient) {
         setValidationErrors(prev => ({ ...prev, client: 'Selecciona un cliente' }));
+        isSubmittingRef.current = false; // Release guard on validation failure
         return;
       }
 
       if (!currentLocation) {
         setValidationErrors(prev => ({ ...prev, location: 'No se pudo obtener la ubicación' }));
+        isSubmittingRef.current = false; // Release guard on validation failure
         return;
       }
 
@@ -1294,6 +1363,7 @@ export default function FormPage() {
           ...prev,
           submit: 'No se pudo determinar el usuario. Por favor, recarga la página e inicia sesión.'
         }));
+        isSubmittingRef.current = false; // Release guard on validation failure
         return;
       }
 
@@ -1355,14 +1425,16 @@ export default function FormPage() {
         location: currentLocation,
         userEmail: finalEmail,
         actorEmail,
-        isAdminOverride: isAdminOverride && !!overrideEmail,
+        isAdminOverride: isAdminOverride && (!!overrideEmail || !!overrideDate || !!overridePeriod),
         overrideTargetEmail: overrideEmail || null,
         date: submittedAt,
-        cleyOrderValue: cleyValue
+        cleyOrderValue: cleyValue,
+        overridePeriod: isAdminOverride ? overridePeriod : null
       };
 
       // 🔧 NEW: Use retry mechanism with timeout
-      const data = await submitWithRetry(submissionPayload);
+      // CRITICAL: Pass the stable submissionId for deduplication
+      const data = await submitWithRetry(submissionPayload, submissionId);
 
       if (!data.success) {
         throw new Error(data.error || 'Error al enviar el pedido');
@@ -1379,6 +1451,7 @@ export default function FormPage() {
       setCleyOrderValue("1");
       setOverrideEmail('');
       setOverrideDate('');
+      setOverridePeriod('');
       setKey(prev => prev + 1);
 
       // Show success feedback
@@ -1406,15 +1479,18 @@ export default function FormPage() {
     } finally {
       setIsSubmitting(false);
       setIsOptimisticSubmit(false);
+      isSubmittingRef.current = false; // 🔒 CRITICAL: Release guard in finally block
+      currentSubmissionIdRef.current = null; // Clear submission tracking
+      console.log(`🔓 SUBMISSION GUARD RELEASED`);
     }
   };
 
   function calculateOrderDetails() {
     if (!selectedClient) return []
-    
+
     const clientCode = getClientCode(selectedClient)
     const details: { product: string; quantity: number; price: number; subtotal: number }[] = []
-    
+
     Object.entries(quantities).forEach(([product, quantity]) => {
       if (quantity > 0) {
         const price = getProductPrice(clientCode, product)
@@ -1426,7 +1502,7 @@ export default function FormPage() {
         })
       }
     })
-    
+
     return details
   }
 
@@ -1536,7 +1612,7 @@ export default function FormPage() {
 
       <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
         <div className="relative">
-          <SearchInput 
+          <SearchInput
             value={searchTerm}
             onChange={handleSearchChange}
             onClear={() => {
@@ -1626,7 +1702,7 @@ export default function FormPage() {
           </div>
 
           {/* Date Picker */}
-          <div>
+          <div className="mb-3">
             <label className="block text-gray-700 font-semibold text-xs mb-2">
               Seleccionar Fecha
             </label>
@@ -1650,12 +1726,47 @@ export default function FormPage() {
               </p>
             )}
           </div>
+
+          {/* Period Selector */}
+          <div>
+            <label className="block text-gray-700 font-semibold text-xs mb-2">
+              Seleccionar Periodo (Columna AL)
+            </label>
+            <select
+              value={overridePeriod}
+              onChange={(e) => {
+                haptics.light();
+                setOverridePeriod(e.target.value);
+              }}
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white"
+            >
+              <option value="">Calcular automáticamente desde la fecha</option>
+              {/* Generate period options P11S1 to P15S4 */}
+              {[11, 12, 13, 14, 15].map(period => (
+                [1, 2, 3, 4].map(week => (
+                  <option key={`P${period}S${week}`} value={`P${period}S${week}`}>
+                    P{period}S{week} - Periodo {period}, Semana {week}
+                  </option>
+                ))
+              ))}
+            </select>
+            {overridePeriod && (
+              <p className="text-xs text-purple-600 mt-1">
+                ✓ Periodo override activo: {overridePeriod}
+              </p>
+            )}
+            {!overridePeriod && (
+              <p className="text-xs text-gray-500 mt-1">
+                Si no seleccionas un periodo, se calculará desde la fecha
+              </p>
+            )}
+          </div>
         </div>
       )}
 
       <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
         <h2 className="text-gray-700 font-semibold text-xs mb-3">Ubicación Actual</h2>
-        <Map 
+        <Map
           onLocationUpdate={handleLocationUpdate}
           clientLocation={selectedClient ? clientLocations[selectedClient] : null}
         />
@@ -1663,16 +1774,16 @@ export default function FormPage() {
 
       <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9] space-y-4">
         {PRODUCTS.map((product, index) => (
-          <div 
+          <div
             key={`${product}-${key}`}
             className="transform transition-all duration-200 ease-out hover:scale-[1.01]"
-            style={{ 
+            style={{
               animationDelay: `${index * 50}ms`,
               animation: 'fadeInUp 0.4s ease-out forwards'
             }}
           >
-            <LabelNumbers 
-              label={product} 
+            <LabelNumbers
+              label={product}
               value={quantities[product] || 0}
               onChange={(value) => handleQuantityChange(product, value)}
             />
@@ -1683,7 +1794,7 @@ export default function FormPage() {
       {/* Add CLEY order question component */}
       {selectedClient && getClientCode(selectedClient).toUpperCase() === 'CLEY' && (
         <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
-          <CleyOrderQuestion 
+          <CleyOrderQuestion
             key={`cley-question-${key}`}
             onChange={(value) => {
               console.log("CLEY Radio changed to:", value);
@@ -1712,10 +1823,10 @@ export default function FormPage() {
             <div className="max-h-40 overflow-y-auto mb-3">
               <ul className="divide-y divide-gray-100">
                 {orderDetails.map(({ product, quantity, price, subtotal }, index) => (
-                  <li 
-                    key={product} 
+                  <li
+                    key={product}
                     className="py-2 flex items-start justify-between transform transition-all duration-200 ease-out"
-                    style={{ 
+                    style={{
                       animationDelay: `${index * 100}ms`,
                       animation: 'fadeInLeft 0.3s ease-out forwards'
                     }}
@@ -1748,33 +1859,32 @@ export default function FormPage() {
 
       <div className={`${Object.values(quantities).some(q => q > 0) ? 'mb-80' : 'mb-3'}`}>
         <button
-          className={`w-full py-3 rounded-lg font-medium transition-all duration-300 disabled:cursor-not-allowed transform hover:scale-[1.02] active:scale-[0.98] ${
-            isOptimisticSubmit 
-              ? 'bg-green-500 text-white shadow-lg' 
-              : 'bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50'
-          }`}
-        onClick={handleSubmit}
-        disabled={
-          !selectedClient || 
-          !currentLocation || 
-          isSubmitting || 
-          isOptimisticSubmit ||
-          (!session?.user?.email && !cachedEmail) ||  // ✅ UPDATED: Allow if we have cached email
-          (locationAlert !== null && !isOverrideEmail(session?.user?.email || cachedEmail))
-        }
-      >
-        {isSubmitting ? (
-          <div className="flex items-center justify-center">
-            <div className="w-5 h-5 border-t-2 border-white border-solid rounded-full animate-spin mr-2"></div>
-            {isOptimisticSubmit ? 'Procesando...' : 'Enviando...'}
-          </div>
-        ) : (!session?.user?.email && !cachedEmail) ? (
-          '🔒 Sesión Requerida'
-        ) : isOptimisticSubmit ? (
-          '✓ Enviado'
-        ) : (
-          'Enviar Pedido'
-        )}
+          className={`w-full py-3 rounded-lg font-medium transition-all duration-300 disabled:cursor-not-allowed transform hover:scale-[1.02] active:scale-[0.98] ${isOptimisticSubmit
+            ? 'bg-green-500 text-white shadow-lg'
+            : 'bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50'
+            }`}
+          onClick={handleSubmit}
+          disabled={
+            !selectedClient ||
+            !currentLocation ||
+            isSubmitting ||
+            isOptimisticSubmit ||
+            (!session?.user?.email && !cachedEmail) ||  // ✅ UPDATED: Allow if we have cached email
+            (locationAlert !== null && !isOverrideEmail(session?.user?.email || cachedEmail))
+          }
+        >
+          {isSubmitting ? (
+            <div className="flex items-center justify-center">
+              <div className="w-5 h-5 border-t-2 border-white border-solid rounded-full animate-spin mr-2"></div>
+              {isOptimisticSubmit ? 'Procesando...' : 'Enviando...'}
+            </div>
+          ) : (!session?.user?.email && !cachedEmail) ? (
+            '🔒 Sesión Requerida'
+          ) : isOptimisticSubmit ? (
+            '✓ Enviado'
+          ) : (
+            'Enviar Pedido'
+          )}
         </button>
       </div>
 
@@ -1802,12 +1912,12 @@ export default function FormPage() {
       )}
     </div>
   )
-} 
+}
 
 // Utility function for throttling
 function throttle(func: Function, limit: number) {
   let inThrottle: boolean;
-  return function(this: any, ...args: any[]) {
+  return function (this: any, ...args: any[]) {
     if (!inThrottle) {
       func.apply(this, args);
       inThrottle = true;
