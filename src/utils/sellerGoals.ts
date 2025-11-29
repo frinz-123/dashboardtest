@@ -173,3 +173,9 @@ export function calculateGoalProgress(email: string, period: GoalPeriod, current
   if (goal === 0) return 0;
   return (currentSales / goal) * 100;
 }
+
+export function getSellersWithGoals(): string[] {
+  return Object.keys(sellerGoals);
+}
+
+export type { GoalPeriod };

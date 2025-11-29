@@ -7,6 +7,7 @@ import 'react-circular-progressbar/dist/styles.css'
 import BlurIn from './ui/blur-in'
 import { getCurrentPeriodInfo, getWeekDates, isDateInPeriod, getCurrentPeriodNumber } from '@/utils/dateUtils'
 import { getSellerGoal } from '@/utils/sellerGoals'
+import { isMasterAccount } from '@/utils/auth'
 import { motion } from 'framer-motion'
 import SaleDetailsPopup from './SaleDetailsPopup'
 import Link from 'next/link'
@@ -643,6 +644,15 @@ export default function Dashboard() {
                   >
                     Admin
                   </Link>
+                  {isMasterAccount(session?.user?.email) && (
+                    <Link
+                      href="/inspector-periodos"
+                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                      role="menuitem"
+                    >
+                      Inspector de Periodos
+                    </Link>
+                  )}
                   <Link
                     href="/form"
                     className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
