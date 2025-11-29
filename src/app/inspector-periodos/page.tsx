@@ -62,29 +62,46 @@ export default function InspectorPeriodosPage() {
   // New states for enhanced functionality
   const [viewMode, setViewMode] = useState<ViewMode>('overview')
   const [selectedSeller, setSelectedSeller] = useState<string | null>(null)
+  const [selectedWeek, setSelectedWeek] = useState<number | null>(null) // null = all weeks, 1-4 = specific week
   const [selectedDay, setSelectedDay] = useState<string | null>(null) // null = all days
   const [showAllSales, setShowAllSales] = useState(false)
 
   const availablePeriods = useMemo(() => getAllPeriods().reverse(), [])
   const isAdmin = useMemo(() => isMasterAccount(session?.user?.email), [session])
 
-  // Get all days in the selected period
+  // Get weeks for the selected period
+  const periodWeeks = useMemo(() => {
+    if (!selectedPeriod) return []
+    return getPeriodWeeks(selectedPeriod)
+  }, [selectedPeriod])
+
+  // Get all days in the selected period (grouped by week)
   const periodDays = useMemo(() => {
     if (!selectedPeriod) return []
     const { periodStartDate, periodEndDate } = getPeriodDateRange(selectedPeriod)
-    const days: { date: Date; label: string; dateStr: string }[] = []
+    const days: { date: Date; label: string; dateStr: string; weekNumber: number }[] = []
     const current = new Date(periodStartDate)
+    let dayIndex = 0
 
     while (current <= periodEndDate) {
+      const weekNumber = Math.floor(dayIndex / 7) + 1
       days.push({
         date: new Date(current),
         label: current.toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' }),
-        dateStr: current.toISOString().split('T')[0]
+        dateStr: current.toISOString().split('T')[0],
+        weekNumber
       })
       current.setDate(current.getDate() + 1)
+      dayIndex++
     }
     return days
   }, [selectedPeriod])
+
+  // Get days for the selected week only
+  const daysInSelectedWeek = useMemo(() => {
+    if (!selectedWeek) return []
+    return periodDays.filter(day => day.weekNumber === selectedWeek)
+  }, [selectedWeek, periodDays])
 
   // Set default period to most recent completed or current
   useEffect(() => {
@@ -94,10 +111,16 @@ export default function InspectorPeriodosPage() {
     }
   }, [availablePeriods, selectedPeriod])
 
-  // Reset day selection when period changes
+  // Reset week and day selection when period changes
   useEffect(() => {
+    setSelectedWeek(null)
     setSelectedDay(null)
   }, [selectedPeriod])
+
+  // Reset day selection when week changes
+  useEffect(() => {
+    setSelectedDay(null)
+  }, [selectedWeek])
 
   // Fetch sales data
   useEffect(() => {
@@ -145,7 +168,7 @@ export default function InspectorPeriodosPage() {
     }
   }
 
-  // Get filtered sales for the selected period and optional day/seller
+  // Get filtered sales for the selected period and optional week/day/seller
   const filteredSales = useMemo(() => {
     if (!selectedPeriod || salesData.length === 0) return []
 
@@ -160,6 +183,12 @@ export default function InspectorPeriodosPage() {
       // Filter by seller if selected
       if (selectedSeller && sale.email !== selectedSeller) return false
 
+      // Filter by week if selected (and no specific day selected)
+      if (selectedWeek && !selectedDay) {
+        const week = periodWeeks[selectedWeek - 1]
+        if (week && !isDateInPeriod(saleDate, week.weekStart, week.weekEnd)) return false
+      }
+
       // Filter by day if selected
       if (selectedDay) {
         const saleDateStr = saleDate.toISOString().split('T')[0]
@@ -168,7 +197,7 @@ export default function InspectorPeriodosPage() {
 
       return true
     })
-  }, [selectedPeriod, salesData, selectedSeller, selectedDay])
+  }, [selectedPeriod, salesData, selectedSeller, selectedWeek, selectedDay, periodWeeks])
 
   // Calculate seller stats for selected period
   const sellerStats = useMemo((): SellerStats[] => {
@@ -236,12 +265,15 @@ export default function InspectorPeriodosPage() {
       salesByDate[dateStr] = (salesByDate[dateStr] || 0) + sale.venta
     })
 
-    return periodDays.map(day => ({
+    // Use days from selected week if week is selected, otherwise all period days
+    const daysToShow = selectedWeek ? daysInSelectedWeek : periodDays
+
+    return daysToShow.map(day => ({
       date: day.label,
       dateStr: day.dateStr,
       venta: salesByDate[day.dateStr] || 0
     }))
-  }, [filteredSales, periodDays, selectedPeriod])
+  }, [filteredSales, periodDays, selectedPeriod, selectedWeek, daysInSelectedWeek])
 
   // Summary stats
   const summaryStats = useMemo(() => {
@@ -302,6 +334,7 @@ export default function InspectorPeriodosPage() {
   const handleBackToOverview = () => {
     setViewMode('overview')
     setSelectedSeller(null)
+    setSelectedWeek(null)
     setSelectedDay(null)
   }
 
@@ -491,35 +524,78 @@ export default function InspectorPeriodosPage() {
               </div>
             </div>
 
-            {/* Row 2: Day filter (only when seller is selected) */}
+            {/* Row 2: Week and Day filter (only when seller is selected) */}
             {selectedSeller && (
-              <div>
-                <label className="text-xs text-gray-500 uppercase tracking-wide mb-2 block">Filtrar por dia</label>
-                <div className="flex flex-wrap gap-1">
-                  <button
-                    onClick={() => setSelectedDay(null)}
-                    className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${
-                      !selectedDay
-                        ? 'bg-blue-500 text-white'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
-                  >
-                    Todo el periodo
-                  </button>
-                  {periodDays.map((day) => (
+              <div className="space-y-3">
+                {/* Week filter */}
+                <div>
+                  <label className="text-xs text-gray-500 uppercase tracking-wide mb-2 block">Filtrar por semana</label>
+                  <div className="flex flex-wrap gap-2">
                     <button
-                      key={day.dateStr}
-                      onClick={() => setSelectedDay(day.dateStr)}
-                      className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${
-                        selectedDay === day.dateStr
+                      onClick={() => {
+                        setSelectedWeek(null)
+                        setSelectedDay(null)
+                      }}
+                      className={`px-4 py-2 text-xs font-medium rounded-lg transition-colors ${
+                        !selectedWeek && !selectedDay
                           ? 'bg-blue-500 text-white'
                           : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                       }`}
                     >
-                      {day.label}
+                      Todo el periodo
                     </button>
-                  ))}
+                    {periodWeeks.map((week) => (
+                      <button
+                        key={week.weekNumber}
+                        onClick={() => setSelectedWeek(week.weekNumber)}
+                        className={`px-4 py-2 text-xs font-medium rounded-lg transition-colors ${
+                          selectedWeek === week.weekNumber
+                            ? 'bg-indigo-500 text-white'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                      >
+                        <span className="font-semibold">S{week.weekNumber}</span>
+                        <span className="hidden sm:inline text-[10px] ml-1 opacity-80">
+                          ({week.weekStart.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })} - {week.weekEnd.toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })})
+                        </span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
+
+                {/* Day filter (only when week is selected) */}
+                {selectedWeek && (
+                  <div>
+                    <label className="text-xs text-gray-500 uppercase tracking-wide mb-2 block">
+                      Filtrar por dia (Semana {selectedWeek})
+                    </label>
+                    <div className="flex flex-wrap gap-1">
+                      <button
+                        onClick={() => setSelectedDay(null)}
+                        className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${
+                          !selectedDay
+                            ? 'bg-indigo-500 text-white'
+                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                      >
+                        Toda la semana
+                      </button>
+                      {daysInSelectedWeek.map((day) => (
+                        <button
+                          key={day.dateStr}
+                          onClick={() => setSelectedDay(day.dateStr)}
+                          className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${
+                            selectedDay === day.dateStr
+                              ? 'bg-blue-500 text-white'
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          }`}
+                        >
+                          {day.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -558,11 +634,11 @@ export default function InspectorPeriodosPage() {
                     <TrendingUp className="w-4 h-4 text-blue-600" />
                   </div>
                   <span className="text-xs text-gray-500 uppercase tracking-wide">
-                    {selectedDay ? 'Ventas del dia' : 'Ventas del periodo'}
+                    {selectedDay ? 'Ventas del dia' : selectedWeek ? `Ventas S${selectedWeek}` : 'Ventas del periodo'}
                   </span>
                 </div>
                 <p className="text-xl font-bold text-gray-800">{formatCurrency(totalFilteredSales)}</p>
-                {!selectedDay && (
+                {!selectedDay && !selectedWeek && (
                   <p className="text-xs text-gray-500 mt-1">
                     Meta: {formatCurrency(currentSellerStats.goal)}
                   </p>
@@ -594,7 +670,7 @@ export default function InspectorPeriodosPage() {
                 </div>
                 <p className="text-xl font-bold text-gray-800">{visitsCount}</p>
                 <p className="text-xs text-gray-500 mt-1">
-                  {selectedDay ? 'En este dia' : 'En el periodo'}
+                  {selectedDay ? 'En este dia' : selectedWeek ? `En semana ${selectedWeek}` : 'En el periodo'}
                 </p>
               </div>
 
@@ -614,7 +690,9 @@ export default function InspectorPeriodosPage() {
             {/* Sales Chart */}
             {!selectedDay && (
               <div className="bg-white rounded-xl p-4 mb-6 border border-gray-200">
-                <h3 className="text-sm font-semibold text-gray-700 mb-4">Ventas por Dia</h3>
+                <h3 className="text-sm font-semibold text-gray-700 mb-4">
+                  {selectedWeek ? `Ventas Semana ${selectedWeek}` : 'Ventas por Dia'}
+                </h3>
                 <div className="h-[200px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={dailySalesChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
