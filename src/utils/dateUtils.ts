@@ -60,6 +60,106 @@ export function getCurrentPeriodNumber(date = new Date()): number {
 }
 
 /**
+ * Get the date range for a specific period number
+ * @param periodNumber The period number (11-25)
+ * @returns Object with periodStartDate, periodEndDate, and period metadata
+ */
+export function getPeriodDateRange(periodNumber: number): {
+  periodNumber: number;
+  periodStartDate: Date;
+  periodEndDate: Date;
+  label: string;
+} {
+  const normalizedPeriodStart = toLocalMidnight(PERIOD_START_2024);
+
+  // Calculate the start date for this period
+  const daysFromStart = (periodNumber - 11) * WEEKS_PER_PERIOD * DAYS_PER_WEEK;
+  const periodStartDate = new Date(normalizedPeriodStart.getTime() + daysFromStart * 24 * 60 * 60 * 1000);
+
+  // Calculate end date (28 days later, minus 1 day, end of day)
+  const periodEndDate = new Date(periodStartDate);
+  periodEndDate.setDate(periodEndDate.getDate() + (WEEKS_PER_PERIOD * DAYS_PER_WEEK) - 1);
+  periodEndDate.setHours(23, 59, 59, 999);
+
+  // Create a human-readable label
+  const startMonth = periodStartDate.toLocaleDateString('es-ES', { month: 'short', day: 'numeric' });
+  const endMonth = periodEndDate.toLocaleDateString('es-ES', { month: 'short', day: 'numeric', year: 'numeric' });
+  const label = `${startMonth} - ${endMonth}`;
+
+  return {
+    periodNumber,
+    periodStartDate,
+    periodEndDate,
+    label
+  };
+}
+
+/**
+ * Get all available periods from the start (period 11) to current period
+ * @returns Array of period objects with their date ranges
+ */
+export function getAllPeriods(): Array<{
+  periodNumber: number;
+  periodStartDate: Date;
+  periodEndDate: Date;
+  label: string;
+  isCurrent: boolean;
+  isCompleted: boolean;
+}> {
+  const currentPeriod = getCurrentPeriodNumber();
+  const periods = [];
+
+  // Generate periods from 11 to current period
+  for (let p = 11; p <= currentPeriod; p++) {
+    const periodInfo = getPeriodDateRange(p);
+    const now = new Date();
+
+    periods.push({
+      ...periodInfo,
+      isCurrent: p === currentPeriod,
+      isCompleted: periodInfo.periodEndDate < now
+    });
+  }
+
+  return periods;
+}
+
+/**
+ * Get week breakdown for a specific period
+ * @param periodNumber The period number
+ * @returns Array of 4 weeks with their date ranges
+ */
+export function getPeriodWeeks(periodNumber: number): Array<{
+  weekNumber: number;
+  weekStart: Date;
+  weekEnd: Date;
+  label: string;
+}> {
+  const { periodStartDate } = getPeriodDateRange(periodNumber);
+  const weeks = [];
+
+  for (let w = 0; w < WEEKS_PER_PERIOD; w++) {
+    const weekStart = new Date(periodStartDate.getTime() + w * DAYS_PER_WEEK * 24 * 60 * 60 * 1000);
+    weekStart.setHours(0, 0, 0, 0);
+
+    const weekEnd = new Date(weekStart.getTime() + (DAYS_PER_WEEK - 1) * 24 * 60 * 60 * 1000);
+    weekEnd.setHours(23, 59, 59, 999);
+
+    const startLabel = weekStart.toLocaleDateString('es-ES', { month: 'short', day: 'numeric' });
+    const endLabel = weekEnd.toLocaleDateString('es-ES', { month: 'short', day: 'numeric' });
+
+    weeks.push({
+      weekNumber: w + 1,
+      weekStart,
+      weekEnd,
+      label: `S${w + 1}: ${startLabel} - ${endLabel}`
+    });
+  }
+
+  return weeks;
+}
+
+/**
  * Get default date range for current year
  */
 export function getCurrentYearDateRange(): { dateFrom: string; dateTo: string } {
