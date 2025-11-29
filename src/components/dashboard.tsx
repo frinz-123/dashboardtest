@@ -1,6 +1,6 @@
 'use client'
 import React, { useState, useEffect } from 'react'
-import { ChevronDown, BarChart2, Users, Clock, ChevronRight, Target, Menu, Search, TrendingUp, TrendingDown, CheckCircle2 } from 'lucide-react'
+import { ChevronDown, BarChart2, Users, Clock, ChevronRight, Target, Menu, Search, TrendingUp, TrendingDown, CheckCircle2, ShoppingBag } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts'
 import { CircularProgressbar, buildStyles } from 'react-circular-progressbar'
 import 'react-circular-progressbar/dist/styles.css'
@@ -221,7 +221,7 @@ export default function Dashboard() {
     const rows = data.values.slice(1) // Remove header row
     const sales: Sale[] = rows.map((row: string[]) => {
       const products: Record<string, number> = {}
-      for (let i = 8; i <= 31; i++) {
+      for (let i = 8; i <= 30; i++) {
         if (row[i] && row[i] !== '0') {
           products[data.values[0][i]] = parseInt(row[i], 10)
         }
@@ -326,6 +326,15 @@ export default function Dashboard() {
 
   const salesByType = filteredSales.reduce((acc, sale) => {
     acc[sale.codigo] = (acc[sale.codigo] || 0) + sale.venta
+    return acc
+  }, {} as Record<string, number>)
+
+  const productsSold = filteredSales.reduce((acc, sale) => {
+    if (sale.products) {
+      Object.entries(sale.products).forEach(([product, quantity]) => {
+        acc[product] = (acc[product] || 0) + quantity
+      })
+    }
     return acc
   }, {} as Record<string, number>)
 
@@ -941,6 +950,40 @@ export default function Dashboard() {
           </div>
         ) : (
           <p className="text-xs text-gray-500">No hay ventas en este periodo.</p>
+        )}
+      </div>
+
+      <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
+        <h2 className="text-gray-700 font-semibold mb-2 flex items-center text-xs">
+          <ShoppingBag className="mr-1.5 h-4 w-4" /> Desglose de productos
+        </h2>
+        {Object.keys(productsSold).length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-xs text-left text-gray-500">
+              <thead className="text-xs text-gray-700 uppercase bg-gray-50">
+                <tr>
+                  <th scope="col" className="px-3 py-2">Producto</th>
+                  <th scope="col" className="px-3 py-2 text-right">Cantidad</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Object.entries(productsSold)
+                  .sort(([, a], [, b]) => b - a)
+                  .map(([product, quantity]) => (
+                    <tr key={product} className="bg-white border-b hover:bg-gray-50">
+                      <td className="px-3 py-2 font-medium text-gray-900 whitespace-normal">
+                        {product}
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        {quantity}
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="text-xs text-gray-500">No hay productos vendidos en este periodo.</p>
         )}
       </div>
 
