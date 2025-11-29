@@ -3,8 +3,14 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
-import { ChevronDown, Calendar, TrendingUp, TrendingDown, Users, Target, ArrowLeft, CheckCircle2, Clock } from 'lucide-react'
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from 'recharts'
+import {
+  ChevronDown, Calendar, TrendingUp, TrendingDown, Users, Target, ArrowLeft,
+  CheckCircle2, Clock, Eye, ShoppingBag, List, BarChart2, X, ChevronRight
+} from 'lucide-react'
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie,
+  AreaChart, Area
+} from 'recharts'
 import BlurIn from '@/components/ui/blur-in'
 import { isMasterAccount, EMAIL_TO_VENDOR_LABELS } from '@/utils/auth'
 import { getAllPeriods, getPeriodDateRange, getPeriodWeeks, isDateInPeriod } from '@/utils/dateUtils'
@@ -20,6 +26,8 @@ type Sale = {
   codigo: string
   fechaSinHora: string
   email: string
+  submissionTime?: string
+  products: Record<string, number>
 }
 
 type SellerStats = {
@@ -29,9 +37,19 @@ type SellerStats = {
   goal: number
   progress: number
   weeklyBreakdown: number[]
+  visitsCount: number
 }
 
+type ViewMode = 'overview' | 'seller-detail'
+
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16', '#f97316']
+const CODE_COLORS: Record<string, string> = {
+  'CONTADO': '#10b981',
+  'CREDITO': '#f59e0b',
+  'DEVOLUCION': '#ef4444',
+  'CAMBIO': '#8b5cf6',
+  'ANTICIPO': '#3b82f6',
+}
 
 export default function InspectorPeriodosPage() {
   const { data: session, status } = useSession()
@@ -39,18 +57,47 @@ export default function InspectorPeriodosPage() {
   const [selectedPeriod, setSelectedPeriod] = useState<number | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isPeriodDropdownOpen, setIsPeriodDropdownOpen] = useState(false)
+  const [isSellerDropdownOpen, setIsSellerDropdownOpen] = useState(false)
+
+  // New states for enhanced functionality
+  const [viewMode, setViewMode] = useState<ViewMode>('overview')
+  const [selectedSeller, setSelectedSeller] = useState<string | null>(null)
+  const [selectedDay, setSelectedDay] = useState<string | null>(null) // null = all days
+  const [showAllSales, setShowAllSales] = useState(false)
 
   const availablePeriods = useMemo(() => getAllPeriods().reverse(), [])
   const isAdmin = useMemo(() => isMasterAccount(session?.user?.email), [session])
 
+  // Get all days in the selected period
+  const periodDays = useMemo(() => {
+    if (!selectedPeriod) return []
+    const { periodStartDate, periodEndDate } = getPeriodDateRange(selectedPeriod)
+    const days: { date: Date; label: string; dateStr: string }[] = []
+    const current = new Date(periodStartDate)
+
+    while (current <= periodEndDate) {
+      days.push({
+        date: new Date(current),
+        label: current.toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' }),
+        dateStr: current.toISOString().split('T')[0]
+      })
+      current.setDate(current.getDate() + 1)
+    }
+    return days
+  }, [selectedPeriod])
+
   // Set default period to most recent completed or current
   useEffect(() => {
     if (availablePeriods.length > 0 && selectedPeriod === null) {
-      // Find the most recent completed period, or current if none completed
       const completedPeriod = availablePeriods.find(p => p.isCompleted)
       setSelectedPeriod(completedPeriod?.periodNumber || availablePeriods[0].periodNumber)
     }
   }, [availablePeriods, selectedPeriod])
+
+  // Reset day selection when period changes
+  useEffect(() => {
+    setSelectedDay(null)
+  }, [selectedPeriod])
 
   // Fetch sales data
   useEffect(() => {
@@ -66,14 +113,30 @@ export default function InspectorPeriodosPage() {
         `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:AK?key=${googleApiKey}`
       )
       const data = await response.json()
+      const headers = data.values?.[0] || []
       const rows = data.values?.slice(1) || []
-      const sales: Sale[] = rows.map((row: string[]) => ({
-        clientName: row[0] || 'Unknown',
-        venta: parseFloat(row[33]) || 0,
-        codigo: row[31] || '',
-        fechaSinHora: row[32] || '',
-        email: row[7] || '',
-      }))
+      const sales: Sale[] = rows.map((row: string[]) => {
+        const products: Record<string, number> = {}
+        for (let i = 8; i <= 31; i++) {
+          if (row[i] && row[i] !== '0') {
+            products[headers[i]] = parseInt(row[i], 10)
+          }
+        }
+        for (let i = 34; i <= 36; i++) {
+          if (row[i] && row[i] !== '0') {
+            products[headers[i]] = parseInt(row[i], 10)
+          }
+        }
+        return {
+          clientName: row[0] || 'Unknown',
+          venta: parseFloat(row[33]) || 0,
+          codigo: row[31] || '',
+          fechaSinHora: row[32] || '',
+          email: row[7] || '',
+          submissionTime: row[4] || '',
+          products
+        }
+      })
       setSalesData(sales)
     } catch (error) {
       console.error('Error fetching data:', error)
@@ -81,6 +144,31 @@ export default function InspectorPeriodosPage() {
       setIsLoading(false)
     }
   }
+
+  // Get filtered sales for the selected period and optional day/seller
+  const filteredSales = useMemo(() => {
+    if (!selectedPeriod || salesData.length === 0) return []
+
+    const { periodStartDate, periodEndDate } = getPeriodDateRange(selectedPeriod)
+
+    return salesData.filter(sale => {
+      const saleDate = new Date(sale.fechaSinHora)
+
+      // Filter by period
+      if (!isDateInPeriod(saleDate, periodStartDate, periodEndDate)) return false
+
+      // Filter by seller if selected
+      if (selectedSeller && sale.email !== selectedSeller) return false
+
+      // Filter by day if selected
+      if (selectedDay) {
+        const saleDateStr = saleDate.toISOString().split('T')[0]
+        if (saleDateStr !== selectedDay) return false
+      }
+
+      return true
+    })
+  }, [selectedPeriod, salesData, selectedSeller, selectedDay])
 
   // Calculate seller stats for selected period
   const sellerStats = useMemo((): SellerStats[] => {
@@ -101,7 +189,6 @@ export default function InspectorPeriodosPage() {
       const goal = getSellerGoal(email, selectedPeriod as GoalPeriod)
       const progress = goal > 0 ? (totalSales / goal) * 100 : 0
 
-      // Calculate weekly breakdown
       const weeklyBreakdown = weeks.map(week => {
         return sellerSales
           .filter(sale => {
@@ -117,10 +204,44 @@ export default function InspectorPeriodosPage() {
         totalSales,
         goal,
         progress,
-        weeklyBreakdown
+        weeklyBreakdown,
+        visitsCount: sellerSales.length
       }
     }).sort((a, b) => b.totalSales - a.totalSales)
   }, [selectedPeriod, salesData])
+
+  // Sales by code for filtered data
+  const salesByCode = useMemo(() => {
+    const byCode: Record<string, { total: number; count: number }> = {}
+    filteredSales.forEach(sale => {
+      const code = sale.codigo || 'SIN CODIGO'
+      if (!byCode[code]) {
+        byCode[code] = { total: 0, count: 0 }
+      }
+      byCode[code].total += sale.venta
+      byCode[code].count += 1
+    })
+    return Object.entries(byCode)
+      .map(([code, data]) => ({ code, ...data }))
+      .sort((a, b) => b.total - a.total)
+  }, [filteredSales])
+
+  // Daily sales chart data
+  const dailySalesChartData = useMemo(() => {
+    if (!selectedPeriod) return []
+
+    const salesByDate: Record<string, number> = {}
+    filteredSales.forEach(sale => {
+      const dateStr = new Date(sale.fechaSinHora).toISOString().split('T')[0]
+      salesByDate[dateStr] = (salesByDate[dateStr] || 0) + sale.venta
+    })
+
+    return periodDays.map(day => ({
+      date: day.label,
+      dateStr: day.dateStr,
+      venta: salesByDate[day.dateStr] || 0
+    }))
+  }, [filteredSales, periodDays, selectedPeriod])
 
   // Summary stats
   const summaryStats = useMemo(() => {
@@ -143,6 +264,12 @@ export default function InspectorPeriodosPage() {
     }
   }, [sellerStats])
 
+  // Current seller stats (when viewing seller detail)
+  const currentSellerStats = useMemo(() => {
+    if (!selectedSeller) return null
+    return sellerStats.find(s => s.email === selectedSeller) || null
+  }, [selectedSeller, sellerStats])
+
   const selectedPeriodInfo = useMemo(() => {
     if (!selectedPeriod) return null
     return getPeriodDateRange(selectedPeriod)
@@ -164,6 +291,18 @@ export default function InspectorPeriodosPage() {
     if (progress >= 75) return 'bg-blue-500'
     if (progress >= 50) return 'bg-amber-500'
     return 'bg-red-500'
+  }
+
+  const handleSelectSeller = (email: string) => {
+    setSelectedSeller(email)
+    setViewMode('seller-detail')
+    setIsSellerDropdownOpen(false)
+  }
+
+  const handleBackToOverview = () => {
+    setViewMode('overview')
+    setSelectedSeller(null)
+    setSelectedDay(null)
   }
 
   // Loading state
@@ -206,6 +345,8 @@ export default function InspectorPeriodosPage() {
   }
 
   const currentPeriodData = availablePeriods.find(p => p.periodNumber === selectedPeriod)
+  const totalFilteredSales = filteredSales.reduce((sum, s) => sum + s.venta, 0)
+  const visitsCount = filteredSales.length
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -213,10 +354,22 @@ export default function InspectorPeriodosPage() {
       <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Link href="/" className="text-gray-500 hover:text-gray-700">
-              <ArrowLeft className="w-5 h-5" />
-            </Link>
-            <BlurIn word="Inspector de Periodos" className="text-lg font-bold text-gray-800" />
+            {viewMode === 'seller-detail' ? (
+              <button onClick={handleBackToOverview} className="text-gray-500 hover:text-gray-700">
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+            ) : (
+              <Link href="/" className="text-gray-500 hover:text-gray-700">
+                <ArrowLeft className="w-5 h-5" />
+              </Link>
+            )}
+            <BlurIn
+              word={viewMode === 'seller-detail'
+                ? `Detalle: ${EMAIL_TO_VENDOR_LABELS[selectedSeller || ''] || selectedSeller}`
+                : "Inspector de Periodos"
+              }
+              className="text-lg font-bold text-gray-800"
+            />
           </div>
           <div className="flex items-center gap-2 text-xs text-gray-500">
             <Calendar className="w-4 h-4" />
@@ -226,96 +379,396 @@ export default function InspectorPeriodosPage() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 py-6">
-        {/* Period Selector */}
+        {/* Controls Section */}
         <div className="bg-white rounded-xl p-4 mb-6 border border-gray-200">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <h2 className="text-sm font-semibold text-gray-700 mb-1">Seleccionar Periodo</h2>
-              <p className="text-xs text-gray-500">Elige un periodo para ver el detalle de ventas y metas</p>
+          <div className="flex flex-col gap-4">
+            {/* Row 1: Period and Seller selectors */}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+              {/* Period Selector */}
+              <div className="flex-1">
+                <label className="text-xs text-gray-500 uppercase tracking-wide mb-1 block">Periodo</label>
+                <div className="relative">
+                  <button
+                    onClick={() => setIsPeriodDropdownOpen(!isPeriodDropdownOpen)}
+                    className="flex items-center justify-between gap-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-lg w-full text-sm font-medium"
+                  >
+                    <span>
+                      {currentPeriodData ? (
+                        <>Periodo {selectedPeriod}{currentPeriodData.isCurrent && ' (Actual)'}</>
+                      ) : (
+                        'Seleccionar...'
+                      )}
+                    </span>
+                    <ChevronDown className={`w-4 h-4 transition-transform ${isPeriodDropdownOpen ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {isPeriodDropdownOpen && (
+                    <div className="absolute left-0 mt-2 w-72 bg-white rounded-lg shadow-lg border border-gray-200 z-20 max-h-80 overflow-y-auto">
+                      {availablePeriods.map((period) => (
+                        <button
+                          key={period.periodNumber}
+                          onClick={() => {
+                            setSelectedPeriod(period.periodNumber)
+                            setIsPeriodDropdownOpen(false)
+                          }}
+                          className={`w-full px-4 py-3 text-left hover:bg-gray-50 border-b border-gray-100 last:border-b-0 ${
+                            selectedPeriod === period.periodNumber ? 'bg-blue-50' : ''
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium text-gray-800">Periodo {period.periodNumber}</span>
+                            {period.isCurrent ? (
+                              <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full flex items-center gap-1">
+                                <Clock className="w-3 h-3" /> Actual
+                              </span>
+                            ) : period.isCompleted ? (
+                              <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full flex items-center gap-1">
+                                <CheckCircle2 className="w-3 h-3" /> Completado
+                              </span>
+                            ) : null}
+                          </div>
+                          <p className="text-xs text-gray-500 mt-0.5">{period.label}</p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Seller Selector */}
+              <div className="flex-1">
+                <label className="text-xs text-gray-500 uppercase tracking-wide mb-1 block">Vendedor</label>
+                <div className="relative">
+                  <button
+                    onClick={() => setIsSellerDropdownOpen(!isSellerDropdownOpen)}
+                    className={`flex items-center justify-between gap-2 px-4 py-2 rounded-lg w-full text-sm font-medium border ${
+                      selectedSeller
+                        ? 'bg-indigo-50 border-indigo-200 text-indigo-700'
+                        : 'bg-gray-50 border-gray-200 text-gray-700'
+                    }`}
+                  >
+                    <span>
+                      {selectedSeller
+                        ? EMAIL_TO_VENDOR_LABELS[selectedSeller] || selectedSeller
+                        : 'Todos los vendedores'
+                      }
+                    </span>
+                    <ChevronDown className={`w-4 h-4 transition-transform ${isSellerDropdownOpen ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {isSellerDropdownOpen && (
+                    <div className="absolute left-0 mt-2 w-full bg-white rounded-lg shadow-lg border border-gray-200 z-20 max-h-80 overflow-y-auto">
+                      <button
+                        onClick={() => {
+                          setSelectedSeller(null)
+                          setViewMode('overview')
+                          setIsSellerDropdownOpen(false)
+                        }}
+                        className={`w-full px-4 py-3 text-left hover:bg-gray-50 border-b border-gray-100 ${
+                          !selectedSeller ? 'bg-blue-50' : ''
+                        }`}
+                      >
+                        <span className="font-medium text-gray-800">Todos los vendedores</span>
+                      </button>
+                      {sellerStats.map((seller) => (
+                        <button
+                          key={seller.email}
+                          onClick={() => handleSelectSeller(seller.email)}
+                          className={`w-full px-4 py-3 text-left hover:bg-gray-50 border-b border-gray-100 last:border-b-0 ${
+                            selectedSeller === seller.email ? 'bg-blue-50' : ''
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium text-gray-800">{seller.name}</span>
+                            <span className="text-xs text-gray-500">{formatCurrency(seller.totalSales)}</span>
+                          </div>
+                          <p className="text-xs text-gray-500">{seller.visitsCount} visitas</p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
 
-            <div className="relative">
-              <button
-                onClick={() => setIsPeriodDropdownOpen(!isPeriodDropdownOpen)}
-                className="flex items-center justify-between gap-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-500 text-white rounded-lg min-w-[200px] text-sm font-medium"
-              >
-                <span>
-                  {currentPeriodData ? (
-                    <>
-                      Periodo {selectedPeriod}
-                      {currentPeriodData.isCurrent && ' (Actual)'}
-                    </>
-                  ) : (
-                    'Seleccionar...'
-                  )}
-                </span>
-                <ChevronDown className={`w-4 h-4 transition-transform ${isPeriodDropdownOpen ? 'rotate-180' : ''}`} />
-              </button>
-
-              {isPeriodDropdownOpen && (
-                <div className="absolute right-0 mt-2 w-72 bg-white rounded-lg shadow-lg border border-gray-200 z-10 max-h-80 overflow-y-auto">
-                  {availablePeriods.map((period) => (
+            {/* Row 2: Day filter (only when seller is selected) */}
+            {selectedSeller && (
+              <div>
+                <label className="text-xs text-gray-500 uppercase tracking-wide mb-2 block">Filtrar por dia</label>
+                <div className="flex flex-wrap gap-1">
+                  <button
+                    onClick={() => setSelectedDay(null)}
+                    className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${
+                      !selectedDay
+                        ? 'bg-blue-500 text-white'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    }`}
+                  >
+                    Todo el periodo
+                  </button>
+                  {periodDays.map((day) => (
                     <button
-                      key={period.periodNumber}
-                      onClick={() => {
-                        setSelectedPeriod(period.periodNumber)
-                        setIsPeriodDropdownOpen(false)
-                      }}
-                      className={`w-full px-4 py-3 text-left hover:bg-gray-50 border-b border-gray-100 last:border-b-0 ${
-                        selectedPeriod === period.periodNumber ? 'bg-blue-50' : ''
+                      key={day.dateStr}
+                      onClick={() => setSelectedDay(day.dateStr)}
+                      className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${
+                        selectedDay === day.dateStr
+                          ? 'bg-blue-500 text-white'
+                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                       }`}
                     >
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium text-gray-800">Periodo {period.periodNumber}</span>
-                        <span className="flex items-center gap-1">
-                          {period.isCurrent ? (
-                            <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full flex items-center gap-1">
-                              <Clock className="w-3 h-3" /> Actual
-                            </span>
-                          ) : period.isCompleted ? (
-                            <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full flex items-center gap-1">
-                              <CheckCircle2 className="w-3 h-3" /> Completado
-                            </span>
-                          ) : null}
-                        </span>
-                      </div>
-                      <p className="text-xs text-gray-500 mt-0.5">{period.label}</p>
+                      {day.label}
                     </button>
                   ))}
                 </div>
-              )}
-            </div>
-          </div>
-
-          {selectedPeriodInfo && (
-            <div className="mt-4 pt-4 border-t border-gray-100">
-              <div className="flex items-center gap-2 text-sm text-gray-600">
-                <Calendar className="w-4 h-4" />
-                <span>
-                  {selectedPeriodInfo.periodStartDate.toLocaleDateString('es-ES', {
-                    weekday: 'long',
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric'
-                  })}
-                  {' - '}
-                  {selectedPeriodInfo.periodEndDate.toLocaleDateString('es-ES', {
-                    weekday: 'long',
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric'
-                  })}
-                </span>
               </div>
-            </div>
-          )}
+            )}
+
+            {/* Period date range info */}
+            {selectedPeriodInfo && (
+              <div className="pt-3 border-t border-gray-100">
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <Calendar className="w-4 h-4" />
+                  <span>
+                    {selectedPeriodInfo.periodStartDate.toLocaleDateString('es-ES', {
+                      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+                    })}
+                    {' - '}
+                    {selectedPeriodInfo.periodEndDate.toLocaleDateString('es-ES', {
+                      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+                    })}
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
             <div className="text-gray-500">Cargando datos...</div>
           </div>
+        ) : viewMode === 'seller-detail' && currentSellerStats ? (
+          /* ========== SELLER DETAIL VIEW ========== */
+          <>
+            {/* Seller Summary Cards */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+              <div className="bg-white rounded-xl p-4 border border-gray-200">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="p-2 bg-blue-50 rounded-lg">
+                    <TrendingUp className="w-4 h-4 text-blue-600" />
+                  </div>
+                  <span className="text-xs text-gray-500 uppercase tracking-wide">
+                    {selectedDay ? 'Ventas del dia' : 'Ventas del periodo'}
+                  </span>
+                </div>
+                <p className="text-xl font-bold text-gray-800">{formatCurrency(totalFilteredSales)}</p>
+                {!selectedDay && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Meta: {formatCurrency(currentSellerStats.goal)}
+                  </p>
+                )}
+              </div>
+
+              <div className="bg-white rounded-xl p-4 border border-gray-200">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="p-2 bg-green-50 rounded-lg">
+                    <Target className="w-4 h-4 text-green-600" />
+                  </div>
+                  <span className="text-xs text-gray-500 uppercase tracking-wide">Progreso</span>
+                </div>
+                <p className="text-xl font-bold text-gray-800">{currentSellerStats.progress.toFixed(1)}%</p>
+                <div className="w-full h-2 bg-gray-100 rounded-full mt-2">
+                  <div
+                    className={`h-full rounded-full ${getProgressBarColor(currentSellerStats.progress)}`}
+                    style={{ width: `${Math.min(currentSellerStats.progress, 100)}%` }}
+                  />
+                </div>
+              </div>
+
+              <div className="bg-white rounded-xl p-4 border border-gray-200">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="p-2 bg-amber-50 rounded-lg">
+                    <Eye className="w-4 h-4 text-amber-600" />
+                  </div>
+                  <span className="text-xs text-gray-500 uppercase tracking-wide">Visitas</span>
+                </div>
+                <p className="text-xl font-bold text-gray-800">{visitsCount}</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  {selectedDay ? 'En este dia' : 'En el periodo'}
+                </p>
+              </div>
+
+              <div className="bg-white rounded-xl p-4 border border-gray-200">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="p-2 bg-purple-50 rounded-lg">
+                    <ShoppingBag className="w-4 h-4 text-purple-600" />
+                  </div>
+                  <span className="text-xs text-gray-500 uppercase tracking-wide">Promedio/Venta</span>
+                </div>
+                <p className="text-xl font-bold text-gray-800">
+                  {formatCurrency(visitsCount > 0 ? totalFilteredSales / visitsCount : 0)}
+                </p>
+              </div>
+            </div>
+
+            {/* Sales Chart */}
+            {!selectedDay && (
+              <div className="bg-white rounded-xl p-4 mb-6 border border-gray-200">
+                <h3 className="text-sm font-semibold text-gray-700 mb-4">Ventas por Dia</h3>
+                <div className="h-[200px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={dailySalesChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="colorVenta" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <XAxis
+                        dataKey="date"
+                        tick={{ fontSize: 9, fill: '#6b7280' }}
+                        interval="preserveStartEnd"
+                      />
+                      <YAxis
+                        tick={{ fontSize: 10, fill: '#6b7280' }}
+                        tickFormatter={(value) => `$${(value/1000).toFixed(0)}k`}
+                      />
+                      <Tooltip
+                        formatter={(value: number) => [formatCurrency(value), 'Venta']}
+                        contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="venta"
+                        stroke="#3b82f6"
+                        fillOpacity={1}
+                        fill="url(#colorVenta)"
+                        strokeWidth={2}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            )}
+
+            {/* Ventas por Codigo */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+              <div className="bg-white rounded-xl p-4 border border-gray-200">
+                <h3 className="text-sm font-semibold text-gray-700 mb-4">Ventas por Codigo</h3>
+                <div className="space-y-3">
+                  {salesByCode.length > 0 ? salesByCode.map((item) => (
+                    <div key={item.code} className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="w-3 h-3 rounded-full"
+                          style={{ backgroundColor: CODE_COLORS[item.code] || '#6b7280' }}
+                        />
+                        <span className="text-sm text-gray-700">{item.code}</span>
+                        <span className="text-xs text-gray-400">({item.count})</span>
+                      </div>
+                      <span className="text-sm font-medium text-gray-800">{formatCurrency(item.total)}</span>
+                    </div>
+                  )) : (
+                    <p className="text-sm text-gray-500">No hay ventas en este periodo</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Weekly Breakdown */}
+              {!selectedDay && (
+                <div className="bg-white rounded-xl p-4 border border-gray-200">
+                  <h3 className="text-sm font-semibold text-gray-700 mb-4">Desglose Semanal</h3>
+                  <div className="space-y-3">
+                    {currentSellerStats.weeklyBreakdown.map((weekSales, i) => (
+                      <div key={i} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+                        <span className="text-sm text-gray-600">Semana {i + 1}</span>
+                        <span className="text-sm font-medium text-gray-800">{formatCurrency(weekSales)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* All Sales Entries */}
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                  <List className="w-4 h-4" />
+                  Todas las Ventas ({filteredSales.length})
+                </h3>
+                {filteredSales.length > 10 && (
+                  <button
+                    onClick={() => setShowAllSales(!showAllSales)}
+                    className="text-xs text-blue-600 hover:text-blue-700"
+                  >
+                    {showAllSales ? 'Ver menos' : 'Ver todas'}
+                  </button>
+                )}
+              </div>
+              <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 sticky top-0">
+                    <tr className="border-b border-gray-200">
+                      <th className="text-left py-2 px-4 font-medium text-gray-600">Fecha</th>
+                      <th className="text-left py-2 px-4 font-medium text-gray-600">Cliente</th>
+                      <th className="text-left py-2 px-4 font-medium text-gray-600">Codigo</th>
+                      <th className="text-right py-2 px-4 font-medium text-gray-600">Venta</th>
+                      <th className="text-left py-2 px-4 font-medium text-gray-600 hidden lg:table-cell">Productos</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(showAllSales ? filteredSales : filteredSales.slice(0, 10))
+                      .sort((a, b) => new Date(b.fechaSinHora).getTime() - new Date(a.fechaSinHora).getTime())
+                      .map((sale, i) => (
+                        <tr key={i} className="border-b border-gray-100 hover:bg-gray-50">
+                          <td className="py-2 px-4 text-gray-600">
+                            {new Date(sale.fechaSinHora).toLocaleDateString('es-ES', {
+                              day: 'numeric', month: 'short'
+                            })}
+                            {sale.submissionTime && (
+                              <span className="text-xs text-gray-400 ml-1">
+                                {sale.submissionTime.split(' ')[1]?.slice(0, 5)}
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-2 px-4 font-medium text-gray-800">{sale.clientName}</td>
+                          <td className="py-2 px-4">
+                            <span
+                              className="text-xs px-2 py-0.5 rounded-full"
+                              style={{
+                                backgroundColor: `${CODE_COLORS[sale.codigo] || '#6b7280'}20`,
+                                color: CODE_COLORS[sale.codigo] || '#6b7280'
+                              }}
+                            >
+                              {sale.codigo || 'N/A'}
+                            </span>
+                          </td>
+                          <td className="text-right py-2 px-4 font-medium text-gray-800">
+                            {formatCurrency(sale.venta)}
+                          </td>
+                          <td className="py-2 px-4 text-gray-500 text-xs hidden lg:table-cell">
+                            {Object.entries(sale.products).slice(0, 3).map(([name, qty]) => (
+                              <span key={name} className="mr-2">{name}: {qty}</span>
+                            ))}
+                            {Object.keys(sale.products).length > 3 && (
+                              <span className="text-gray-400">+{Object.keys(sale.products).length - 3} mas</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+                {filteredSales.length === 0 && (
+                  <div className="py-8 text-center text-gray-500">
+                    No hay ventas para mostrar
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
         ) : (
+          /* ========== OVERVIEW MODE ========== */
           <>
             {/* Summary Cards */}
             {summaryStats && (
@@ -408,9 +861,10 @@ export default function InspectorPeriodosPage() {
             </div>
 
             {/* Seller Details Table */}
-            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-6">
               <div className="px-4 py-3 border-b border-gray-200">
                 <h3 className="text-sm font-semibold text-gray-700">Detalle por Vendedor</h3>
+                <p className="text-xs text-gray-500">Haz clic en un vendedor para ver su detalle completo</p>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -420,15 +874,21 @@ export default function InspectorPeriodosPage() {
                       <th className="text-right py-3 px-4 font-medium text-gray-600">Ventas</th>
                       <th className="text-right py-3 px-4 font-medium text-gray-600">Meta</th>
                       <th className="text-center py-3 px-4 font-medium text-gray-600">Progreso</th>
+                      <th className="text-center py-3 px-4 font-medium text-gray-600">Visitas</th>
                       <th className="text-right py-3 px-4 font-medium text-gray-600 hidden sm:table-cell">S1</th>
                       <th className="text-right py-3 px-4 font-medium text-gray-600 hidden sm:table-cell">S2</th>
                       <th className="text-right py-3 px-4 font-medium text-gray-600 hidden sm:table-cell">S3</th>
                       <th className="text-right py-3 px-4 font-medium text-gray-600 hidden sm:table-cell">S4</th>
+                      <th className="py-3 px-4"></th>
                     </tr>
                   </thead>
                   <tbody>
                     {sellerStats.map((seller, index) => (
-                      <tr key={seller.email} className="border-b border-gray-100 hover:bg-gray-50">
+                      <tr
+                        key={seller.email}
+                        className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
+                        onClick={() => handleSelectSeller(seller.email)}
+                      >
                         <td className="py-3 px-4">
                           <div className="flex items-center gap-2">
                             <div
@@ -446,7 +906,7 @@ export default function InspectorPeriodosPage() {
                         </td>
                         <td className="py-3 px-4">
                           <div className="flex items-center justify-center gap-2">
-                            <div className="w-24 h-2 bg-gray-100 rounded-full overflow-hidden">
+                            <div className="w-20 h-2 bg-gray-100 rounded-full overflow-hidden">
                               <div
                                 className={`h-full rounded-full ${getProgressBarColor(seller.progress)}`}
                                 style={{ width: `${Math.min(seller.progress, 100)}%` }}
@@ -457,11 +917,17 @@ export default function InspectorPeriodosPage() {
                             </span>
                           </div>
                         </td>
+                        <td className="text-center py-3 px-4 text-gray-600">
+                          {seller.visitsCount}
+                        </td>
                         {seller.weeklyBreakdown.map((weekSales, i) => (
                           <td key={i} className="text-right py-3 px-4 text-gray-600 hidden sm:table-cell">
                             ${(weekSales/1000).toFixed(1)}k
                           </td>
                         ))}
+                        <td className="py-3 px-4 text-gray-400">
+                          <ChevronRight className="w-4 h-4" />
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -479,19 +945,23 @@ export default function InspectorPeriodosPage() {
                           {(summaryStats?.avgProgress || 0).toFixed(1)}% prom
                         </span>
                       </td>
+                      <td className="text-center py-3 px-4 text-gray-600">
+                        {sellerStats.reduce((sum, s) => sum + s.visitsCount, 0)}
+                      </td>
                       {[0, 1, 2, 3].map(i => (
                         <td key={i} className="text-right py-3 px-4 text-gray-600 hidden sm:table-cell">
                           ${((sellerStats.reduce((sum, s) => sum + s.weeklyBreakdown[i], 0))/1000).toFixed(1)}k
                         </td>
                       ))}
+                      <td></td>
                     </tr>
                   </tfoot>
                 </table>
               </div>
             </div>
 
-            {/* Progress Distribution Chart */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+            {/* Bottom Section: Distribution & Summary */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="bg-white rounded-xl p-4 border border-gray-200">
                 <h3 className="text-sm font-semibold text-gray-700 mb-4">Distribucion de Progreso</h3>
                 <div className="h-[250px]">
@@ -526,7 +996,7 @@ export default function InspectorPeriodosPage() {
 
               <div className="bg-white rounded-xl p-4 border border-gray-200">
                 <h3 className="text-sm font-semibold text-gray-700 mb-4">Resumen del Periodo</h3>
-                <div className="space-y-4">
+                <div className="space-y-3">
                   <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                     <span className="text-sm text-gray-600">Periodo</span>
                     <span className="font-medium text-gray-800">#{selectedPeriod}</span>
@@ -536,12 +1006,12 @@ export default function InspectorPeriodosPage() {
                     <span className="font-medium text-gray-800">{sellerStats.filter(s => s.totalSales > 0).length}</span>
                   </div>
                   <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <span className="text-sm text-gray-600">Cumplieron meta</span>
-                    <span className="font-medium text-green-600">{sellerStats.filter(s => s.progress >= 100).length}</span>
+                    <span className="text-sm text-gray-600">Total visitas</span>
+                    <span className="font-medium text-gray-800">{sellerStats.reduce((sum, s) => sum + s.visitsCount, 0)}</span>
                   </div>
                   <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <span className="text-sm text-gray-600">No cumplieron meta</span>
-                    <span className="font-medium text-red-600">{sellerStats.filter(s => s.progress < 100 && s.totalSales > 0).length}</span>
+                    <span className="text-sm text-gray-600">Cumplieron meta</span>
+                    <span className="font-medium text-green-600">{sellerStats.filter(s => s.progress >= 100).length}</span>
                   </div>
                   <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                     <span className="text-sm text-gray-600">Diferencia vs Meta</span>
