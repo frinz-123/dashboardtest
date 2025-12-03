@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useRef, useMemo } from 'react'
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import Link from 'next/link'
 import { Menu, ShoppingCart, CheckCircle2 } from 'lucide-react'
 import BlurIn from '@/components/ui/blur-in'
@@ -13,6 +13,8 @@ import CleyOrderQuestion from '@/components/comp-166'
 import Toast, { useToast } from '@/components/ui/Toast'
 import { haptics } from '@/utils/haptics'
 import { ClientSearchSkeleton, ProductListSkeleton, MapSkeleton } from '@/components/ui/SkeletonLoader'
+import { useSubmissionQueue } from '@/hooks/useSubmissionQueue'
+import PendingOrdersBanner from '@/components/ui/PendingOrdersBanner'
 
 const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY
 const spreadsheetId = process.env.NEXT_PUBLIC_SPREADSHEET_ID
@@ -850,7 +852,16 @@ export default function FormPage() {
     location?: string;
     submit?: string;
   }>({});
-  const [isOptimisticSubmit, setIsOptimisticSubmit] = useState(false)
+  const [isRefreshingLocation, setIsRefreshingLocation] = useState(false)
+
+  // Submission queue for offline-first reliability
+  const {
+    state: queueState,
+    addToQueue,
+    retryItem,
+    removeItem,
+    refreshStaleLocation,
+  } = useSubmissionQueue()
 
   // 🔧 CRITICAL: Ref-based guard for immediate double-click prevention
   const isSubmittingRef = useRef(false);
@@ -920,7 +931,21 @@ export default function FormPage() {
     if (hasSignificantMovement(currentLocation, limitedLocation)) {
       throttledLocationUpdate(limitedLocation);
     }
+
+    // If we're refreshing location for a stale queue item, update it
+    if (isRefreshingLocation && queueState.hasStaleLocation) {
+      refreshStaleLocation(limitedLocation);
+      setIsRefreshingLocation(false);
+      success('Ubicacion actualizada', 'El pedido pendiente se enviara automaticamente.', 3000);
+    }
   };
+
+  // Handler for refreshing location when queue has stale items
+  const handleRefreshLocationForQueue = useCallback(() => {
+    setIsRefreshingLocation(true);
+    // The Map component will trigger handleLocationUpdate with fresh location
+    // We set a flag so that when location updates, we know to refresh the queue item
+  }, []);
 
   useEffect(() => {
     try {
@@ -1164,312 +1189,106 @@ export default function FormPage() {
     return Object.keys(errors).length === 0
   }
 
-  // 🔧 RETRY MECHANISM: Exponential backoff retry for network resilience
-  // CRITICAL FIX: submissionId is now passed in, NOT generated per-attempt
-  // CRITICAL FIX 2: No timeout-based abort when tab is hidden (prevents alt-tab double submission)
-  const submitWithRetry = async (payload: any, submissionId: string, maxRetries = 3): Promise<any> => {
-    let lastError: Error | null = null;
-
-    console.log(`🔒 SUBMISSION STARTED with ID: ${submissionId}`, {
-      timestamp: new Date().toISOString(),
-      clientName: payload.clientName,
-      tabVisible: typeof document !== 'undefined' ? !document.hidden : 'unknown'
-    });
-
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      try {
-        console.log(`📤 SUBMISSION ATTEMPT ${attempt + 1}/${maxRetries}:`, {
-          timestamp: new Date().toISOString(),
-          attempt: attempt + 1,
-          submissionId, // Same ID for all attempts
-          clientName: payload.clientName,
-          tabVisible: typeof document !== 'undefined' ? !document.hidden : 'unknown'
-        });
-
-        // Create abort controller - but ONLY use timeout when tab is visible
-        const controller = new AbortController();
-        let timeoutId: NodeJS.Timeout | null = null;
-
-        // 🔒 CRITICAL: Don't set timeout if tab is hidden - prevents alt-tab issues
-        // When tab is hidden, browser throttles timers unpredictably
-        const setupTimeout = () => {
-          if (typeof document !== 'undefined' && !document.hidden) {
-            timeoutId = setTimeout(() => {
-              // Double-check tab is still visible before aborting
-              if (typeof document !== 'undefined' && !document.hidden) {
-                console.log(`⏱️ TIMEOUT: Aborting request (tab visible)`, { submissionId, attempt: attempt + 1 });
-                controller.abort();
-              } else {
-                console.log(`⏱️ TIMEOUT SKIPPED: Tab is hidden, not aborting`, { submissionId, attempt: attempt + 1 });
-              }
-            }, 30000);
-          } else {
-            console.log(`⏱️ TIMEOUT NOT SET: Tab is hidden`, { submissionId, attempt: attempt + 1 });
-          }
-        };
-
-        setupTimeout();
-
-        const response = await fetch('/api/submit-form', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            ...payload,
-            attemptNumber: attempt + 1,
-            submissionId // CRITICAL: Same ID for all retry attempts
-          }),
-          signal: controller.signal,
-        });
-
-        if (timeoutId) clearTimeout(timeoutId);
-
-        // Parse response
-        const data = await response.json();
-
-        // If validation error (4xx), don't retry - it won't help
-        if (response.status >= 400 && response.status < 500) {
-          console.error(`❌ VALIDATION ERROR (no retry):`, {
-            status: response.status,
-            error: data.error,
-            attempt: attempt + 1,
-            submissionId
-          });
-          throw new Error(data.error || 'Error de validación');
-        }
-
-        // If server error (5xx) or network error, retry
-        if (!response.ok) {
-          throw new Error(data.error || `Server error: ${response.status}`);
-        }
-
-        // Success!
-        console.log(`✅ SUBMISSION SUCCESS on attempt ${attempt + 1}:`, {
-          timestamp: new Date().toISOString(),
-          attempt: attempt + 1,
-          submissionId,
-          clientName: payload.clientName,
-          wasDuplicate: data.duplicate || false
-        });
-
-        return data;
-
-      } catch (error: any) {
-        lastError = error;
-
-        // If it's an abort error (timeout)
-        if (error.name === 'AbortError') {
-          // 🔒 CRITICAL: If tab is hidden, don't retry - wait for user to come back
-          if (typeof document !== 'undefined' && document.hidden) {
-            console.log(`⏱️ ABORT while tab hidden - NOT retrying, waiting for visibility`, { submissionId });
-            throw new Error('La pestaña está en segundo plano. Por favor, regresa a la aplicación.');
-          }
-          console.error(`⏱️ TIMEOUT on attempt ${attempt + 1}/${maxRetries}`, { submissionId });
-          lastError = new Error('La solicitud tardó demasiado. Reintentando...');
-        } else {
-          console.error(`❌ ERROR on attempt ${attempt + 1}/${maxRetries}:`, {
-            error: error.message,
-            type: error.name,
-            submissionId
-          });
-        }
-
-        // If this was the last attempt, throw the error
-        if (attempt === maxRetries - 1) {
-          throw lastError;
-        }
-
-        // 🔒 CRITICAL: Don't retry if tab is hidden
-        if (typeof document !== 'undefined' && document.hidden) {
-          console.log(`⏸️ Tab hidden - pausing retries`, { submissionId, attempt: attempt + 1 });
-          throw new Error('La pestaña está en segundo plano. Por favor, regresa e intenta de nuevo.');
-        }
-
-        // Wait before retrying with exponential backoff
-        const waitTime = Math.min(1000 * Math.pow(2, attempt), 8000); // Max 8 seconds
-        console.log(`⏳ Waiting ${waitTime}ms before retry ${attempt + 2}...`, { submissionId });
-        await new Promise(resolve => setTimeout(resolve, waitTime));
-      }
-    }
-
-    throw lastError || new Error('Error desconocido al enviar el pedido');
-  };
-
-  // 🔧 FIXED: Pessimistic update - only clear form AFTER successful submission
+  // 🔧 QUEUE-BASED SUBMISSION: Guarantees delivery even with poor connectivity
   const handleSubmit = async () => {
     // 🔒 CRITICAL: Immediate ref-based guard against double-clicks
-    // This check happens BEFORE any async operations or state updates
     if (isSubmittingRef.current) {
-      console.warn('⚠️ DOUBLE-CLICK PREVENTED: Submission already in progress', {
-        currentSubmissionId: currentSubmissionIdRef.current
-      });
+      console.warn('⚠️ DOUBLE-CLICK PREVENTED: Submission already in progress');
       return;
     }
     isSubmittingRef.current = true;
 
-    // Generate stable submissionId ONCE at the start - used for all retry attempts
+    // Generate stable submissionId ONCE at the start
     const submissionId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    currentSubmissionIdRef.current = submissionId;
     console.log(`🆔 GENERATED SUBMISSION ID: ${submissionId}`);
 
-    haptics.medium(); // Haptic feedback on submit
+    haptics.medium();
     setValidationErrors({});
 
-    const stateSnapshot = {
-      selectedClient,
-      searchTerm,
-      debouncedSearchTerm,
-      quantities: { ...quantities },
-      total,
-      filteredClients: [...filteredClients],
-      cleyOrderValue,
-      overrideEmail,
-      overrideDate,
-      overridePeriod,
-    };
-
     try {
+      // Basic validation
       if (!selectedClient) {
         setValidationErrors(prev => ({ ...prev, client: 'Selecciona un cliente' }));
-        isSubmittingRef.current = false; // Release guard on validation failure
+        isSubmittingRef.current = false;
         return;
       }
 
       if (!currentLocation) {
         setValidationErrors(prev => ({ ...prev, location: 'No se pudo obtener la ubicación' }));
-        isSubmittingRef.current = false; // Release guard on validation failure
+        isSubmittingRef.current = false;
         return;
       }
 
-      const locationTimestamp = currentLocation.timestamp ?? Date.now();
-      const locationAge = Date.now() - locationTimestamp;
-
-      console.log('🛰️ LOCATION SNAPSHOT:', {
-        lat: currentLocation.lat,
-        lng: currentLocation.lng,
-        accuracy: currentLocation.accuracy,
-        timestamp: currentLocation.timestamp,
-        hasTimestamp: currentLocation.timestamp !== undefined,
-        ageMs: locationAge,
-        ageSeconds: Number((locationAge / 1000).toFixed(1)),
-        maxAllowedAgeMs: MAX_LOCATION_AGE,
-        exceedsMaxAge: locationAge > MAX_LOCATION_AGE,
-        submittedAt: new Date().toISOString()
-      });
-
-      // ✅ VALIDATION: Use cached email if session email is not available
+      // Email validation
       const sessionEmail = session?.user?.email;
       const fallbackEmail = OVERRIDE_EMAILS[0];
       const baseEmail = sessionEmail || cachedEmail || fallbackEmail;
-
-      // 🔧 ADMIN OVERRIDE: Use override email if provided by admin user
-      const isAdminOverride = isOverrideEmail(sessionEmail || cachedEmail);
+      const isAdmin = isOverrideEmail(sessionEmail || cachedEmail);
       const actorEmail = sessionEmail || cachedEmail || null;
-      const finalEmail = isAdminOverride && overrideEmail ? overrideEmail : baseEmail;
+      const finalEmail = isAdmin && overrideEmail ? overrideEmail : baseEmail;
 
-      console.log("🔍 EMAIL VALIDATION:", {
-        sessionStatus: session ? 'EXISTS' : 'NULL',
-        sessionEmail,
-        cachedEmail,
-        fallbackEmail,
-        baseEmail,
-        actorEmail,
-        isAdminOverride,
-        overrideEmail,
-        finalEmail,
-        usingCachedEmail: !sessionEmail && !!cachedEmail,
-        usingOverrideEmail: isAdminOverride && !!overrideEmail,
-        overrideEmailsArray: OVERRIDE_EMAILS,
-        timestamp: new Date().toISOString()
-      });
-
-      // ✅ VALIDATION: Only block if we have no email at all (neither session nor cached)
       if (!finalEmail) {
-        console.error("⚠️ CRITICAL: No email available (session, cached, or override)");
         setValidationErrors(prev => ({
           ...prev,
           submit: 'No se pudo determinar el usuario. Por favor, recarga la página e inicia sesión.'
         }));
-        isSubmittingRef.current = false; // Release guard on validation failure
+        isSubmittingRef.current = false;
         return;
       }
 
       setIsSubmitting(true);
-      setIsOptimisticSubmit(true);
 
-      // Log if we're using cached email due to offline/session issues
-      if (!sessionEmail && cachedEmail) {
-        console.log("📱 OFFLINE MODE: Using cached email for submission:", cachedEmail);
-      }
-
-      // Log if admin is using override email
-      if (isAdminOverride && overrideEmail) {
-        console.log("👤 ADMIN OVERRIDE: Using override email for submission:", overrideEmail);
-      }
-
-      // 🔧 FIX: Use snapshot client for consistent calculation
-      const clientCode = getClientCode(stateSnapshot.selectedClient);
+      // Calculate order details
+      const clientCode = getClientCode(selectedClient);
       const isCley = clientCode.toUpperCase() === 'CLEY';
-      const cleyValue = isCley ? stateSnapshot.cleyOrderValue : null;
+      const cleyValue = isCley ? cleyOrderValue : null;
 
-      // 🔧 ADMIN OVERRIDE: Use override date if provided by admin user
       const baseDate = new Date().toISOString();
-      const submittedAt = isAdminOverride && overrideDate
+      const submittedAt = isAdmin && overrideDate
         ? new Date(overrideDate).toISOString()
         : baseDate;
 
-      // Log if admin is using override date
-      if (isAdminOverride && overrideDate) {
-        console.log("📅 ADMIN OVERRIDE: Using override date for submission:", {
-          overrideDate,
-          submittedAt,
-          baseDate
-        });
-      }
-
-      const submissionTotal = Object.entries(stateSnapshot.quantities).reduce((sum, [product, qty]) => {
+      const submissionTotal = Object.entries(quantities).reduce((sum, [product, qty]) => {
         const price = getProductPrice(clientCode, product);
         return sum + (price * qty);
       }, 0);
 
-      // 🔍 LOG: Order calculation validation
-      console.log('📊 ORDER CALCULATION:', {
-        snapshotClient: stateSnapshot.selectedClient,
-        currentClient: selectedClient,
+      console.log('📦 QUEUEING SUBMISSION:', {
+        submissionId,
+        clientName: selectedClient,
         clientCode,
-        products: stateSnapshot.quantities,
-        calculatedTotal: submissionTotal,
-        displayTotal: total,
-        totalMismatch: Math.abs(submissionTotal - parseFloat(total)) > 0.01,
-        timestamp: submittedAt
+        total: submissionTotal,
+        isOnline: navigator.onLine,
+        timestamp: new Date().toISOString()
       });
 
-      const submissionPayload = {
-        clientName: stateSnapshot.selectedClient,
-        clientCode,
-        products: stateSnapshot.quantities,
-        total: submissionTotal,
-        location: currentLocation,
-        userEmail: finalEmail,
-        actorEmail,
-        isAdminOverride: isAdminOverride && (!!overrideEmail || !!overrideDate || !!overridePeriod),
-        overrideTargetEmail: overrideEmail || null,
-        date: submittedAt,
-        cleyOrderValue: cleyValue,
-        overridePeriod: isAdminOverride ? overridePeriod : null
-      };
+      // 🔧 ADD TO QUEUE: This guarantees eventual delivery
+      await addToQueue({
+        id: submissionId,
+        payload: {
+          clientName: selectedClient,
+          clientCode,
+          products: { ...quantities },
+          total: submissionTotal,
+          location: {
+            lat: currentLocation.lat,
+            lng: currentLocation.lng,
+            accuracy: currentLocation.accuracy,
+            timestamp: currentLocation.timestamp || Date.now(),
+          },
+          userEmail: finalEmail,
+          actorEmail,
+          isAdminOverride: isAdmin && (!!overrideEmail || !!overrideDate || !!overridePeriod),
+          overrideTargetEmail: overrideEmail || null,
+          date: submittedAt,
+          cleyOrderValue: cleyValue,
+          overridePeriod: isAdmin ? overridePeriod : null,
+        },
+        isAdmin,
+      });
 
-      // 🔧 NEW: Use retry mechanism with timeout
-      // CRITICAL: Pass the stable submissionId for deduplication
-      const data = await submitWithRetry(submissionPayload, submissionId);
-
-      if (!data.success) {
-        throw new Error(data.error || 'Error al enviar el pedido');
-      }
-
-      // ✅ SUCCESS: Only clear form AFTER confirmed success
-      console.log('✅ CLEARING FORM after successful submission');
+      // ✅ CLEAR FORM IMMEDIATELY (queue handles delivery)
+      console.log('✅ ORDER QUEUED - Clearing form');
       setSelectedClient('');
       setSearchTerm('');
       setDebouncedSearchTerm('');
@@ -1484,32 +1303,35 @@ export default function FormPage() {
 
       // Show success feedback
       haptics.success();
-      success(
-        'Pedido enviado',
-        'Tu pedido ha sido registrado exitosamente.',
-        3000
-      );
 
-    } catch (error: any) {
-      console.error('❌ FINAL SUBMISSION FAILURE:', error);
+      if (navigator.onLine) {
+        success(
+          'Pedido en cola',
+          'Tu pedido se esta enviando automaticamente.',
+          3000
+        );
+      } else {
+        success(
+          'Pedido guardado',
+          'Se enviara automaticamente cuando tengas conexion.',
+          4000
+        );
+      }
+
+    } catch (err: any) {
+      console.error('❌ QUEUE FAILURE:', err);
       haptics.error();
 
-      // Provide specific error message
-      const errorMessage = error.message || 'Error al enviar el pedido. Por favor, intenta de nuevo.';
-      setValidationErrors(prev => ({
-        ...prev,
-        submit: errorMessage
-      }));
-
-      // Don't restore state - keep form as is so user can retry
-      console.log('📝 KEEPING FORM STATE for retry');
+      error(
+        'Error',
+        err.message || 'No se pudo guardar el pedido. Por favor, intenta de nuevo.',
+        4000
+      );
 
     } finally {
       setIsSubmitting(false);
-      setIsOptimisticSubmit(false);
-      isSubmittingRef.current = false; // 🔒 CRITICAL: Release guard in finally block
-      currentSubmissionIdRef.current = null; // Clear submission tracking
-      console.log(`🔓 SUBMISSION GUARD RELEASED`);
+      isSubmittingRef.current = false;
+      console.log('🔓 SUBMISSION GUARD RELEASED');
     }
   };
 
@@ -1563,6 +1385,19 @@ export default function FormPage() {
 
   return (
     <div className="min-h-screen bg-white px-4 py-3 font-sans w-full" style={{ fontFamily: 'Inter, sans-serif', fontSize: '0.8rem' }}>
+      {/* Pending Orders Banner - Shows queue status */}
+      <PendingOrdersBanner
+        state={queueState}
+        onRefreshLocation={handleRefreshLocationForQueue}
+        onRetry={retryItem}
+        onRemove={removeItem}
+        isRefreshingLocation={isRefreshingLocation}
+      />
+
+      {/* Add top padding when banner is visible */}
+      <div className={queueState.pendingCount > 0 || !queueState.isOnline || queueState.hasStaleLocation ? 'pt-24' : ''}>
+      </div>
+
       <header className="flex justify-between items-center mb-4">
         <div className="flex items-center">
           <div className="w-8 h-8 bg-blue-600 rounded-full mr-2 flex items-center justify-center">
@@ -1839,7 +1674,7 @@ export default function FormPage() {
           <div className="max-w-md mx-auto">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
-                <div className={`transition-all duration-300 ${isOptimisticSubmit ? 'animate-pulse' : ''}`}>
+                <div className="transition-all duration-300">
                   <ShoppingCart className="h-4 w-4 text-gray-500" />
                 </div>
                 <h3 className="font-semibold text-gray-800 tracking-tight">Detalle del pedido</h3>
@@ -1875,9 +1710,9 @@ export default function FormPage() {
                 ))}
               </ul>
             </div>
-            <div className={`rounded-lg bg-gray-50 p-3 flex items-center justify-between transition-all duration-300 ${isOptimisticSubmit ? 'bg-green-50 border border-green-200' : ''}`}>
+            <div className="rounded-lg bg-gray-50 p-3 flex items-center justify-between transition-all duration-300">
               <span className="text-sm text-gray-600 font-medium">Total</span>
-              <span className={`text-base font-semibold transition-all duration-300 ${isOptimisticSubmit ? 'text-green-700' : 'text-gray-900'}`}>
+              <span className="text-base font-semibold transition-all duration-300 text-gray-900">
                 {formatCurrency(parseFloat(total))}
               </span>
             </div>
@@ -1887,29 +1722,23 @@ export default function FormPage() {
 
       <div className={`${Object.values(quantities).some(q => q > 0) ? 'mb-80' : 'mb-3'}`}>
         <button
-          className={`w-full py-3 rounded-lg font-medium transition-all duration-300 disabled:cursor-not-allowed transform hover:scale-[1.02] active:scale-[0.98] ${isOptimisticSubmit
-            ? 'bg-green-500 text-white shadow-lg'
-            : 'bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50'
-            }`}
+          className={`w-full py-3 rounded-lg font-medium transition-all duration-300 disabled:cursor-not-allowed transform hover:scale-[1.02] active:scale-[0.98] bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50`}
           onClick={handleSubmit}
           disabled={
             !selectedClient ||
             !currentLocation ||
             isSubmitting ||
-            isOptimisticSubmit ||
-            (!session?.user?.email && !cachedEmail) ||  // ✅ UPDATED: Allow if we have cached email
+            (!session?.user?.email && !cachedEmail) ||
             (locationAlert !== null && !isOverrideEmail(session?.user?.email || cachedEmail))
           }
         >
           {isSubmitting ? (
             <div className="flex items-center justify-center">
               <div className="w-5 h-5 border-t-2 border-white border-solid rounded-full animate-spin mr-2"></div>
-              {isOptimisticSubmit ? 'Procesando...' : 'Enviando...'}
+              Guardando...
             </div>
           ) : (!session?.user?.email && !cachedEmail) ? (
-            '🔒 Sesión Requerida'
-          ) : isOptimisticSubmit ? (
-            '✓ Enviado'
+            'Sesion Requerida'
           ) : (
             'Enviar Pedido'
           )}
