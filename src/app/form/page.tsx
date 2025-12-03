@@ -1320,13 +1320,35 @@ export default function FormPage() {
 
     } catch (err: any) {
       console.error('❌ QUEUE FAILURE:', err);
-      haptics.error();
 
-      error(
-        'Error',
-        err.message || 'No se pudo guardar el pedido. Por favor, intenta de nuevo.',
-        4000
-      );
+      // Check if this is a duplicate error
+      if (err.message?.includes('DUPLICATE')) {
+        haptics.light();
+        success(
+          'Pedido ya en cola',
+          'Este pedido ya esta siendo procesado.',
+          3000
+        );
+        // Still clear the form since the order is already queued
+        setSelectedClient('');
+        setSearchTerm('');
+        setDebouncedSearchTerm('');
+        setQuantities({});
+        setFilteredClients([]);
+        setTotal('0.00');
+        setCleyOrderValue("1");
+        setOverrideEmail('');
+        setOverrideDate('');
+        setOverridePeriod('');
+        setKey(prev => prev + 1);
+      } else {
+        haptics.error();
+        error(
+          'Error',
+          err.message || 'No se pudo guardar el pedido. Por favor, intenta de nuevo.',
+          4000
+        );
+      }
 
     } finally {
       setIsSubmitting(false);

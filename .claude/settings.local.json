@@ -14,7 +14,8 @@
       "Bash(ss:*)",
       "Bash(lsof:*)",
       "Bash(npx tsc:*)",
-      "Bash(npx shadcn@latest add:*)"
+      "Bash(npx shadcn@latest add:*)",
+      "Bash(timeout 15 npm run dev)"
     ],
     "deny": [],
     "ask": []

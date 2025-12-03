@@ -8,6 +8,20 @@ const MAX_RETRIES = 5;
 const RETRY_DELAY_BASE = 2000; // 2 seconds
 const PROCESS_INTERVAL = 5000; // Check queue every 5 seconds
 
+// Service Worker message types
+interface SWMessage {
+  type: 'SUBMISSION_SUCCESS' | 'SUBMISSION_FAILED' | 'LOCATION_STALE' | 'QUEUE_PROCESSED';
+  submissionId?: string;
+  duplicate?: boolean;
+  error?: string;
+  results?: {
+    processed: number;
+    succeeded: number;
+    failed: number;
+    stale: number;
+  };
+}
+
 export interface QueueState {
   pendingCount: number;
   isProcessing: boolean;
@@ -271,10 +285,16 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
 
   // Set up online/offline listeners
   useEffect(() => {
-    const handleOnline = () => {
-      console.log('Connection restored, processing queue...');
+    const handleOnline = async () => {
+      console.log('Connection restored, triggering Background Sync...');
       setState(prev => ({ ...prev, isOnline: true }));
-      processQueue();
+
+      // Try Background Sync first, fall back to manual processing
+      const syncRegistered = await submissionQueue.requestBackgroundSync();
+      if (!syncRegistered) {
+        console.log('Background Sync not available, processing manually...');
+        processQueue();
+      }
     };
 
     const handleOffline = () => {
@@ -282,10 +302,15 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
       setState(prev => ({ ...prev, isOnline: false }));
     };
 
-    const handleVisibilityChange = () => {
+    const handleVisibilityChange = async () => {
       if (document.visibilityState === 'visible' && navigator.onLine) {
-        console.log('Tab visible, checking queue...');
-        processQueue();
+        console.log('Tab visible, triggering Background Sync...');
+
+        // Try Background Sync first, fall back to manual processing
+        const syncRegistered = await submissionQueue.requestBackgroundSync();
+        if (!syncRegistered) {
+          processQueue();
+        }
       }
     };
 
@@ -321,6 +346,54 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
   useEffect(() => {
     const unsubscribe = submissionQueue.subscribe(loadQueue);
     return unsubscribe;
+  }, [loadQueue]);
+
+  // Listen for messages from Service Worker (Background Sync results)
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
+      return;
+    }
+
+    const handleSWMessage = (event: MessageEvent<SWMessage>) => {
+      const { type, submissionId, duplicate, error, results } = event.data || {};
+
+      console.log('[Hook] SW message received:', event.data);
+
+      switch (type) {
+        case 'SUBMISSION_SUCCESS':
+          console.log(`✅ [SW] Submission ${submissionId} succeeded`, duplicate ? '(duplicate)' : '');
+          haptics.success();
+          loadQueue();
+          break;
+
+        case 'SUBMISSION_FAILED':
+          console.log(`❌ [SW] Submission ${submissionId} failed:`, error);
+          haptics.error();
+          loadQueue();
+          break;
+
+        case 'LOCATION_STALE':
+          console.log(`📍 [SW] Submission ${submissionId} has stale location`);
+          setState(prev => ({
+            ...prev,
+            hasStaleLocation: true,
+            staleLocationItemId: submissionId || null,
+          }));
+          loadQueue();
+          break;
+
+        case 'QUEUE_PROCESSED':
+          console.log('[SW] Queue processing complete:', results);
+          loadQueue();
+          break;
+      }
+    };
+
+    navigator.serviceWorker.addEventListener('message', handleSWMessage);
+
+    return () => {
+      navigator.serviceWorker.removeEventListener('message', handleSWMessage);
+    };
   }, [loadQueue]);
 
   return {

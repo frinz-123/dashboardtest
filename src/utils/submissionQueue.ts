@@ -6,14 +6,20 @@
  * - Automatically retries when connection is restored
  * - Handles location staleness gracefully
  * - Guarantees eventual delivery
+ * - Uses Background Sync API for true background processing
+ * - Prevents duplicate submissions via content fingerprinting
  */
 
 const DB_NAME = 'elrey-submissions';
 const DB_VERSION = 1;
 const STORE_NAME = 'pending-orders';
+const SYNC_TAG = 'order-submission-sync';
 
 // Location is considered stale after 90 seconds
 const MAX_LOCATION_AGE_MS = 90000;
+
+// Duplicate detection window (5 minutes)
+const DUPLICATE_WINDOW_MS = 300000;
 
 export type SubmissionStatus =
   | 'pending'           // Waiting to be sent
@@ -55,9 +61,101 @@ class SubmissionQueue {
   private db: IDBDatabase | null = null;
   private dbReady: Promise<boolean>;
   private listeners: Set<() => void> = new Set();
+  private recentFingerprints: Map<string, number> = new Map();
 
   constructor() {
     this.dbReady = this.initDB();
+    this.cleanupFingerprints();
+  }
+
+  /**
+   * Clean up old fingerprints periodically
+   */
+  private cleanupFingerprints() {
+    if (typeof window === 'undefined') return;
+
+    setInterval(() => {
+      const now = Date.now();
+      for (const [fingerprint, timestamp] of this.recentFingerprints.entries()) {
+        if (now - timestamp > DUPLICATE_WINDOW_MS) {
+          this.recentFingerprints.delete(fingerprint);
+        }
+      }
+    }, 60000); // Clean every minute
+  }
+
+  /**
+   * Generate a fingerprint for a submission payload to detect duplicates
+   * Uses client name, products, and a time window
+   */
+  private generateFingerprint(payload: QueuedSubmission['payload']): string {
+    // Create a deterministic string from the key fields
+    const productKeys = Object.keys(payload.products).sort();
+    const productString = productKeys
+      .map(k => `${k}:${payload.products[k as keyof typeof payload.products]}`)
+      .join('|');
+
+    // Round timestamp to 30-second windows to catch rapid duplicates
+    const timeWindow = Math.floor(Date.now() / 30000);
+
+    return `${payload.clientName}|${payload.clientCode}|${productString}|${payload.userEmail}|${timeWindow}`;
+  }
+
+  /**
+   * Check if a submission is a duplicate based on content fingerprint
+   */
+  async isDuplicate(payload: QueuedSubmission['payload']): Promise<{ isDuplicate: boolean; existingId?: string }> {
+    const fingerprint = this.generateFingerprint(payload);
+
+    // Check in-memory cache first
+    if (this.recentFingerprints.has(fingerprint)) {
+      console.warn('🔄 DUPLICATE DETECTED (fingerprint match):', fingerprint);
+      return { isDuplicate: true };
+    }
+
+    // Check existing queue items
+    const pending = await this.getPending();
+    for (const item of pending) {
+      const itemFingerprint = this.generateFingerprint(item.payload);
+      if (itemFingerprint === fingerprint) {
+        console.warn('🔄 DUPLICATE DETECTED (queue match):', {
+          fingerprint,
+          existingId: item.id,
+          existingStatus: item.status,
+        });
+        return { isDuplicate: true, existingId: item.id };
+      }
+    }
+
+    return { isDuplicate: false };
+  }
+
+  /**
+   * Request Background Sync to process the queue
+   * Falls back to manual processing if Background Sync is not supported
+   */
+  async requestBackgroundSync(): Promise<boolean> {
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
+      console.log('Background Sync not available: no service worker');
+      return false;
+    }
+
+    try {
+      const registration = await navigator.serviceWorker.ready;
+
+      // Check if Background Sync is supported
+      if ('sync' in registration) {
+        await (registration as any).sync.register(SYNC_TAG);
+        console.log('📡 Background Sync registered:', SYNC_TAG);
+        return true;
+      } else {
+        console.log('Background Sync not supported, falling back to manual processing');
+        return false;
+      }
+    } catch (error) {
+      console.error('Failed to register Background Sync:', error);
+      return false;
+    }
   }
 
   private async initDB(): Promise<boolean> {
@@ -107,9 +205,20 @@ class SubmissionQueue {
 
   /**
    * Add a submission to the queue
+   * Returns the queued submission, or throws if it's a duplicate
    */
   async add(submission: Omit<QueuedSubmission, 'status' | 'createdAt' | 'lastAttemptAt' | 'retryCount' | 'errorMessage'>): Promise<QueuedSubmission> {
     await this.dbReady;
+
+    // Check for duplicates first
+    const { isDuplicate, existingId } = await this.isDuplicate(submission.payload);
+    if (isDuplicate) {
+      console.warn('🚫 Rejecting duplicate submission:', {
+        clientName: submission.payload.clientName,
+        existingId,
+      });
+      throw new Error(`DUPLICATE: Este pedido ya esta en cola${existingId ? ` (ID: ${existingId})` : ''}`);
+    }
 
     const queuedSubmission: QueuedSubmission = {
       ...submission,
@@ -120,6 +229,10 @@ class SubmissionQueue {
       errorMessage: null,
     };
 
+    // Store fingerprint to prevent rapid duplicates
+    const fingerprint = this.generateFingerprint(submission.payload);
+    this.recentFingerprints.set(fingerprint, Date.now());
+
     if (this.db) {
       return new Promise((resolve, reject) => {
         const transaction = this.db!.transaction([STORE_NAME], 'readwrite');
@@ -127,13 +240,21 @@ class SubmissionQueue {
         const request = store.add(queuedSubmission);
 
         request.onsuccess = () => {
-          console.log('Submission queued:', queuedSubmission.id);
+          console.log('✅ Submission queued:', queuedSubmission.id);
           this.notifyListeners();
+
+          // Request Background Sync to process when online
+          this.requestBackgroundSync().catch(err => {
+            console.log('Background Sync not triggered:', err.message);
+          });
+
           resolve(queuedSubmission);
         };
 
         request.onerror = () => {
           console.error('Failed to queue submission:', request.error);
+          // Remove fingerprint on failure
+          this.recentFingerprints.delete(fingerprint);
           reject(request.error);
         };
       });
@@ -144,6 +265,10 @@ class SubmissionQueue {
     queue.push(queuedSubmission);
     localStorage.setItem('pending-submissions', JSON.stringify(queue));
     this.notifyListeners();
+
+    // Request Background Sync
+    this.requestBackgroundSync().catch(() => {});
+
     return queuedSubmission;
   }
 
