@@ -79,7 +79,8 @@ export async function POST(req: Request) {
       submissionId: clientSubmissionId,
       attemptNumber,
       date: overrideDateString,
-      overridePeriod
+      overridePeriod,
+      overrideMonthCode
     } = body
 
     submissionId = clientSubmissionId;
@@ -396,15 +397,26 @@ export async function POST(req: Request) {
       }
 
       // Generate Month_Year format (e.g., NOV_25) for column AO
-      const monthYearFormatter = new Intl.DateTimeFormat('en-US', {
-        timeZone: MAZATLAN_TZ,
-        month: 'short',
-        year: '2-digit'
-      });
-      const myParts = monthYearFormatter.formatToParts(periodSourceDate);
-      const mPart = myParts.find(p => p.type === 'month')?.value || '';
-      const yPart = myParts.find(p => p.type === 'year')?.value || '';
-      const monthYearCode = `${mPart}_${yPart}`.toUpperCase().replace('.', '');
+      // 🔧 ADMIN OVERRIDE: Use override month code if provided by admin user
+      let monthYearCode: string;
+      if (isAdmin && overrideMonthCode && overrideMonthCode.trim()) {
+        monthYearCode = overrideMonthCode.trim().toUpperCase();
+        console.log("📅 ADMIN MONTH CODE OVERRIDE: Using override month code", {
+          overrideMonthCode,
+          adminEmail: adminEmailForValidation,
+          timestamp: new Date().toISOString()
+        });
+      } else {
+        const monthYearFormatter = new Intl.DateTimeFormat('en-US', {
+          timeZone: MAZATLAN_TZ,
+          month: 'short',
+          year: '2-digit'
+        });
+        const myParts = monthYearFormatter.formatToParts(periodSourceDate);
+        const mPart = myParts.find(p => p.type === 'month')?.value || '';
+        const yPart = myParts.find(p => p.type === 'year')?.value || '';
+        monthYearCode = `${mPart}_${yPart}`.toUpperCase().replace('.', '');
+      }
 
       // Create an array with 41 elements (A to AO)
       const rowData = new Array(41).fill('')

@@ -15,6 +15,7 @@ import { haptics } from '@/utils/haptics'
 import { ClientSearchSkeleton, ProductListSkeleton, MapSkeleton } from '@/components/ui/SkeletonLoader'
 import { useSubmissionQueue } from '@/hooks/useSubmissionQueue'
 import PendingOrdersBanner from '@/components/ui/PendingOrdersBanner'
+import { getCurrentPeriodInfo } from '@/utils/dateUtils'
 
 const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY
 const spreadsheetId = process.env.NEXT_PUBLIC_SPREADSHEET_ID
@@ -872,6 +873,51 @@ export default function FormPage() {
   const [overrideEmail, setOverrideEmail] = useState<string>('')
   const [overrideDate, setOverrideDate] = useState<string>('')
   const [overridePeriod, setOverridePeriod] = useState<string>('')
+  const [overrideMonthCode, setOverrideMonthCode] = useState<string>('')
+
+  // Calculate period code and month code from the selected override date
+  const calculatedOverrideValues = useMemo(() => {
+    if (!overrideDate) {
+      return { periodCode: '', monthCode: '' };
+    }
+
+    try {
+      const selectedDate = new Date(overrideDate);
+      if (isNaN(selectedDate.getTime())) {
+        return { periodCode: '', monthCode: '' };
+      }
+
+      // Calculate period code (e.g., P11S2)
+      const { periodNumber, weekInPeriod } = getCurrentPeriodInfo(selectedDate);
+      const periodCode = `P${periodNumber}S${weekInPeriod}`;
+
+      // Calculate month code (e.g., NOV_25)
+      const monthFormatter = new Intl.DateTimeFormat('en-US', {
+        month: 'short',
+        year: '2-digit',
+        timeZone: 'America/Mazatlan'
+      });
+      const parts = monthFormatter.formatToParts(selectedDate);
+      const monthPart = parts.find(p => p.type === 'month')?.value || '';
+      const yearPart = parts.find(p => p.type === 'year')?.value || '';
+      const monthCode = `${monthPart}_${yearPart}`.toUpperCase().replace('.', '');
+
+      return { periodCode, monthCode };
+    } catch (e) {
+      console.error('Error calculating override values:', e);
+      return { periodCode: '', monthCode: '' };
+    }
+  }, [overrideDate]);
+
+  // Auto-update period and month code when override date changes
+  useEffect(() => {
+    if (calculatedOverrideValues.periodCode) {
+      setOverridePeriod(calculatedOverrideValues.periodCode);
+    }
+    if (calculatedOverrideValues.monthCode) {
+      setOverrideMonthCode(calculatedOverrideValues.monthCode);
+    }
+  }, [calculatedOverrideValues]);
 
   const throttledLocationUpdate = useRef(
     throttle((location: { lat: number, lng: number, accuracy?: number, timestamp?: number }) => {
@@ -1283,6 +1329,7 @@ export default function FormPage() {
           date: submittedAt,
           cleyOrderValue: cleyValue,
           overridePeriod: isAdmin ? overridePeriod : null,
+        overrideMonthCode: isAdmin ? overrideMonthCode : null,
         },
         isAdmin,
       });
@@ -1299,6 +1346,7 @@ export default function FormPage() {
       setOverrideEmail('');
       setOverrideDate('');
       setOverridePeriod('');
+      setOverrideMonthCode('');
       setKey(prev => prev + 1);
 
       // Show success feedback
@@ -1340,6 +1388,7 @@ export default function FormPage() {
         setOverrideEmail('');
         setOverrideDate('');
         setOverridePeriod('');
+        setOverrideMonthCode('');
         setKey(prev => prev + 1);
       } else {
         haptics.error();
@@ -1601,9 +1650,17 @@ export default function FormPage() {
               className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white"
             />
             {overrideDate && (
-              <p className="text-xs text-purple-600 mt-1">
-                ✓ Fecha override activa: {new Date(overrideDate).toLocaleString('es-MX')}
-              </p>
+              <div className="mt-2 p-2 bg-purple-100 rounded-md">
+                <p className="text-xs text-purple-700 font-medium">
+                  ✓ Fecha: {new Date(overrideDate).toLocaleString('es-MX')}
+                </p>
+                <p className="text-xs text-purple-600 mt-1">
+                  📅 Periodo calculado: <span className="font-bold">{calculatedOverrideValues.periodCode}</span>
+                </p>
+                <p className="text-xs text-purple-600">
+                  📆 Código de mes: <span className="font-bold">{calculatedOverrideValues.monthCode}</span>
+                </p>
+              </div>
             )}
             {!overrideDate && (
               <p className="text-xs text-gray-500 mt-1">
@@ -1612,10 +1669,10 @@ export default function FormPage() {
             )}
           </div>
 
-          {/* Period Selector */}
-          <div>
+          {/* Period Selector - Now shows calculated value and allows manual override */}
+          <div className="mb-3">
             <label className="block text-gray-700 font-semibold text-xs mb-2">
-              Seleccionar Periodo (Columna AL)
+              Periodo (Columna AL) {overrideDate && <span className="text-purple-500 font-normal">- Auto-calculado desde fecha</span>}
             </label>
             <select
               value={overridePeriod}
@@ -1627,7 +1684,7 @@ export default function FormPage() {
             >
               <option value="">Calcular automáticamente desde la fecha</option>
               {/* Generate period options P11S1 to P15S4 */}
-              {[11, 12, 13, 14, 15].map(period => (
+              {[11, 12, 13, 14, 15, 16, 17, 18, 19, 20].map(period => (
                 [1, 2, 3, 4].map(week => (
                   <option key={`P${period}S${week}`} value={`P${period}S${week}`}>
                     P{period}S{week} - Periodo {period}, Semana {week}
@@ -1637,12 +1694,34 @@ export default function FormPage() {
             </select>
             {overridePeriod && (
               <p className="text-xs text-purple-600 mt-1">
-                ✓ Periodo override activo: {overridePeriod}
+                ✓ Periodo: <span className="font-bold">{overridePeriod}</span>
               </p>
             )}
-            {!overridePeriod && (
+          </div>
+
+          {/* Month Code Display - Auto-calculated from date */}
+          <div>
+            <label className="block text-gray-700 font-semibold text-xs mb-2">
+              Código de Mes (Columna AO)
+            </label>
+            <input
+              type="text"
+              value={overrideMonthCode}
+              onChange={(e) => {
+                haptics.light();
+                setOverrideMonthCode(e.target.value.toUpperCase());
+              }}
+              placeholder="Ej: NOV_25, DIC_25"
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white"
+            />
+            {overrideMonthCode && (
+              <p className="text-xs text-purple-600 mt-1">
+                ✓ Código de mes: <span className="font-bold">{overrideMonthCode}</span>
+              </p>
+            )}
+            {!overrideMonthCode && !overrideDate && (
               <p className="text-xs text-gray-500 mt-1">
-                Si no seleccionas un periodo, se calculará desde la fecha
+                Se calculará automáticamente desde la fecha seleccionada
               </p>
             )}
           </div>

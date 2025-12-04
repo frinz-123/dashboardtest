@@ -48,6 +48,7 @@ export interface QueuedSubmission {
     date: string;
     cleyOrderValue: string | null;
     overridePeriod: string | null;
+    overrideMonthCode: string | null;
   };
   status: SubmissionStatus;
   createdAt: number;             // When the submission was queued
@@ -267,7 +268,7 @@ class SubmissionQueue {
     this.notifyListeners();
 
     // Request Background Sync
-    this.requestBackgroundSync().catch(() => {});
+    this.requestBackgroundSync().catch(() => { });
 
     return queuedSubmission;
   }
