@@ -150,9 +150,9 @@ async function getPendingSubmissions() {
     request.onsuccess = () => {
       const all = request.result || [];
       // Filter to only pending items (not completed, failed, or currently sending)
-      const pending = all.filter(s =>
-        s.status === 'pending' || s.status === 'locationStale'
-      );
+      // NOTE: Also include 'locationStale' for backwards compatibility - these should now be processed
+      // since location is validated at submission time, not during queue processing
+      const pending = all.filter(s => s.status === 'pending' || s.status === 'locationStale');
       resolve(pending);
     };
 
@@ -232,8 +232,10 @@ async function sendSubmission(submission) {
 }
 
 /**
- * Check if location is still valid (not stale)
- * Location is considered stale after 90 seconds
+ * NOTE: isLocationValid is no longer used for queue processing.
+ * Location is validated at submission time when the user clicks "Enviar Pedido".
+ * The stored coordinates are proof the user was at the client location.
+ * Keeping this function for potential future use but it's not called during processing.
  */
 function isLocationValid(submission) {
   // Admins bypass location checks
@@ -270,22 +272,10 @@ async function processQueuedOrders() {
       results.processed++;
 
       try {
-        // Check if location is still valid
-        if (!isLocationValid(submission)) {
-          console.log(`[SW] Submission ${submission.id} has stale location, skipping`);
-          await updateSubmission(submission.id, {
-            status: 'locationStale',
-            errorMessage: 'La ubicacion ha expirado. Por favor, refresca tu ubicacion.',
-          });
-          results.stale++;
-
-          // Notify the main thread about stale location
-          notifyClients({
-            type: 'LOCATION_STALE',
-            submissionId: submission.id,
-          });
-          continue;
-        }
+        // NOTE: We no longer check location validity here.
+        // Location was validated at submission time when the user clicked "Enviar Pedido".
+        // The stored coordinates are proof the user was at the client location.
+        // Re-validating would break offline-first queue processing.
 
         // Mark as sending
         await updateSubmission(submission.id, {

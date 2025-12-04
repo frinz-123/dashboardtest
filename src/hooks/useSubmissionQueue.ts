@@ -60,17 +60,16 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
   const loadQueue = useCallback(async () => {
     try {
       const items = await submissionQueue.getPending();
-      const staleItem = items.find(
-        item => item.status === 'locationStale' ||
-        (item.status === 'pending' && !submissionQueue.isLocationValid(item) && !item.isAdmin)
-      );
+
+      // NOTE: We no longer check for stale location in queued items.
+      // Location was validated at submission time - queued orders should always process.
 
       setState(prev => ({
         ...prev,
         items,
         pendingCount: items.length,
-        hasStaleLocation: !!staleItem,
-        staleLocationItemId: staleItem?.id || null,
+        hasStaleLocation: false,
+        staleLocationItemId: null,
       }));
     } catch (error) {
       console.error('Failed to load queue:', error);
@@ -110,15 +109,10 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
 
   // Process a single item from the queue
   const processItem = useCallback(async (item: QueuedSubmission): Promise<boolean> => {
-    // Check if location is still valid (for non-admin users)
-    if (!item.isAdmin && !submissionQueue.isLocationValid(item)) {
-      console.log('Location stale for submission:', item.id);
-      await submissionQueue.update(item.id, {
-        status: 'locationStale',
-        errorMessage: 'La ubicacion ha expirado. Por favor, refresca tu ubicacion.',
-      });
-      return false;
-    }
+    // NOTE: We do NOT re-validate location here.
+    // Location was already validated at submission time when the user clicked "Enviar Pedido".
+    // The stored coordinates are proof the user was at the client location.
+    // Re-validating based on timestamp would break offline-first queue processing.
 
     // Mark as sending
     await submissionQueue.update(item.id, {
@@ -180,31 +174,13 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
       const items = await submissionQueue.getPending();
 
       for (const item of items) {
-        // Skip items that are already being sent or have stale locations
+        // Skip items that are already being sent or have failed
         if (item.status === 'sending') continue;
         if (item.status === 'failed') continue;
-        if (item.status === 'locationStale') {
-          setState(prev => ({
-            ...prev,
-            hasStaleLocation: true,
-            staleLocationItemId: item.id,
-          }));
-          continue;
-        }
 
-        // Check location validity before processing
-        if (!item.isAdmin && !submissionQueue.isLocationValid(item)) {
-          await submissionQueue.update(item.id, {
-            status: 'locationStale',
-            errorMessage: 'La ubicacion ha expirado. Por favor, refresca tu ubicacion.',
-          });
-          setState(prev => ({
-            ...prev,
-            hasStaleLocation: true,
-            staleLocationItemId: item.id,
-          }));
-          continue;
-        }
+        // NOTE: We no longer check for 'locationStale' status or re-validate location.
+        // Location was validated at submission time - the stored coordinates are proof
+        // the user was at the client. Queued orders should always be processed.
 
         const success = await processItem(item);
 
@@ -373,12 +349,9 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
           break;
 
         case 'LOCATION_STALE':
-          console.log(`📍 [SW] Submission ${submissionId} has stale location`);
-          setState(prev => ({
-            ...prev,
-            hasStaleLocation: true,
-            staleLocationItemId: submissionId || null,
-          }));
+          // NOTE: This case is kept for backwards compatibility but should no longer be triggered.
+          // Location is validated at submission time, not during queue processing.
+          console.log(`📍 [SW] Submission ${submissionId} - location stale message (ignored)`);
           loadQueue();
           break;
 
