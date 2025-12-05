@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import {
   ChevronDown, Calendar, TrendingUp, TrendingDown, Users, Target, ArrowLeft,
-  CheckCircle2, Clock, Eye, ShoppingBag, List, BarChart2, X, ChevronRight
+  CheckCircle2, Clock, Eye, EyeOff, ShoppingBag, List, BarChart2, X, ChevronRight
 } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie,
@@ -75,6 +75,8 @@ export default function InspectorPeriodosPage() {
   const [selectedWeek, setSelectedWeek] = useState<number | null>(null) // null = all weeks, 1-4 = specific week
   const [selectedDay, setSelectedDay] = useState<string | null>(null) // null = all days
   const [showAllSales, setShowAllSales] = useState(false)
+  const [isHideModeEnabled, setIsHideModeEnabled] = useState(false)
+  const [hiddenSellers, setHiddenSellers] = useState<Set<string>>(new Set())
 
   const availablePeriods = useMemo(() => getAllPeriods().reverse(), [])
   const isAdmin = useMemo(() => isMasterAccount(session?.user?.email), [session])
@@ -353,6 +355,22 @@ export default function InspectorPeriodosPage() {
     setSelectedWeek(null)
     setSelectedDay(null)
   }
+
+  const toggleSellerVisibility = (email: string) => {
+    setHiddenSellers(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(email)) {
+        newSet.delete(email)
+      } else {
+        newSet.add(email)
+      }
+      return newSet
+    })
+  }
+
+  const visibleSellerStats = useMemo(() => {
+    return sellerStats.filter(s => !hiddenSellers.has(s.email))
+  }, [sellerStats, hiddenSellers])
 
   // Loading state
   if (status === 'loading') {
@@ -956,9 +974,44 @@ export default function InspectorPeriodosPage() {
 
             {/* Seller Details Table */}
             <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-6">
-              <div className="px-4 py-3 border-b border-gray-200">
-                <h3 className="text-sm font-semibold text-gray-700">Detalle por Vendedor</h3>
-                <p className="text-xs text-gray-500">Haz clic en un vendedor para ver su detalle completo</p>
+              <div className="px-4 py-3 border-b border-gray-200 flex items-start justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-700">Detalle por Vendedor</h3>
+                  <p className="text-xs text-gray-500">Haz clic en un vendedor para ver su detalle completo</p>
+                  {isHideModeEnabled && hiddenSellers.size > 0 && (
+                    <div className="flex items-center gap-2 mt-2 flex-wrap">
+                      <span className="text-xs text-gray-400">Ocultos:</span>
+                      {sellerStats.filter(s => hiddenSellers.has(s.email)).map(seller => (
+                        <button
+                          key={seller.email}
+                          onClick={() => toggleSellerVisibility(seller.email)}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-gray-100 text-gray-600 rounded-full hover:bg-blue-100 hover:text-blue-600 transition-colors"
+                          title="Mostrar vendedor"
+                        >
+                          <Eye className="w-3 h-3" />
+                          {seller.name}
+                        </button>
+                      ))}
+                      <button
+                        onClick={() => setHiddenSellers(new Set())}
+                        className="text-xs text-blue-600 hover:text-blue-700 ml-1"
+                      >
+                        Mostrar todos
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={() => setIsHideModeEnabled(!isHideModeEnabled)}
+                  className={`p-1.5 rounded-lg transition-colors ${
+                    isHideModeEnabled
+                      ? 'bg-blue-100 text-blue-600'
+                      : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
+                  }`}
+                  title={isHideModeEnabled ? 'Desactivar modo ocultar' : 'Activar modo ocultar vendedores'}
+                >
+                  {isHideModeEnabled ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -979,7 +1032,7 @@ export default function InspectorPeriodosPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {sellerStats.map((seller, index) => (
+                    {visibleSellerStats.map((seller, index) => (
                       <tr
                         key={seller.email}
                         className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
@@ -992,6 +1045,18 @@ export default function InspectorPeriodosPage() {
                               style={{ backgroundColor: COLORS[index % COLORS.length] }}
                             />
                             <span className="font-medium text-gray-800">{seller.name}</span>
+                            {isHideModeEnabled && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  toggleSellerVisibility(seller.email)
+                                }}
+                                className="p-0.5 text-gray-400 hover:text-red-500 transition-colors"
+                                title="Ocultar vendedor"
+                              >
+                                <EyeOff className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                           </div>
                         </td>
                         <td className="text-right py-3 px-4 font-medium text-gray-800">
@@ -1042,28 +1107,35 @@ export default function InspectorPeriodosPage() {
                     <tr className="bg-gray-50 font-medium">
                       <td className="py-3 px-4 text-gray-800">Total</td>
                       <td className="text-right py-3 px-4 text-gray-800">
-                        {formatCurrency(summaryStats?.totalTeamSales || 0)}
+                        {formatCurrency(visibleSellerStats.reduce((sum, s) => sum + s.totalSales, 0))}
                       </td>
                       <td className="text-right py-3 px-4 text-gray-600">
-                        {formatCurrency(summaryStats?.totalTeamGoal || 0)}
+                        {formatCurrency(visibleSellerStats.reduce((sum, s) => sum + s.goal, 0))}
                       </td>
                       <td className="py-3 px-4 text-center">
-                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${getProgressColor(summaryStats?.avgProgress || 0)}`}>
-                          {(summaryStats?.avgProgress || 0).toFixed(1)}% prom
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${getProgressColor(
+                          visibleSellerStats.length > 0
+                            ? visibleSellerStats.reduce((sum, s) => sum + s.progress, 0) / visibleSellerStats.length
+                            : 0
+                        )}`}>
+                          {(visibleSellerStats.length > 0
+                            ? visibleSellerStats.reduce((sum, s) => sum + s.progress, 0) / visibleSellerStats.length
+                            : 0
+                          ).toFixed(1)}% prom
                         </span>
                       </td>
                       <td className="text-right py-3 px-4 text-gray-600">
-                        {formatCurrency(sellerStats.reduce((sum, s) => sum + s.efectivoSales, 0))}
+                        {formatCurrency(visibleSellerStats.reduce((sum, s) => sum + s.efectivoSales, 0))}
                       </td>
                       <td className="text-center py-3 px-4 text-gray-600">
-                        {sellerStats.reduce((sum, s) => sum + s.visitsCount, 0)}
+                        {visibleSellerStats.reduce((sum, s) => sum + s.visitsCount, 0)}
                       </td>
                       <td className="text-center py-3 px-4 text-gray-600">
-                        {sellerStats.reduce((sum, s) => sum + s.salesCount, 0)}
+                        {visibleSellerStats.reduce((sum, s) => sum + s.salesCount, 0)}
                       </td>
                       {[0, 1, 2, 3].map(i => (
                         <td key={i} className="text-right py-3 px-4 text-gray-600 hidden sm:table-cell">
-                          ${((sellerStats.reduce((sum, s) => sum + s.weeklyBreakdown[i], 0))/1000).toFixed(1)}k
+                          ${((visibleSellerStats.reduce((sum, s) => sum + s.weeklyBreakdown[i], 0))/1000).toFixed(1)}k
                         </td>
                       ))}
                       <td></td>
