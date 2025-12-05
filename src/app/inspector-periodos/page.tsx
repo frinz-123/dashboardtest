@@ -38,6 +38,8 @@ type SellerStats = {
   progress: number
   weeklyBreakdown: number[]
   visitsCount: number
+  salesCount: number
+  efectivoSales: number
 }
 
 type ViewMode = 'overview' | 'seller-detail'
@@ -49,6 +51,14 @@ const CODE_COLORS: Record<string, string> = {
   'DEVOLUCION': '#ef4444',
   'CAMBIO': '#8b5cf6',
   'ANTICIPO': '#3b82f6',
+  'EFT': '#06b6d4',
+}
+
+// Efectivo goals for specific sellers (by name)
+const EFECTIVO_GOALS: Record<string, number> = {
+  'Ernesto': 65000,
+  'Reyna': 55000,
+  'Mochis': 65000,
 }
 
 export default function InspectorPeriodosPage() {
@@ -227,6 +237,10 @@ export default function InspectorPeriodosPage() {
           .reduce((sum, sale) => sum + sale.venta, 0)
       })
 
+      const efectivoSales = sellerSales
+        .filter(sale => sale.codigo === 'EFT')
+        .reduce((sum, sale) => sum + sale.venta, 0)
+
       return {
         email,
         name: EMAIL_TO_VENDOR_LABELS[email] || email.split('@')[0],
@@ -234,7 +248,9 @@ export default function InspectorPeriodosPage() {
         goal,
         progress,
         weeklyBreakdown,
-        visitsCount: sellerSales.length
+        visitsCount: sellerSales.length,
+        salesCount: sellerSales.filter(sale => sale.venta > 0).length,
+        efectivoSales
       }
     }).sort((a, b) => b.totalSales - a.totalSales)
   }, [selectedPeriod, salesData])
@@ -952,7 +968,9 @@ export default function InspectorPeriodosPage() {
                       <th className="text-right py-3 px-4 font-medium text-gray-600">Ventas</th>
                       <th className="text-right py-3 px-4 font-medium text-gray-600">Meta</th>
                       <th className="text-center py-3 px-4 font-medium text-gray-600">Progreso</th>
+                      <th className="text-right py-3 px-4 font-medium text-gray-600">Efectivo</th>
                       <th className="text-center py-3 px-4 font-medium text-gray-600">Visitas</th>
+                      <th className="text-center py-3 px-4 font-medium text-gray-600"># Ventas</th>
                       <th className="text-right py-3 px-4 font-medium text-gray-600 hidden sm:table-cell">S1</th>
                       <th className="text-right py-3 px-4 font-medium text-gray-600 hidden sm:table-cell">S2</th>
                       <th className="text-right py-3 px-4 font-medium text-gray-600 hidden sm:table-cell">S3</th>
@@ -995,8 +1013,19 @@ export default function InspectorPeriodosPage() {
                             </span>
                           </div>
                         </td>
+                        <td className="text-right py-3 px-4 text-gray-600">
+                          <span className="inline-flex items-center gap-1">
+                            {formatCurrency(seller.efectivoSales)}
+                            {EFECTIVO_GOALS[seller.name] && seller.efectivoSales >= EFECTIVO_GOALS[seller.name] && (
+                              <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
+                            )}
+                          </span>
+                        </td>
                         <td className="text-center py-3 px-4 text-gray-600">
                           {seller.visitsCount}
+                        </td>
+                        <td className="text-center py-3 px-4 text-gray-600">
+                          {seller.salesCount}
                         </td>
                         {seller.weeklyBreakdown.map((weekSales, i) => (
                           <td key={i} className="text-right py-3 px-4 text-gray-600 hidden sm:table-cell">
@@ -1023,8 +1052,14 @@ export default function InspectorPeriodosPage() {
                           {(summaryStats?.avgProgress || 0).toFixed(1)}% prom
                         </span>
                       </td>
+                      <td className="text-right py-3 px-4 text-gray-600">
+                        {formatCurrency(sellerStats.reduce((sum, s) => sum + s.efectivoSales, 0))}
+                      </td>
                       <td className="text-center py-3 px-4 text-gray-600">
                         {sellerStats.reduce((sum, s) => sum + s.visitsCount, 0)}
+                      </td>
+                      <td className="text-center py-3 px-4 text-gray-600">
+                        {sellerStats.reduce((sum, s) => sum + s.salesCount, 0)}
                       </td>
                       {[0, 1, 2, 3].map(i => (
                         <td key={i} className="text-right py-3 px-4 text-gray-600 hidden sm:table-cell">

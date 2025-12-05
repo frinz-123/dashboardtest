@@ -14,8 +14,9 @@ export const isMasterAccount = (email: string | null | undefined): boolean => {
 // Email to vendor label mapping for master account switching
 export const EMAIL_TO_VENDOR_LABELS: Record<string, string> = {
   'ventas1productoselrey@gmail.com': 'Ernesto',
-  'ventas2productoselrey@gmail.com': 'Roel', 
+  'ventas2productoselrey@gmail.com': 'Roel',
   'ventas3productoselrey@gmail.com': 'Lidia',
+  'ventas4productoselrey@gmail.com': 'Reyna',
   'ventasmztproductoselrey.com@gmail.com': 'Mazatlan',
   'ventasmochisproductoselrey@gmail.com': 'Mochis',
   'franzcharbell@gmail.com': 'Franz', // ✅ REVERTED: Franz has his own data with his email

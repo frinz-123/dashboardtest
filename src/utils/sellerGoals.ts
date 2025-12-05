@@ -1,4 +1,4 @@
-type GoalPeriod = 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25;
+type GoalPeriod = 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 | 32 | 33 | 34 | 35 | 36 | 37;
 
 interface SellerGoal {
   [key: number]: number;
@@ -24,7 +24,19 @@ const sellerGoals: SellerGoals = {
     22: 200000.01, //septiembre 2025
     23: 209073.00, //octubre 2025
     24: 200000.01, //noviembre 2025
-    25: 200000.01, //diciembre 2025
+    25: 216404.00, //diciembre 2025
+    26: 230128.00, //enero 2026
+    27: 200000.01, //febrero 2026
+    28: 200000.01, //marzo 2026
+    29: 200000.01, //abril 2026
+    30: 200000.01, //mayo 2026
+    31: 200000.01, //junio 2026
+    32: 200000.01, //julio 2026
+    33: 200000.01, //agosto 2026
+    34: 200000.01, //septiembre 2026
+    35: 200000.01, //octubre 2026
+    36: 200000.01, //noviembre 2026
+    37: 200000.01, //diciembre 2026
   },
   'ventas2productoselrey@gmail.com': { // Roel
     11: 205426.29,
@@ -42,6 +54,18 @@ const sellerGoals: SellerGoals = {
     23: 207070.00, //octubre 2025
     24: 200000.01, //noviembre 2025
     25: 200000.01, //diciembre 2025
+    26: 200000.01, //enero 2026
+    27: 200000.01, //febrero 2026
+    28: 200000.01, //marzo 2026
+    29: 200000.01, //abril 2026
+    30: 200000.01, //mayo 2026
+    31: 200000.01, //junio 2026
+    32: 200000.01, //julio 2026
+    33: 200000.01, //agosto 2026
+    34: 200000.01, //septiembre 2026
+    35: 200000.01, //octubre 2026
+    36: 200000.01, //noviembre 2026
+    37: 200000.01, //diciembre 2026
   },
   'ventas3productoselrey@gmail.com': { // Lidia
     11: 214002.03,
@@ -58,7 +82,19 @@ const sellerGoals: SellerGoals = {
     22: 200000.01, //septiembre 2025
     23: 165796.00, //octubre 2025
     24: 200000.01, //noviembre 2025
-    25: 200000.01, //diciembre 2025
+    25: 179944.00, //diciembre 2025
+    26: 177555.00, //enero 2026
+    27: 200000.01, //febrero 2026
+    28: 200000.01, //marzo 2026
+    29: 200000.01, //abril 2026
+    30: 200000.01, //mayo 2026
+    31: 200000.01, //junio 2026
+    32: 200000.01, //julio 2026
+    33: 200000.01, //agosto 2026
+    34: 200000.01, //septiembre 2026
+    35: 200000.01, //octubre 2026
+    36: 200000.01, //noviembre 2026
+    37: 200000.01, //diciembre 2026
   },
   'ventasmochisproductoselrey@gmail.com': { // Mochis
     11: 200000.00,
@@ -76,6 +112,18 @@ const sellerGoals: SellerGoals = {
     23: 200000.01, //octubre 2025
     24: 200000.01, //noviembre 2025
     25: 200000.01, //diciembre 2025
+    26: 210000.00, //enero 2026
+    27: 200000.01, //febrero 2026
+    28: 200000.01, //marzo 2026
+    29: 200000.01, //abril 2026
+    30: 200000.01, //mayo 2026
+    31: 200000.01, //junio 2026
+    32: 200000.01, //julio 2026
+    33: 200000.01, //agosto 2026
+    34: 200000.01, //septiembre 2026
+    35: 200000.01, //octubre 2026
+    36: 200000.01, //noviembre 2026
+    37: 200000.01, //diciembre 2026
   },
   'ventasmztproductoselrey.com@gmail.com': { // Mazatlan
     11: 200000.00,
@@ -93,6 +141,18 @@ const sellerGoals: SellerGoals = {
     23: 200000.01, //octubre 2025
     24: 200000.01, //noviembre 2025
     25: 200000.01, //diciembre 2025
+    26: 120000.00, //enero 2026
+    27: 200000.01, //febrero 2026
+    28: 200000.01, //marzo 2026
+    29: 200000.01, //abril 2026
+    30: 200000.01, //mayo 2026
+    31: 200000.01, //junio 2026
+    32: 200000.01, //julio 2026
+    33: 200000.01, //agosto 2026
+    34: 200000.01, //septiembre 2026
+    35: 200000.01, //octubre 2026
+    36: 200000.01, //noviembre 2026
+    37: 200000.01, //diciembre 2026
   },
   'alopezelrey@gmail.com': { // Arlyn
     11: 180000.00,
@@ -110,6 +170,18 @@ const sellerGoals: SellerGoals = {
     23: 200000.01, //octubre 2025
     24: 200000.01, //noviembre 2025
     25: 200000.01, //diciembre 2025
+    26: 200000.01, //enero 2026
+    27: 200000.01, //febrero 2026
+    28: 200000.01, //marzo 2026
+    29: 200000.01, //abril 2026
+    30: 200000.01, //mayo 2026
+    31: 200000.01, //junio 2026
+    32: 200000.01, //julio 2026
+    33: 200000.01, //agosto 2026
+    34: 200000.01, //septiembre 2026
+    35: 200000.01, //octubre 2026
+    36: 200000.01, //noviembre 2026
+    37: 200000.01, //diciembre 2026
   },
   'promotoriaelrey@gmail.com': { // Karla - Placeholder goals
     11: 150000.00,
@@ -126,7 +198,19 @@ const sellerGoals: SellerGoals = {
     22: 200000.01, //septiembre 2025
     23: 120299.00, //octubre 2025
     24: 200000.01, //noviembre 2025
-    25: 200000.01, //diciembre 2025
+    25: 123719.00, //diciembre 2025
+    26: 133157.00, //enero 2026
+    27: 200000.01, //febrero 2026
+    28: 200000.01, //marzo 2026
+    29: 200000.01, //abril 2026
+    30: 200000.01, //mayo 2026
+    31: 200000.01, //junio 2026
+    32: 200000.01, //julio 2026
+    33: 200000.01, //agosto 2026
+    34: 200000.01, //septiembre 2026
+    35: 200000.01, //octubre 2026
+    36: 200000.01, //noviembre 2026
+    37: 200000.01, //diciembre 2026
   },
   'franzcharbell@gmail.com': { // Franz
     11: 200000.00,
@@ -160,7 +244,19 @@ const sellerGoals: SellerGoals = {
     22: 200000.01, //septiembre 2025
     23: 200000.01, //octubre 2025
     24: 200000.01, //noviembre 2025
-    25: 200000.01, //diciembre 2025
+    25: 212699.00, //diciembre 2025
+    26: 220461.00, //enero 2026
+    27: 200000.01, //febrero 2026
+    28: 200000.01, //marzo 2026
+    29: 200000.01, //abril 2026
+    30: 200000.01, //mayo 2026
+    31: 200000.01, //junio 2026
+    32: 200000.01, //julio 2026
+    33: 200000.01, //agosto 2026
+    34: 200000.01, //septiembre 2026
+    35: 200000.01, //octubre 2026
+    36: 200000.01, //noviembre 2026
+    37: 200000.01, //diciembre 2026
   },
 };
 
