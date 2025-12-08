@@ -152,7 +152,7 @@ export default function InspectorPeriodosPage() {
       const rows = data.values?.slice(1) || []
       const sales: Sale[] = rows.map((row: string[]) => {
         const products: Record<string, number> = {}
-        for (let i = 8; i <= 31; i++) {
+        for (let i = 8; i <= 30; i++) {
           if (row[i] && row[i] !== '0') {
             products[headers[i]] = parseInt(row[i], 10)
           }
@@ -271,6 +271,45 @@ export default function InspectorPeriodosPage() {
     return Object.entries(byCode)
       .map(([code, data]) => ({ code, ...data }))
       .sort((a, b) => b.total - a.total)
+  }, [filteredSales])
+
+  // Period-filtered sales (for overview mode products) - separate from filteredSales to avoid recalculation
+  const periodSales = useMemo(() => {
+    if (!selectedPeriod || salesData.length === 0) return []
+    const { periodStartDate, periodEndDate } = getPeriodDateRange(selectedPeriod)
+    return salesData.filter(sale => {
+      const saleDate = new Date(sale.fechaSinHora)
+      return isDateInPeriod(saleDate, periodStartDate, periodEndDate)
+    })
+  }, [selectedPeriod, salesData])
+
+  // Products sold aggregation
+  const productsSold = useMemo(() => {
+    const byProduct: Record<string, number> = {}
+    // Use filteredSales when seller is selected (respects week/day filters), otherwise use periodSales
+    const salesToUse = selectedSeller ? filteredSales : periodSales
+
+    for (const sale of salesToUse) {
+      if (sale.products) {
+        for (const [product, quantity] of Object.entries(sale.products)) {
+          byProduct[product] = (byProduct[product] || 0) + quantity
+        }
+      }
+    }
+
+    return Object.entries(byProduct)
+      .map(([product, quantity]) => ({ product, quantity }))
+      .sort((a, b) => b.quantity - a.quantity)
+  }, [selectedSeller, filteredSales, periodSales])
+
+  // Pre-calculate total products for percentage calculations
+  const totalProductsCount = useMemo(() => {
+    return productsSold.reduce((sum, p) => sum + p.quantity, 0)
+  }, [productsSold])
+
+  // Pre-calculate filtered sales count (sales with venta > 0)
+  const filteredSalesCount = useMemo(() => {
+    return filteredSales.filter(s => s.venta > 0).length
   }, [filteredSales])
 
   // Daily sales chart data
@@ -661,7 +700,7 @@ export default function InspectorPeriodosPage() {
           /* ========== SELLER DETAIL VIEW ========== */
           <>
             {/* Seller Summary Cards */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
               <div className="bg-white rounded-xl p-4 border border-gray-200">
                 <div className="flex items-center gap-2 mb-2">
                   <div className="p-2 bg-blue-50 rounded-lg">
@@ -706,6 +745,16 @@ export default function InspectorPeriodosPage() {
                 <p className="text-xs text-gray-500 mt-1">
                   {selectedDay ? 'En este dia' : selectedWeek ? `En semana ${selectedWeek}` : 'En el periodo'}
                 </p>
+              </div>
+
+              <div className="bg-white rounded-xl p-4 border border-gray-200">
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="p-2 bg-cyan-50 rounded-lg">
+                    <CheckCircle2 className="w-4 h-4 text-cyan-600" />
+                  </div>
+                  <span className="text-xs text-gray-500 uppercase tracking-wide"># Ventas</span>
+                </div>
+                <p className="text-xl font-bold text-gray-800">{filteredSalesCount}</p>
               </div>
 
               <div className="bg-white rounded-xl p-4 border border-gray-200">
@@ -878,6 +927,67 @@ export default function InspectorPeriodosPage() {
                 )}
               </div>
             </div>
+
+            {/* Detalle de Productos - Seller View */}
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mt-6">
+              <div className="px-4 py-3 border-b border-gray-200">
+                <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                  <ShoppingBag className="w-4 h-4" />
+                  Detalle de Productos
+                </h3>
+                <p className="text-xs text-gray-500">
+                  Productos vendidos {selectedDay ? 'en este día' : selectedWeek ? `en semana ${selectedWeek}` : 'en el periodo'}
+                </p>
+              </div>
+              {productsSold.length > 0 ? (
+                <div className="overflow-x-auto max-h-[300px] overflow-y-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 sticky top-0">
+                      <tr className="border-b border-gray-200">
+                        <th className="text-left py-2 px-4 font-medium text-gray-600">Producto</th>
+                        <th className="text-right py-2 px-4 font-medium text-gray-600">Cantidad</th>
+                        <th className="text-right py-2 px-4 font-medium text-gray-600">% del Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {productsSold.map(({ product, quantity }) => {
+                        const percentage = totalProductsCount > 0 ? (quantity / totalProductsCount) * 100 : 0
+                        return (
+                          <tr key={product} className="border-b border-gray-100 hover:bg-gray-50">
+                            <td className="py-2 px-4 font-medium text-gray-800">{product}</td>
+                            <td className="text-right py-2 px-4 text-gray-600">{quantity.toLocaleString()}</td>
+                            <td className="text-right py-2 px-4">
+                              <div className="flex items-center justify-end gap-2">
+                                <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full bg-blue-500 rounded-full"
+                                    style={{ width: `${Math.min(percentage, 100)}%` }}
+                                  />
+                                </div>
+                                <span className="text-xs text-gray-500 w-12 text-right">{percentage.toFixed(1)}%</span>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr className="bg-gray-50 font-medium">
+                        <td className="py-2 px-4 text-gray-800">Total</td>
+                        <td className="text-right py-2 px-4 text-gray-800">
+                          {totalProductsCount.toLocaleString()}
+                        </td>
+                        <td className="text-right py-2 px-4 text-gray-500 text-xs">100%</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              ) : (
+                <div className="py-8 text-center text-gray-500">
+                  No hay productos vendidos en este periodo
+                </div>
+              )}
+            </div>
           </>
         ) : (
           /* ========== OVERVIEW MODE ========== */
@@ -1022,6 +1132,8 @@ export default function InspectorPeriodosPage() {
                       <th className="text-right py-3 px-4 font-medium text-gray-600">Meta</th>
                       <th className="text-center py-3 px-4 font-medium text-gray-600">Progreso</th>
                       <th className="text-right py-3 px-4 font-medium text-gray-600">Efectivo</th>
+                      <th className="text-right py-3 px-4 font-medium text-gray-600">Meta EFT</th>
+                      <th className="text-center py-3 px-4 font-medium text-gray-600">% EFT</th>
                       <th className="text-center py-3 px-4 font-medium text-gray-600">Visitas</th>
                       <th className="text-center py-3 px-4 font-medium text-gray-600"># Ventas</th>
                       <th className="text-right py-3 px-4 font-medium text-gray-600 hidden sm:table-cell">S1</th>
@@ -1060,10 +1172,10 @@ export default function InspectorPeriodosPage() {
                           </div>
                         </td>
                         <td className="text-right py-3 px-4 font-medium text-gray-800">
-                          {formatCurrency(seller.totalSales)}
+                          ${(seller.totalSales/1000).toFixed(1)}k
                         </td>
                         <td className="text-right py-3 px-4 text-gray-600">
-                          {formatCurrency(seller.goal)}
+                          ${(seller.goal/1000).toFixed(1)}k
                         </td>
                         <td className="py-3 px-4">
                           <div className="flex items-center justify-center gap-2">
@@ -1079,12 +1191,27 @@ export default function InspectorPeriodosPage() {
                           </div>
                         </td>
                         <td className="text-right py-3 px-4 text-gray-600">
-                          <span className="inline-flex items-center gap-1">
-                            {formatCurrency(seller.efectivoSales)}
-                            {EFECTIVO_GOALS[seller.name] && seller.efectivoSales >= EFECTIVO_GOALS[seller.name] && (
-                              <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
-                            )}
-                          </span>
+                          ${(seller.efectivoSales/1000).toFixed(1)}k
+                        </td>
+                        <td className="text-right py-3 px-4 text-gray-600">
+                          {EFECTIVO_GOALS[seller.name] ? `$${(EFECTIVO_GOALS[seller.name]/1000).toFixed(1)}k` : <span className="text-gray-300">-</span>}
+                        </td>
+                        <td className="text-center py-3 px-4">
+                          {EFECTIVO_GOALS[seller.name] ? (
+                            <div className="flex items-center justify-center gap-1.5">
+                              <div className="w-12 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full ${getProgressBarColor((seller.efectivoSales / EFECTIVO_GOALS[seller.name]) * 100)}`}
+                                  style={{ width: `${Math.min((seller.efectivoSales / EFECTIVO_GOALS[seller.name]) * 100, 100)}%` }}
+                                />
+                              </div>
+                              <span className={`text-xs font-medium ${getProgressColor((seller.efectivoSales / EFECTIVO_GOALS[seller.name]) * 100).split(' ')[0]}`}>
+                                {((seller.efectivoSales / EFECTIVO_GOALS[seller.name]) * 100).toFixed(0)}%
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-gray-300">-</span>
+                          )}
                         </td>
                         <td className="text-center py-3 px-4 text-gray-600">
                           {seller.visitsCount}
@@ -1107,10 +1234,10 @@ export default function InspectorPeriodosPage() {
                     <tr className="bg-gray-50 font-medium">
                       <td className="py-3 px-4 text-gray-800">Total</td>
                       <td className="text-right py-3 px-4 text-gray-800">
-                        {formatCurrency(visibleSellerStats.reduce((sum, s) => sum + s.totalSales, 0))}
+                        ${(visibleSellerStats.reduce((sum, s) => sum + s.totalSales, 0)/1000).toFixed(1)}k
                       </td>
                       <td className="text-right py-3 px-4 text-gray-600">
-                        {formatCurrency(visibleSellerStats.reduce((sum, s) => sum + s.goal, 0))}
+                        ${(visibleSellerStats.reduce((sum, s) => sum + s.goal, 0)/1000).toFixed(1)}k
                       </td>
                       <td className="py-3 px-4 text-center">
                         <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${getProgressColor(
@@ -1125,7 +1252,13 @@ export default function InspectorPeriodosPage() {
                         </span>
                       </td>
                       <td className="text-right py-3 px-4 text-gray-600">
-                        {formatCurrency(visibleSellerStats.reduce((sum, s) => sum + s.efectivoSales, 0))}
+                        ${(visibleSellerStats.reduce((sum, s) => sum + s.efectivoSales, 0)/1000).toFixed(1)}k
+                      </td>
+                      <td className="text-right py-3 px-4 text-gray-600">
+                        ${(visibleSellerStats.reduce((sum, s) => sum + (EFECTIVO_GOALS[s.name] || 0), 0)/1000).toFixed(1)}k
+                      </td>
+                      <td className="text-center py-3 px-4 text-gray-400">
+                        -
                       </td>
                       <td className="text-center py-3 px-4 text-gray-600">
                         {visibleSellerStats.reduce((sum, s) => sum + s.visitsCount, 0)}
@@ -1143,6 +1276,65 @@ export default function InspectorPeriodosPage() {
                   </tfoot>
                 </table>
               </div>
+            </div>
+
+            {/* Detalle de Productos */}
+            <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-6">
+              <div className="px-4 py-3 border-b border-gray-200">
+                <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                  <ShoppingBag className="w-4 h-4" />
+                  Detalle de Productos
+                </h3>
+                <p className="text-xs text-gray-500">Distribucion de productos vendidos en el periodo</p>
+              </div>
+              {productsSold.length > 0 ? (
+                <div className="overflow-x-auto max-h-[300px] overflow-y-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50 sticky top-0">
+                      <tr className="border-b border-gray-200">
+                        <th className="text-left py-2 px-4 font-medium text-gray-600">Producto</th>
+                        <th className="text-right py-2 px-4 font-medium text-gray-600">Cantidad</th>
+                        <th className="text-right py-2 px-4 font-medium text-gray-600">% del Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {productsSold.map(({ product, quantity }) => {
+                        const percentage = totalProductsCount > 0 ? (quantity / totalProductsCount) * 100 : 0
+                        return (
+                          <tr key={product} className="border-b border-gray-100 hover:bg-gray-50">
+                            <td className="py-2 px-4 font-medium text-gray-800">{product}</td>
+                            <td className="text-right py-2 px-4 text-gray-600">{quantity.toLocaleString()}</td>
+                            <td className="text-right py-2 px-4">
+                              <div className="flex items-center justify-end gap-2">
+                                <div className="w-16 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full bg-blue-500 rounded-full"
+                                    style={{ width: `${Math.min(percentage, 100)}%` }}
+                                  />
+                                </div>
+                                <span className="text-xs text-gray-500 w-12 text-right">{percentage.toFixed(1)}%</span>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr className="bg-gray-50 font-medium">
+                        <td className="py-2 px-4 text-gray-800">Total</td>
+                        <td className="text-right py-2 px-4 text-gray-800">
+                          {totalProductsCount.toLocaleString()}
+                        </td>
+                        <td className="text-right py-2 px-4 text-gray-500 text-xs">100%</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              ) : (
+                <div className="py-8 text-center text-gray-500">
+                  No hay productos vendidos en este periodo
+                </div>
+              )}
             </div>
 
             {/* Bottom Section: Distribution & Summary */}
