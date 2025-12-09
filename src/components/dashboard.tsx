@@ -44,7 +44,7 @@ const emailLabels: Record<string, { label: string; role: Role }> = {
   'alopezelrey@gmail.com': { label: 'Arlyn', role: 'Supervisor' },
   'promotoriaelrey@gmail.com': { label: 'Karla', role: 'vendedor' },
   'ventas4productoselrey@gmail.com': { label: 'Reyna', role: 'vendedor' },
-  'bodegaelrey034@gmail.com': { label: 'Bodega', role: 'Bodeguero' },
+  'bodegaelrey034@gmail.com': { label: 'Bodega', role: 'vendedor' },
 }
 
 export default function Dashboard() {
