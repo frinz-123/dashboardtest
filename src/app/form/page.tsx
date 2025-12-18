@@ -39,6 +39,11 @@ const EMAIL_LABELS: Record<string, string> = {
   'ventas1elrey@gmail.com': 'Ventas1'
 };
 
+const SPECIAL_SELLERS = [
+  'ventasmztproductoselrey.com@gmail.com', // Mazatlan
+  'ventasmochisproductoselrey@gmail.com'   // Mochis
+];
+
 // Static list defined once to avoid re-allocating on every render
 const PRODUCTS: string[] = [
   "Chiltepin Molido 50 g",
@@ -750,9 +755,29 @@ const PRICES: ProductPrices = {
 }
 
 // Default to EFT prices if client code not found
-const getProductPrice = (clientCode: string, product: string): number => {
+// Default to EFT prices if client code not found
+const getProductPrice = (clientCode: string, product: string, context?: { clientName?: string, sellerEmail?: string | null }): number => {
   const normalizedCode = clientCode.toUpperCase()
-  const priceList = PRICES[normalizedCode] || PRICES['EFT']
+  let priceList = PRICES[normalizedCode] || PRICES['EFT']
+
+  // Logic Breaking Change: Special Pricing Rules for EFT
+  if (normalizedCode === 'EFT') {
+    // 1. Special Price for "Karnemax Cedis" -> Michela Mix products @ $32
+    if (context?.clientName && normalizeText(context.clientName).includes('karnemax cedis')) {
+      if (product.startsWith('Michela Mix')) {
+        return 32;
+      }
+    }
+
+    // 2. Special Price for specific sellers (Mazatlan, Mochis) -> Tira Molido @ $60
+    // Only applies if it's an EFT client (which we are already inside)
+    if (context?.sellerEmail && SPECIAL_SELLERS.includes(context.sellerEmail)) {
+      if (product === 'Tira Molido') {
+        return 60;
+      }
+    }
+  }
+
   const price = priceList[product]
 
   // 🔍 LOG: Missing price detection
@@ -904,7 +929,7 @@ export default function FormPage() {
   }), [])
   const formatCurrency = (value: number) => currencyFormatter.format(value)
 
-  const orderDetails = useMemo(() => calculateOrderDetails(), [selectedClient, quantities])
+  const orderDetails = useMemo(() => calculateOrderDetails(), [selectedClient, quantities, session?.user?.email, cachedEmail])
 
 
   // Add a debounced search handler
@@ -1050,8 +1075,14 @@ export default function FormPage() {
   useEffect(() => {
     if (selectedClient) {
       const clientCode = getClientCode(selectedClient)
+      // Use overrideEmail if set (admin mode), otherwise use session/cached email
+      const currentEmail = overrideEmail || session?.user?.email || cachedEmail
+
       const calculatedTotal = Object.entries(quantities).reduce((sum, [product, quantity]) => {
-        const price = getProductPrice(clientCode, product)
+        const price = getProductPrice(clientCode, product, {
+          clientName: selectedClient,
+          sellerEmail: currentEmail
+        })
         return sum + (price * quantity)
       }, 0)
 
@@ -1061,12 +1092,14 @@ export default function FormPage() {
         clientCode,
         quantities,
         calculatedTotal: calculatedTotal.toFixed(2),
+        overrideEmail,
+        currentEmail,
         timestamp: new Date().toISOString()
       })
 
       setTotal(calculatedTotal.toFixed(2))
     }
-  }, [selectedClient, quantities])
+  }, [selectedClient, quantities, session?.user?.email, cachedEmail, overrideEmail])
 
   useEffect(() => {
     if (selectedClient && currentLocation && clientLocations[selectedClient]) {
@@ -1172,8 +1205,14 @@ export default function FormPage() {
       // Recalculate total immediately after quantity change
       if (selectedClient) {
         const clientCode = getClientCode(selectedClient);
+        // Use overrideEmail if set (admin mode), otherwise use session/cached email
+        const currentEmail = overrideEmail || session?.user?.email || cachedEmail;
+
         const newTotal = Object.entries(newQuantities).reduce((sum, [prod, qty]) => {
-          const price = getProductPrice(clientCode, prod);
+          const price = getProductPrice(clientCode, prod, {
+            clientName: selectedClient,
+            sellerEmail: currentEmail
+          });
           return sum + (price * qty);
         }, 0);
 
@@ -1267,7 +1306,10 @@ export default function FormPage() {
         : baseDate;
 
       const submissionTotal = Object.entries(quantities).reduce((sum, [product, qty]) => {
-        const price = getProductPrice(clientCode, product);
+        const price = getProductPrice(clientCode, product, {
+          clientName: selectedClient,
+          sellerEmail: finalEmail
+        });
         return sum + (price * qty);
       }, 0);
 
@@ -1382,11 +1424,16 @@ export default function FormPage() {
     if (!selectedClient) return []
 
     const clientCode = getClientCode(selectedClient)
+    // Use overrideEmail if set (admin mode), otherwise use session/cached email
+    const currentEmail = overrideEmail || session?.user?.email || cachedEmail
     const details: { product: string; quantity: number; price: number; subtotal: number }[] = []
 
     Object.entries(quantities).forEach(([product, quantity]) => {
       if (quantity > 0) {
-        const price = getProductPrice(clientCode, product)
+        const price = getProductPrice(clientCode, product, {
+          clientName: selectedClient,
+          sellerEmail: currentEmail
+        })
         details.push({
           product,
           quantity,
