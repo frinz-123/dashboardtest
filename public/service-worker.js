@@ -216,6 +216,7 @@ async function sendSubmission(submission) {
     },
     body: JSON.stringify({
       ...submission.payload,
+      queuedAt: submission.payload?.queuedAt ?? submission.createdAt,
       submissionId: submission.id,
       attemptNumber: submission.retryCount + 1,
       fromBackgroundSync: true,

@@ -84,11 +84,12 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          ...submission.payload,
-          submissionId: submission.id,
-          attemptNumber: submission.retryCount + 1,
-        }),
+      body: JSON.stringify({
+        ...submission.payload,
+        queuedAt: submission.payload.queuedAt ?? submission.createdAt,
+        submissionId: submission.id,
+        attemptNumber: submission.retryCount + 1,
+      }),
       });
 
       const data = await response.json();

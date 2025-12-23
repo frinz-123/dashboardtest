@@ -1330,6 +1330,7 @@ export default function FormPage() {
           clientCode,
           products: { ...quantities },
           total: submissionTotal,
+          queuedAt: Date.now(),
           location: {
             lat: currentLocation.lat,
             lng: currentLocation.lng,

@@ -70,6 +70,7 @@ export async function POST(req: Request) {
       products,
       total,
       location,
+      queuedAt,
       clientCode,
       userEmail,
       cleyOrderValue,
@@ -110,6 +111,8 @@ export async function POST(req: Request) {
     const isAdmin = isOverrideEmail(adminEmailForValidation)
 
     const locationAge = location?.timestamp ? Date.now() - location.timestamp : null;
+    const queuedAge = typeof queuedAt === 'number' ? Date.now() - queuedAt : null;
+    const allowQueuedStaleLocation = !isAdmin && queuedAge !== null && queuedAge > MAX_LOCATION_AGE;
 
     // ✅ VALIDATION: Enhanced logging for email tracking
     console.log("🔍 FORM SUBMISSION RECEIVED:", {
@@ -138,8 +141,12 @@ export async function POST(req: Request) {
       locationTimestamp: location?.timestamp,
       locationAgeMs: locationAge,
       locationAgeSeconds: locationAge !== null ? Number((locationAge / 1000).toFixed(1)) : null,
+      queuedAt,
+      queuedAgeMs: queuedAge,
+      queuedAgeSeconds: queuedAge !== null ? Number((queuedAge / 1000).toFixed(1)) : null,
       maxAllowedLocationAgeMs: MAX_LOCATION_AGE,
-      isAdminOverrideEffective: isAdmin
+      isAdminOverrideEffective: isAdmin,
+      allowQueuedStaleLocation
     });
 
     // ✅ VALIDATION: Location validation
@@ -185,6 +192,17 @@ export async function POST(req: Request) {
     if (!isAdmin && location.timestamp !== undefined) {
       const locationAge = Date.now() - location.timestamp
       if (locationAge > MAX_LOCATION_AGE) {
+        if (allowQueuedStaleLocation) {
+          console.log("🕒 QUEUED SUBMISSION: Bypassing stale location validation", {
+            locationAge,
+            maxAllowed: MAX_LOCATION_AGE,
+            queuedAt,
+            queuedAge,
+            clientName,
+            userEmail,
+            timestamp: new Date().toISOString()
+          });
+        } else {
         console.error("❌ LOCATION VALIDATION FAILED: Stale location", {
           locationAge,
           maxAllowed: MAX_LOCATION_AGE,
@@ -198,6 +216,7 @@ export async function POST(req: Request) {
           success: false,
           error: 'La ubicación ha expirado. Por favor, actualiza tu ubicación antes de enviar.'
         }, { status: 400 })
+        }
       }
     }
 

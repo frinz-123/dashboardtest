@@ -35,6 +35,7 @@ export interface QueuedSubmission {
     clientCode: string;
     products: Record<string, number>;
     total: number;
+    queuedAt?: number;
     location: {
       lat: number;
       lng: number;

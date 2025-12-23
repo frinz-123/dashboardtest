@@ -2,41 +2,37 @@
 
 ## Project Structure & Module Organization
 - `src/`: application code grouped by feature (e.g., `src/components`, `src/pages`, `src/lib`).
-- `tests/` or `__tests__/`: unit/integration tests mirroring `src/` paths.
-- `public/` or `assets/`: static files served as-is.
-- `scripts/`: small maintenance scripts and local tooling.
-- `.github/workflows/`: CI pipelines and automation.
-Prefer small, focused modules; keep feature folders cohesive.
+- `pages/`: Next.js route entry points if still used alongside `src/`.
+- `public/`: static assets served as-is (icons, images, manifest files).
+- `src/__tests__/`: Jest tests mirroring `src/` paths.
+- Root-level scripts like `test-*.js` are ad-hoc checks; keep new test code in `src/__tests__/`.
 
 ## Build, Test, and Development Commands
-- Install deps: use the repo’s lockfile to choose the manager — `npm ci` (or `pnpm i`, `yarn install`).
-- Run locally: `npm run dev` (starts the local server with hot reload).
-- Build production: `npm run build` (outputs to `dist/`, `.next/`, or similar).
-- Run tests: `npm test` (unit/integration), add `--watch` during development.
-- Lint/format: `npm run lint` / `npm run format`.
-Examples for other stacks when present: Python → `pip install -r requirements.txt`, `pytest -q`; Rust → `cargo build`, `cargo test`.
+- `npm ci`: install dependencies using `package-lock.json`.
+- `npm run dev`: start the local Next.js dev server with hot reload.
+- `npm run build`: production build.
+- `npm run start`: serve the production build.
+- `npm run test`: run Jest once.
+- `npm run test:watch`: Jest in watch mode.
+- `npm run test:coverage` / `npm run test:ci`: coverage reports (CI-friendly settings).
 
 ## Coding Style & Naming Conventions
-- Indentation: 2 spaces for JS/TS; 4 spaces for Python.
-- Style: Prettier + ESLint for JS/TS; PEP8/ruff for Python.
-- Naming: camelCase for variables/functions; PascalCase for components/classes; kebab-case for asset filenames; snake_case for Python modules and tests.
-- Keep functions focused (< ~50 lines); extract helpers and reuse utilities in `src/lib`.
+- Indentation: 2 spaces for JS/TS.
+- Naming: `camelCase` for functions/variables, `PascalCase` for React components, `kebab-case` for asset filenames.
+- Prefer small, focused modules; keep feature folders cohesive in `src/`.
+- Linting: use `npx next lint` (ESLint via Next.js) before PRs.
 
 ## Testing Guidelines
-- Tests live in `tests/` (or `__tests__/`) and mirror `src/` structure.
-- Naming: `<name>.test.ts|js` or `test_<name>.py`.
-- Coverage: target ~80% on changed code; include edge cases and error paths.
-- Avoid flaky tests: no real network or time-based randomness.
+- Frameworks: Jest + React Testing Library.
+- Naming: `*.test.ts` or `*.test.tsx` under `src/__tests__/` mirroring `src/` paths.
+- Aim for coverage on changed code and include edge/error cases.
+- Avoid network calls and time-based randomness; mock external services.
 
 ## Commit & Pull Request Guidelines
-- Use Conventional Commits where possible: `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`.
-- One logical change per commit; keep messages imperative and concise.
-- PRs: include a clear description, linked issues (e.g., `#123`), steps to verify, and screenshots for UI changes. Ensure CI is green and docs/tests are updated.
+- Recent commits are short, descriptive phrases (often in Spanish) without a strict prefix; keep messages concise and imperative.
+- One logical change per commit.
+- PRs should include a clear description, linked issues, steps to verify, and screenshots for UI changes.
 
 ## Security & Configuration Tips
-- Never commit secrets. Use `.env.local` and provide `.env.example` with safe defaults.
-- Validate inputs at boundaries; handle errors explicitly; keep dependencies updated.
-
-## Agent Notes
-- Keep diffs minimal and scoped. When changing behavior, update tests and this guide if relevant. Always run `lint`, `test`, and `build` before opening a PR.
-
+- Never commit secrets; use `.env.local` and provide safe defaults in `.env.example` if needed.
+- Validate inputs at boundaries and handle errors explicitly.
