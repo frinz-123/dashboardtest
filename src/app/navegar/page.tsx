@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import React, { useEffect, useState, useRef, useMemo } from "react";
 import dynamic from "next/dynamic";
@@ -14,32 +14,47 @@ const spreadsheetId = process.env.NEXT_PUBLIC_SPREADSHEET_ID;
 const sheetName = process.env.NEXT_PUBLIC_SHEET_NAME;
 
 const DAYS_WITHOUT_VISIT = 30;
-const DEFAULT_VISIT_DATE = '1/1/2024';
+const DEFAULT_VISIT_DATE = "1/1/2024";
 
 export default function NavegarPage() {
   const [clientNames, setClientNames] = useState<string[]>([]);
-  const [clientLocations, setClientLocations] = useState<Record<string, { lat: number; lng: number }>>({});
+  const [clientLocations, setClientLocations] = useState<
+    Record<string, { lat: number; lng: number }>
+  >({});
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
-  const debouncedSetSearchTerm = useMemo(() => debounce(setDebouncedSearchTerm, 300), []);
+  const debouncedSetSearchTerm = useMemo(
+    () => debounce(setDebouncedSearchTerm, 300),
+    [],
+  );
   const [filteredClients, setFilteredClients] = useState<string[]>([]);
   const [selectedClient, setSelectedClient] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
   const mapRef = useRef<any>(null);
   const [routeInfo, setRouteInfo] = useState<RouteInfo | null>(null);
   const [routeMode, setRouteMode] = useState(false);
-  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [userLocation, setUserLocation] = useState<{
+    lat: number;
+    lng: number;
+  } | null>(null);
   const [isLocating, setIsLocating] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
-  const [pendingRouteClient, setPendingRouteClient] = useState<{ lat: number; lng: number } | null>(null);
-  const [selectedClientCode, setSelectedClientCode] = useState<string | null>(null);
+  const [pendingRouteClient, setPendingRouteClient] = useState<{
+    lat: number;
+    lng: number;
+  } | null>(null);
+  const [selectedClientCode, setSelectedClientCode] = useState<string | null>(
+    null,
+  );
   const [codigoFilter, setCodigoFilter] = useState<string | null>(null);
   const [codigoDropdownOpen, setCodigoDropdownOpen] = useState(false);
   const codigoChipRef = useRef<HTMLButtonElement>(null);
   const [vendedorFilter, setVendedorFilter] = useState<string | null>(null);
   const [vendedorDropdownOpen, setVendedorDropdownOpen] = useState(false);
   const vendedorChipRef = useRef<HTMLButtonElement>(null);
-  const [clientVendedorMap, setClientVendedorMap] = useState<Record<string, string>>({});
+  const [clientVendedorMap, setClientVendedorMap] = useState<
+    Record<string, string>
+  >({});
   const [sinVisitarFilter, setSinVisitarFilter] = useState(false);
   const [sheetRows, setSheetRows] = useState<any[]>([]);
   const [sheetHeaders, setSheetHeaders] = useState<string[]>([]);
@@ -49,8 +64,6 @@ export default function NavegarPage() {
   // Add filtering state
   const [isFiltering, setIsFiltering] = useState(false);
 
-
-
   // Batch fetch all data from Google Sheets once
   useEffect(() => {
     const fetchAllData = async () => {
@@ -58,7 +71,7 @@ export default function NavegarPage() {
       setFetchError(null);
       try {
         const response = await fetch(
-          `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:AN?key=${googleApiKey}`
+          `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:AN?key=${googleApiKey}`,
         );
         if (!response.ok) throw new Error("Failed to fetch client data");
         const data = await response.json();
@@ -76,20 +89,32 @@ export default function NavegarPage() {
 
   // Memoized maps and unique values
   const allClientCodes = useMemo(() => {
-    const codigoIndex = sheetHeaders.findIndex(h => h.toLowerCase() === 'codigo');
+    const codigoIndex = sheetHeaders.findIndex(
+      (h) => h.toLowerCase() === "codigo",
+    );
     return sheetRows
-      .map(row => ({ name: row[0], code: row[codigoIndex] || '' }))
-      .filter(row => row.name && row.code && !row.name.includes('**ARCHIVADO NO USAR**'));
+      .map((row) => ({ name: row[0], code: row[codigoIndex] || "" }))
+      .filter(
+        (row) =>
+          row.name && row.code && !row.name.includes("**ARCHIVADO NO USAR**"),
+      );
   }, [sheetRows, sheetHeaders]);
 
   const clientLastEmailMap = useMemo(() => {
-    const emailIndex = sheetHeaders.findIndex(h => h.toLowerCase() === 'email');
+    const emailIndex = sheetHeaders.findIndex(
+      (h) => h.toLowerCase() === "email",
+    );
     const lastEmailMap: Record<string, string> = {};
     for (let i = sheetRows.length - 1; i >= 0; i--) {
       const row = sheetRows[i];
-      const name = row[0] || '';
-      const email = row[emailIndex] || '';
-      if (name && email && !lastEmailMap[name] && !name.includes('**ARCHIVADO NO USAR**')) {
+      const name = row[0] || "";
+      const email = row[emailIndex] || "";
+      if (
+        name &&
+        email &&
+        !lastEmailMap[name] &&
+        !name.includes("**ARCHIVADO NO USAR**")
+      ) {
         lastEmailMap[name] = email;
       }
     }
@@ -97,13 +122,20 @@ export default function NavegarPage() {
   }, [sheetRows, sheetHeaders]);
 
   const clientLastVisitMap = useMemo(() => {
-    const fechaIndex = sheetHeaders.findIndex(h => h.toLowerCase() === 'fechasinhora');
+    const fechaIndex = sheetHeaders.findIndex(
+      (h) => h.toLowerCase() === "fechasinhora",
+    );
     const lastVisitMap: Record<string, string> = {};
     for (let i = sheetRows.length - 1; i >= 0; i--) {
       const row = sheetRows[i];
-      const name = row[0] || '';
-      const fecha = row[fechaIndex] || '';
-      if (name && fecha && !lastVisitMap[name] && !name.includes('**ARCHIVADO NO USAR**')) {
+      const name = row[0] || "";
+      const fecha = row[fechaIndex] || "";
+      if (
+        name &&
+        fecha &&
+        !lastVisitMap[name] &&
+        !name.includes("**ARCHIVADO NO USAR**")
+      ) {
         lastVisitMap[name] = fecha;
       }
     }
@@ -116,23 +148,35 @@ export default function NavegarPage() {
     const vendedorMap: Record<string, string> = {};
     for (let i = sheetRows.length - 1; i >= 0; i--) {
       const row = sheetRows[i];
-      const name = row[0] || '';
-      const vendedor = row[vendedorIndex] || '';
-      if (name && vendedor && !vendedorMap[name] && !name.includes('**ARCHIVADO NO USAR**')) {
+      const name = row[0] || "";
+      const vendedor = row[vendedorIndex] || "";
+      if (
+        name &&
+        vendedor &&
+        !vendedorMap[name] &&
+        !name.includes("**ARCHIVADO NO USAR**")
+      ) {
         vendedorMap[name] = vendedor;
       }
     }
     return vendedorMap;
   }, [sheetRows, sheetHeaders]);
 
-  const uniqueCodes = useMemo(() => Array.from(new Set(allClientCodes.map(c => c.code))), [allClientCodes]);
+  const uniqueCodes = useMemo(
+    () => Array.from(new Set(allClientCodes.map((c) => c.code))),
+    [allClientCodes],
+  );
   const uniqueVendedorNames = useMemo(() => {
-    const uniqueVendedores = Array.from(new Set(Object.values(clientVendedorMapping).filter(Boolean)));
+    const uniqueVendedores = Array.from(
+      new Set(Object.values(clientVendedorMapping).filter(Boolean)),
+    );
     return uniqueVendedores;
   }, [clientVendedorMapping]);
 
   // Debounced search
-  useEffect(() => { debouncedSetSearchTerm(searchTerm); }, [searchTerm, debouncedSetSearchTerm]);
+  useEffect(() => {
+    debouncedSetSearchTerm(searchTerm);
+  }, [searchTerm, debouncedSetSearchTerm]);
 
   // Filtered clients by search
   const filteredClientsBySearch = useMemo(() => {
@@ -140,7 +184,12 @@ export default function NavegarPage() {
     const searchLower = debouncedSearchTerm.toLowerCase();
     const MAX_RESULTS = 20;
     const results = clientNames
-      .filter(name => name && name.toLowerCase().includes(searchLower) && !name.includes('**ARCHIVADO NO USAR**'))
+      .filter(
+        (name) =>
+          name &&
+          name.toLowerCase().includes(searchLower) &&
+          !name.includes("**ARCHIVADO NO USAR**"),
+      )
       .slice(0, MAX_RESULTS);
     // Deduplicate search results
     return Array.from(new Set(results));
@@ -153,14 +202,15 @@ export default function NavegarPage() {
   const isSinVisitar = (name: string) => {
     const fecha = getLastVisitDate(name);
     if (!fecha || fecha === DEFAULT_VISIT_DATE) return true;
-    const [month, day, year] = fecha.split('/').map(Number);
+    const [month, day, year] = fecha.split("/").map(Number);
     if (!day || !month || !year) return false;
     const lastDate = new Date(year, month - 1, day);
     const now = new Date();
     // Set both dates to midnight to ignore time portion
     lastDate.setHours(0, 0, 0, 0);
     now.setHours(0, 0, 0, 0);
-    const diffDays = (now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24);
+    const diffDays =
+      (now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24);
     return diffDays > DAYS_WITHOUT_VISIT;
   };
 
@@ -174,17 +224,21 @@ export default function NavegarPage() {
       try {
         // Fetch the row for the selected client from the sheet
         const response = await fetch(
-          `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:AN?key=${googleApiKey}`
+          `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:AN?key=${googleApiKey}`,
         );
         if (!response.ok) throw new Error("Failed to fetch client data");
         const data = await response.json();
         const headers = data.values[0];
-        const codigoIndex = headers.findIndex((h: string) => h.toLowerCase() === 'codigo');
+        const codigoIndex = headers.findIndex(
+          (h: string) => h.toLowerCase() === "codigo",
+        );
         if (codigoIndex === -1) {
           setSelectedClientCode(null);
           return;
         }
-        const clientRow = (data.values as string[][]).find(row => row[0] === selectedClient);
+        const clientRow = (data.values as string[][]).find(
+          (row) => row[0] === selectedClient,
+        );
         if (clientRow && clientRow[codigoIndex]) {
           setSelectedClientCode(clientRow[codigoIndex]);
         } else {
@@ -202,21 +256,30 @@ export default function NavegarPage() {
     const fetchClientNames = async () => {
       try {
         const response = await fetch(
-          `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:C?key=${googleApiKey}`
+          `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:C?key=${googleApiKey}`,
         );
         if (!response.ok) throw new Error("Failed to fetch client data");
         const data = await response.json();
         const clients: Record<string, { lat: number; lng: number }> = {};
-        const names = (data.values?.slice(1) || []).map((row: any[]) => {
-          const name = row[0];
-          if (name && row[1] && row[2] && !name.includes('**ARCHIVADO NO USAR**')) {
-            clients[name] = {
-              lat: parseFloat(row[1]),
-              lng: parseFloat(row[2]),
-            };
-          }
-          return name;
-        }).filter((name: string) => name && !name.includes('**ARCHIVADO NO USAR**'));
+        const names = (data.values?.slice(1) || [])
+          .map((row: any[]) => {
+            const name = row[0];
+            if (
+              name &&
+              row[1] &&
+              row[2] &&
+              !name.includes("**ARCHIVADO NO USAR**")
+            ) {
+              clients[name] = {
+                lat: parseFloat(row[1]),
+                lng: parseFloat(row[2]),
+              };
+            }
+            return name;
+          })
+          .filter(
+            (name: string) => name && !name.includes("**ARCHIVADO NO USAR**"),
+          );
         // Double-check deduplication and clean up the client names
         const cleanNames = Array.from(new Set(names.filter(Boolean)));
         setClientNames(cleanNames as string[]);
@@ -241,105 +304,117 @@ export default function NavegarPage() {
   // Close dropdown on outside click
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (codigoChipRef.current && !codigoChipRef.current.contains(event.target as Node)) {
+      if (
+        codigoChipRef.current &&
+        !codigoChipRef.current.contains(event.target as Node)
+      ) {
         setCodigoDropdownOpen(false);
       }
     }
     if (codigoDropdownOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener("mousedown", handleClickOutside);
     } else {
-      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener("mousedown", handleClickOutside);
     }
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener("mousedown", handleClickOutside);
     };
   }, [codigoDropdownOpen]);
 
   // Close Vendedor dropdown on outside click
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (vendedorChipRef.current && !vendedorChipRef.current.contains(event.target as Node)) {
+      if (
+        vendedorChipRef.current &&
+        !vendedorChipRef.current.contains(event.target as Node)
+      ) {
         setVendedorDropdownOpen(false);
       }
     }
     if (vendedorDropdownOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener("mousedown", handleClickOutside);
     } else {
-      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener("mousedown", handleClickOutside);
     }
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener("mousedown", handleClickOutside);
     };
   }, [vendedorDropdownOpen]);
 
   // Helper function to apply all filters except the specified one
-  const getFilteredClientsExcluding = (excludeFilter: 'codigo' | 'vendedor' | 'sinVisitar') => {
+  const getFilteredClientsExcluding = (
+    excludeFilter: "codigo" | "vendedor" | "sinVisitar",
+  ) => {
     let baseClients = clientNames;
-    
+
     // Apply código filter if active and not excluded
-    if (codigoFilter && excludeFilter !== 'codigo') {
-      const codeClients = allClientCodes.filter(c => c.code === codigoFilter).map(c => c.name);
-      baseClients = baseClients.filter(name => codeClients.includes(name));
+    if (codigoFilter && excludeFilter !== "codigo") {
+      const codeClients = allClientCodes
+        .filter((c) => c.code === codigoFilter)
+        .map((c) => c.name);
+      baseClients = baseClients.filter((name) => codeClients.includes(name));
     }
-    
+
     // Apply vendedor filter if active and not excluded
-    if (vendedorFilter && excludeFilter !== 'vendedor') {
+    if (vendedorFilter && excludeFilter !== "vendedor") {
       const vendedorClients = Object.entries(clientVendedorMapping)
         .filter(([name, vendedor]) => vendedor === vendedorFilter)
         .map(([name]) => name);
-      baseClients = baseClients.filter(name => vendedorClients.includes(name));
+      baseClients = baseClients.filter((name) =>
+        vendedorClients.includes(name),
+      );
     }
-    
+
     // Apply sin visitar filter if active and not excluded
-    if (sinVisitarFilter && excludeFilter !== 'sinVisitar') {
+    if (sinVisitarFilter && excludeFilter !== "sinVisitar") {
       const sinVisitarClients = Object.entries(clientLastVisitMap)
         .filter(([name, fecha]) => {
           if (!fecha || fecha === DEFAULT_VISIT_DATE) return true;
-          const [month, day, year] = fecha.split('/').map(Number);
+          const [month, day, year] = fecha.split("/").map(Number);
           if (!day || !month || !year) return false;
           const lastDate = new Date(year, month - 1, day);
           const now = new Date();
-          const diffDays = (now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24);
-          
+          const diffDays =
+            (now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24);
 
-          
           return diffDays > DAYS_WITHOUT_VISIT;
         })
         .map(([name]) => name);
-      baseClients = baseClients.filter(name => sinVisitarClients.includes(name));
+      baseClients = baseClients.filter((name) =>
+        sinVisitarClients.includes(name),
+      );
     }
-    
+
     return baseClients;
   };
 
   // Count clients that match the código filter (considering other active filters)
-  const codigoClientCount = codigoFilter 
-    ? getFilteredClientsExcluding('codigo').filter(name => {
-        const clientCode = allClientCodes.find(c => c.name === name)?.code;
+  const codigoClientCount = codigoFilter
+    ? getFilteredClientsExcluding("codigo").filter((name) => {
+        const clientCode = allClientCodes.find((c) => c.name === name)?.code;
         return clientCode === codigoFilter;
       }).length
     : 0;
 
   // Count clients that match the vendedor filter (considering other active filters)
-  const vendedorClientCount = vendedorFilter 
-    ? getFilteredClientsExcluding('vendedor').filter(name => {
+  const vendedorClientCount = vendedorFilter
+    ? getFilteredClientsExcluding("vendedor").filter((name) => {
         return clientVendedorMapping[name] === vendedorFilter;
       }).length
     : 0;
 
   // Count clients that match the sin visitar filter (considering other active filters)
-  const sinVisitarClientCount = sinVisitarFilter 
-    ? getFilteredClientsExcluding('sinVisitar').filter(name => {
+  const sinVisitarClientCount = sinVisitarFilter
+    ? getFilteredClientsExcluding("sinVisitar").filter((name) => {
         const fecha = clientLastVisitMap[name];
         if (!fecha || fecha === DEFAULT_VISIT_DATE) return true;
-        const [month, day, year] = fecha.split('/').map(Number);
+        const [month, day, year] = fecha.split("/").map(Number);
         if (!day || !month || !year) return false;
         const lastDate = new Date(year, month - 1, day);
         const now = new Date();
-        const diffDays = (now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24);
-        
+        const diffDays =
+          (now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24);
 
-        
         return diffDays > DAYS_WITHOUT_VISIT;
       }).length
     : 0;
@@ -347,7 +422,9 @@ export default function NavegarPage() {
   // Memoize individual filter results for stable references
   const filteredByCode = useMemo(() => {
     if (!codigoFilter) return null;
-    const result = allClientCodes.filter(c => c.code === codigoFilter).map(c => c.name);
+    const result = allClientCodes
+      .filter((c) => c.code === codigoFilter)
+      .map((c) => c.name);
     // Deduplicate to prevent duplicate keys
     return Array.from(new Set(result));
   }, [codigoFilter, allClientCodes]);
@@ -363,22 +440,23 @@ export default function NavegarPage() {
 
   const filteredBySinVisitar = useMemo(() => {
     if (!sinVisitarFilter) return null;
-    
+
     const result = Object.entries(clientLastVisitMap)
       .filter(([name, fecha]) => {
         if (!fecha || fecha === DEFAULT_VISIT_DATE) return true;
-        const [month, day, year] = fecha.split('/').map(Number);
+        const [month, day, year] = fecha.split("/").map(Number);
         if (!day || !month || !year) return false;
         const lastDate = new Date(year, month - 1, day);
         const now = new Date();
         // Set both dates to midnight to match isSinVisitar logic
         lastDate.setHours(0, 0, 0, 0);
         now.setHours(0, 0, 0, 0);
-        const diffDays = (now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24);
+        const diffDays =
+          (now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24);
         return diffDays > DAYS_WITHOUT_VISIT;
       })
       .map(([name]) => name);
-    
+
     // Deduplicate to prevent duplicate keys
     return Array.from(new Set(result));
   }, [sinVisitarFilter, clientLastVisitMap]);
@@ -403,81 +481,118 @@ export default function NavegarPage() {
     if (sets.length === 0) return null;
 
     // Intersect all sets
-    let result = sets.reduce((a, b) => a.filter(x => b.includes(x)));
-    
+    let result = sets.reduce((a, b) => a.filter((x) => b.includes(x)));
+
     // CRITICAL: Deduplicate the results to prevent React key warnings
     return Array.from(new Set(result));
-  }, [codigoFilter, vendedorFilter, sinVisitarFilter, filteredByCode, filteredByVendedor, filteredBySinVisitar]);
+  }, [
+    codigoFilter,
+    vendedorFilter,
+    sinVisitarFilter,
+    filteredByCode,
+    filteredByVendedor,
+    filteredBySinVisitar,
+  ]);
 
   // Debounce filtering state to avoid flashing unfiltered results
   useEffect(() => {
     setIsFiltering(true);
     const handler = setTimeout(() => setIsFiltering(false), 350);
     return () => clearTimeout(handler);
-  }, [filteredNames, searchTerm, sinVisitarFilter, codigoFilter, vendedorFilter, clientNames]);
+  }, [
+    filteredNames,
+    searchTerm,
+    sinVisitarFilter,
+    codigoFilter,
+    vendedorFilter,
+    clientNames,
+  ]);
 
   // Check if any filters are active
-  const hasActiveFilters = Boolean(codigoFilter || vendedorFilter || sinVisitarFilter);
+  const hasActiveFilters = Boolean(
+    codigoFilter || vendedorFilter || sinVisitarFilter,
+  );
 
   // Get the final filtered client list with visit dates
   const filteredClientsWithDates = useMemo(() => {
     if (!hasActiveFilters) return [];
-    
+
     const clients = filteredNames || [];
-    const result = clients.map(name => ({
-      name,
-      lastVisitDate: getLastVisitDate(name),
-      isSinVisitar: isSinVisitar(name)
-    })).sort((a, b) => {
-      // Sort by visit date, with no visits first, then by date descending
-      if (!a.lastVisitDate && !b.lastVisitDate) return a.name.localeCompare(b.name);
-      if (!a.lastVisitDate) return -1;
-      if (!b.lastVisitDate) return 1;
-      return new Date(b.lastVisitDate).getTime() - new Date(a.lastVisitDate).getTime();
-    });
-    
+    const result = clients
+      .map((name) => ({
+        name,
+        lastVisitDate: getLastVisitDate(name),
+        isSinVisitar: isSinVisitar(name),
+      }))
+      .sort((a, b) => {
+        // Sort by visit date, with no visits first, then by date descending
+        if (!a.lastVisitDate && !b.lastVisitDate)
+          return a.name.localeCompare(b.name);
+        if (!a.lastVisitDate) return -1;
+        if (!b.lastVisitDate) return 1;
+        return (
+          new Date(b.lastVisitDate).getTime() -
+          new Date(a.lastVisitDate).getTime()
+        );
+      });
+
     return result;
   }, [filteredNames, hasActiveFilters, clientLastVisitMap, clientNames]);
 
   // Format date for display
   const formatVisitDate = (dateStr: string | null) => {
-    if (!dateStr || dateStr === DEFAULT_VISIT_DATE) return 'Sin visitas';
-    
+    if (!dateStr || dateStr === DEFAULT_VISIT_DATE) return "Sin visitas";
+
     try {
       // Parse as MM/DD/YYYY format (month/day/year)
-      const [month, day, year] = dateStr.split('/').map(Number);
+      const [month, day, year] = dateStr.split("/").map(Number);
       const date = new Date(year, month - 1, day);
-      
+
       // Format as "15 Mar 2024"
       const monthNames = [
-        'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun',
-        'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'
+        "Ene",
+        "Feb",
+        "Mar",
+        "Abr",
+        "May",
+        "Jun",
+        "Jul",
+        "Ago",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dic",
       ];
-      
+
       return `${day} ${monthNames[month - 1]} ${year}`;
     } catch {
-      return 'Fecha inválida';
+      return "Fecha inválida";
     }
   };
 
   // Prepare client list for map
-  const clientList: NavegarClient[] = (filteredNames || (searchTerm ? filteredClientsBySearch : clientNames)).map(
-    (name) => {
+  const clientList: NavegarClient[] = (
+    filteredNames || (searchTerm ? filteredClientsBySearch : clientNames)
+  )
+    .map((name) => {
       // Find the codigo for this client
-      const clientCode = allClientCodes.find(c => c.name === name)?.code;
+      const clientCode = allClientCodes.find((c) => c.name === name)?.code;
       return {
         name,
         lat: clientLocations[name]?.lat,
         lng: clientLocations[name]?.lng,
         codigo: clientCode,
       };
-    }
-  ).filter((c) => c.lat && c.lng);
+    })
+    .filter((c) => c.lat && c.lng);
 
   // Only show selected client if it is in the filtered list
-  const selectedClientLocation = selectedClient && clientLocations[selectedClient] && (!filteredNames || filteredNames.includes(selectedClient))
-    ? clientLocations[selectedClient]
-    : null;
+  const selectedClientLocation =
+    selectedClient &&
+    clientLocations[selectedClient] &&
+    (!filteredNames || filteredNames.includes(selectedClient))
+      ? clientLocations[selectedClient]
+      : null;
 
   // Handle refresh location
   const handleRefreshLocation = async () => {
@@ -489,7 +604,9 @@ export default function NavegarPage() {
   };
 
   // Listen for user location updates from map
-  const handleUserLocationChange = (loc: { lat: number; lng: number } | null) => {
+  const handleUserLocationChange = (
+    loc: { lat: number; lng: number } | null,
+  ) => {
     setUserLocation(loc);
   };
 
@@ -533,17 +650,23 @@ export default function NavegarPage() {
   };
 
   // Only show selected client in route mode if it is in the filtered list
-  const mapClients = routeMode && selectedClient && selectedClientLocation
-    ? [{
-        name: selectedClient,
-        lat: selectedClientLocation.lat,
-        lng: selectedClientLocation.lng,
-        codigo: allClientCodes.find(c => c.name === selectedClient)?.code
-      }]
-    : clientList;
+  const mapClients =
+    routeMode && selectedClient && selectedClientLocation
+      ? [
+          {
+            name: selectedClient,
+            lat: selectedClientLocation.lat,
+            lng: selectedClientLocation.lng,
+            codigo: allClientCodes.find((c) => c.name === selectedClient)?.code,
+          },
+        ]
+      : clientList;
 
   return (
-    <div className="relative min-h-screen w-full" style={{ fontFamily: 'Inter, sans-serif' }}>
+    <div
+      className="relative min-h-screen w-full"
+      style={{ fontFamily: "Inter, sans-serif" }}
+    >
       {/* Fullscreen Map */}
       <div className="fixed inset-0 z-0">
         <NavegarMap
@@ -563,15 +686,20 @@ export default function NavegarPage() {
           {/* Codigo filter chip */}
           <button
             ref={codigoChipRef}
-            className={`px-2 py-1 rounded-full text-xs border flex items-center gap-1 ${codigoFilter ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-blue-100'} transition-colors`}
+            className={`px-2 py-1 rounded-full text-xs border flex items-center gap-1 ${codigoFilter ? "bg-blue-600 text-white border-blue-600" : "bg-gray-100 text-gray-700 border-gray-300 hover:bg-blue-100"} transition-colors`}
             onClick={() => setCodigoDropdownOpen((open) => !open)}
             type="button"
           >
-            Código{codigoFilter ? `: ${codigoFilter} (${codigoClientCount})` : ''}
+            Código
+            {codigoFilter ? `: ${codigoFilter} (${codigoClientCount})` : ""}
             {codigoFilter && (
               <span
                 className="ml-1 cursor-pointer text-white bg-blue-700 rounded-full px-1.5 py-0.5 text-xs hover:bg-blue-800"
-                onClick={e => { e.stopPropagation(); setCodigoFilter(null); setCodigoDropdownOpen(false); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setCodigoFilter(null);
+                  setCodigoDropdownOpen(false);
+                }}
                 title="Limpiar filtro"
               >
                 ×
@@ -580,11 +708,11 @@ export default function NavegarPage() {
           </button>
           {codigoDropdownOpen && (
             <div className="absolute left-0 bottom-10 z-20 bg-white border border-gray-200 rounded-lg shadow-lg w-48 max-h-64 overflow-y-auto animate-fade-in">
-              {uniqueCodes.map(code => (
+              {uniqueCodes.map((code) => (
                 <button
                   key={code}
-                  className={`block w-full text-left px-4 py-2 text-xs hover:bg-blue-100 ${codigoFilter === code ? 'bg-blue-600 text-white' : ''}`}
-                  onMouseDown={e => {
+                  className={`block w-full text-left px-4 py-2 text-xs hover:bg-blue-100 ${codigoFilter === code ? "bg-blue-600 text-white" : ""}`}
+                  onMouseDown={(e) => {
                     e.preventDefault();
                     setCodigoFilter(code);
                     setCodigoDropdownOpen(false);
@@ -594,22 +722,31 @@ export default function NavegarPage() {
                 </button>
               ))}
               {uniqueCodes.length === 0 && (
-                <div className="px-4 py-2 text-xs text-gray-400">Sin códigos</div>
+                <div className="px-4 py-2 text-xs text-gray-400">
+                  Sin códigos
+                </div>
               )}
             </div>
           )}
           {/* Vendedor filter chip */}
           <button
             ref={vendedorChipRef}
-            className={`px-2 py-1 rounded-full text-xs border flex items-center gap-1 ${vendedorFilter ? 'bg-green-600 text-white border-green-600' : 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-green-100'} transition-colors`}
+            className={`px-2 py-1 rounded-full text-xs border flex items-center gap-1 ${vendedorFilter ? "bg-green-600 text-white border-green-600" : "bg-gray-100 text-gray-700 border-gray-300 hover:bg-green-100"} transition-colors`}
             onClick={() => setVendedorDropdownOpen((open) => !open)}
             type="button"
           >
-            Vendedor{vendedorFilter ? `: ${vendedorFilter} (${vendedorClientCount})` : ''}
+            Vendedor
+            {vendedorFilter
+              ? `: ${vendedorFilter} (${vendedorClientCount})`
+              : ""}
             {vendedorFilter && (
               <span
                 className="ml-1 cursor-pointer text-white bg-green-700 rounded-full px-1.5 py-0.5 text-xs hover:bg-green-800"
-                onClick={e => { e.stopPropagation(); setVendedorFilter(null); setVendedorDropdownOpen(false); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setVendedorFilter(null);
+                  setVendedorDropdownOpen(false);
+                }}
                 title="Limpiar filtro"
               >
                 ×
@@ -618,11 +755,11 @@ export default function NavegarPage() {
           </button>
           {vendedorDropdownOpen && (
             <div className="absolute left-32 bottom-10 z-20 bg-white border border-gray-200 rounded-lg shadow-lg w-56 max-h-64 overflow-y-auto animate-fade-in">
-              {uniqueVendedorNames.map(name => (
+              {uniqueVendedorNames.map((name) => (
                 <button
                   key={name}
-                  className={`block w-full text-left px-4 py-2 text-xs hover:bg-green-100 ${vendedorFilter === name ? 'bg-green-600 text-white' : ''}`}
-                  onMouseDown={e => {
+                  className={`block w-full text-left px-4 py-2 text-xs hover:bg-green-100 ${vendedorFilter === name ? "bg-green-600 text-white" : ""}`}
+                  onMouseDown={(e) => {
                     e.preventDefault();
                     setVendedorFilter(name);
                     setVendedorDropdownOpen(false);
@@ -632,21 +769,26 @@ export default function NavegarPage() {
                 </button>
               ))}
               {uniqueVendedorNames.length === 0 && (
-                <div className="px-4 py-2 text-xs text-gray-400">Sin vendedores</div>
+                <div className="px-4 py-2 text-xs text-gray-400">
+                  Sin vendedores
+                </div>
               )}
             </div>
           )}
           {/* Sin Visitar filter chip */}
           <button
-            className={`px-2 py-1 rounded-full text-xs border flex items-center gap-1 ${sinVisitarFilter ? 'bg-yellow-500 text-white border-yellow-500' : 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-yellow-100'} transition-colors`}
-            onClick={() => setSinVisitarFilter(f => !f)}
+            className={`px-2 py-1 rounded-full text-xs border flex items-center gap-1 ${sinVisitarFilter ? "bg-yellow-500 text-white border-yellow-500" : "bg-gray-100 text-gray-700 border-gray-300 hover:bg-yellow-100"} transition-colors`}
+            onClick={() => setSinVisitarFilter((f) => !f)}
             type="button"
           >
-            Sin Visitar{sinVisitarFilter ? ` (${sinVisitarClientCount})` : ''}
+            Sin Visitar{sinVisitarFilter ? ` (${sinVisitarClientCount})` : ""}
             {sinVisitarFilter && (
               <span
                 className="ml-1 cursor-pointer text-white bg-yellow-700 rounded-full px-1.5 py-0.5 text-xs hover:bg-yellow-800"
-                onClick={e => { e.stopPropagation(); setSinVisitarFilter(false); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSinVisitarFilter(false);
+                }}
                 title="Limpiar filtro"
               >
                 ×
@@ -656,25 +798,36 @@ export default function NavegarPage() {
         </div>
         <div className="w-full max-w-md mx-auto flex justify-end px-4">
           <button
-            className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border ${isLocating ? 'bg-blue-100 text-blue-600' : 'bg-gray-100 text-gray-600'} hover:bg-blue-50 transition-colors`}
+            className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border ${isLocating ? "bg-blue-100 text-blue-600" : "bg-gray-100 text-gray-600"} hover:bg-blue-50 transition-colors`}
             onClick={handleRefreshLocation}
             disabled={isLocating}
             title="Actualizar mi ubicación"
           >
-            <RefreshCw className={`h-4 w-4 ${isLocating ? 'animate-spin' : ''}`} />
-            {isLocating ? 'Actualizando...' : 'Mi ubicación'}
+            <RefreshCw
+              className={`h-4 w-4 ${isLocating ? "animate-spin" : ""}`}
+            />
+            {isLocating ? "Actualizando..." : "Mi ubicación"}
           </button>
         </div>
-        <div className="bg-white rounded-t-2xl shadow-xl w-full max-w-md mx-auto p-4 border-t border-gray-200" style={{ minHeight: 120 }}>
+        <div
+          className="bg-white rounded-t-2xl shadow-xl w-full max-w-md mx-auto p-4 border-t border-gray-200"
+          style={{ minHeight: 120 }}
+        >
           {/* Route Mode UI */}
-          {routeMode && selectedClient && selectedClientLocation && routeInfo ? (
+          {routeMode &&
+          selectedClient &&
+          selectedClientLocation &&
+          routeInfo ? (
             <div className="flex flex-col items-center animate-fade-in">
               <div className="flex items-center gap-2 mb-2">
                 <Navigation className="h-5 w-5 text-blue-600" />
-                <span className="font-semibold text-blue-700 text-lg">En ruta a {selectedClient}</span>
+                <span className="font-semibold text-blue-700 text-lg">
+                  En ruta a {selectedClient}
+                </span>
               </div>
               <div className="mb-2 text-xs text-blue-700 bg-blue-50 px-3 py-1 rounded-full">
-                Distancia: {(routeInfo.distance / 1000).toFixed(2)} km &nbsp;•&nbsp; ETA: {Math.round(routeInfo.duration / 60)} min
+                Distancia: {(routeInfo.distance / 1000).toFixed(2)} km
+                &nbsp;•&nbsp; ETA: {Math.round(routeInfo.duration / 60)} min
               </div>
               <button
                 className="flex items-center gap-2 mt-2 px-4 py-2 bg-red-100 text-red-700 rounded-lg font-medium hover:bg-red-200 transition-colors"
@@ -688,10 +841,13 @@ export default function NavegarPage() {
             <div className="flex flex-col items-center animate-fade-in">
               <div className="flex items-center gap-2 mb-2">
                 <MapPin className="h-5 w-5 text-green-600" />
-                <span className="font-semibold text-green-700 text-lg">¿Usar esta ubicación para iniciar la ruta?</span>
+                <span className="font-semibold text-green-700 text-lg">
+                  ¿Usar esta ubicación para iniciar la ruta?
+                </span>
               </div>
               <div className="mb-2 text-xs text-gray-700 bg-gray-50 px-3 py-1 rounded-full">
-                Lat: {userLocation.lat.toFixed(5)}, Lng: {userLocation.lng.toFixed(5)}
+                Lat: {userLocation.lat.toFixed(5)}, Lng:{" "}
+                {userLocation.lng.toFixed(5)}
               </div>
               <div className="flex gap-2 mt-2">
                 <button
@@ -722,7 +878,7 @@ export default function NavegarPage() {
                 }}
                 placeholder="Buscar cliente..."
               />
-              
+
               {/* Filtered Clients List */}
               {hasActiveFilters && (
                 <div className="mt-3 border-t pt-3">
@@ -746,11 +902,11 @@ export default function NavegarPage() {
                       <div
                         key={client.name}
                         className={`px-3 py-2 text-sm cursor-pointer rounded border-l-2 transition-colors ${
-                          selectedClient === client.name 
-                            ? 'bg-blue-50 text-blue-700 border-blue-500' 
-                            : client.isSinVisitar 
-                              ? 'bg-yellow-50 hover:bg-yellow-100 border-yellow-400' 
-                              : 'bg-gray-50 hover:bg-gray-100 border-gray-300'
+                          selectedClient === client.name
+                            ? "bg-blue-50 text-blue-700 border-blue-500"
+                            : client.isSinVisitar
+                              ? "bg-yellow-50 hover:bg-yellow-100 border-yellow-400"
+                              : "bg-gray-50 hover:bg-gray-100 border-gray-300"
                         }`}
                         onClick={() => {
                           setSelectedClient(client.name);
@@ -760,9 +916,13 @@ export default function NavegarPage() {
                       >
                         <div className="flex justify-between items-center">
                           <span className="font-medium">{client.name}</span>
-                          <span className={`text-xs ${
-                            client.isSinVisitar ? 'text-yellow-600' : 'text-gray-500'
-                          }`}>
+                          <span
+                            className={`text-xs ${
+                              client.isSinVisitar
+                                ? "text-yellow-600"
+                                : "text-gray-500"
+                            }`}
+                          >
                             {formatVisitDate(client.lastVisitDate)}
                           </span>
                         </div>
@@ -770,7 +930,8 @@ export default function NavegarPage() {
                     ))}
                     {filteredClientsWithDates.length === 0 && (
                       <div className="px-3 py-4 text-center text-sm text-gray-500">
-                        No hay clientes que coincidan con los filtros seleccionados
+                        No hay clientes que coincidan con los filtros
+                        seleccionados
                       </div>
                     )}
                   </div>
@@ -780,14 +941,16 @@ export default function NavegarPage() {
               {isFiltering ? (
                 <div className="flex justify-center items-center py-8">
                   <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
-                  <span className="ml-3 text-gray-500 text-sm">Filtrando clientes…</span>
+                  <span className="ml-3 text-gray-500 text-sm">
+                    Filtrando clientes…
+                  </span>
                 </div>
               ) : (
                 <div className="max-h-60 overflow-y-auto mt-2">
                   {filteredClientsBySearch.map((name) => (
                     <div
                       key={name}
-                      className={`px-4 py-2 text-sm cursor-pointer rounded hover:bg-gray-100 ${selectedClient === name ? 'bg-blue-50 text-blue-700' : ''}`}
+                      className={`px-4 py-2 text-sm cursor-pointer rounded hover:bg-gray-100 ${selectedClient === name ? "bg-blue-50 text-blue-700" : ""}`}
                       onClick={() => {
                         setSelectedClient(name);
                         setRouteInfo(null);
@@ -796,9 +959,13 @@ export default function NavegarPage() {
                     >
                       <div className="flex justify-between items-center">
                         <span className="font-medium">{name}</span>
-                        <span className={`text-xs ${
-                          isSinVisitar(name) ? 'text-yellow-600' : 'text-gray-500'
-                        }`}>
+                        <span
+                          className={`text-xs ${
+                            isSinVisitar(name)
+                              ? "text-yellow-600"
+                              : "text-gray-500"
+                          }`}
+                        >
                           {formatVisitDate(getLastVisitDate(name))}
                         </span>
                       </div>
@@ -806,11 +973,14 @@ export default function NavegarPage() {
                   ))}
                   {searchTerm && filteredClientsBySearch.length === 20 && (
                     <div className="px-4 py-2 text-xs text-gray-500 italic">
-                      Mostrando primeros 20 resultados. Continúa escribiendo para refinar la búsqueda.
+                      Mostrando primeros 20 resultados. Continúa escribiendo
+                      para refinar la búsqueda.
                     </div>
                   )}
                   {!searchTerm && !hasActiveFilters && (
-                    <div className="px-4 py-2 text-xs text-gray-400">Busca un cliente para navegar</div>
+                    <div className="px-4 py-2 text-xs text-gray-400">
+                      Busca un cliente para navegar
+                    </div>
                   )}
                 </div>
               )}
@@ -829,18 +999,24 @@ export default function NavegarPage() {
                   >
                     <X className="w-4 h-4" />
                   </button>
-                  <div className="font-semibold text-gray-800 text-base mb-1">{selectedClient}</div>
+                  <div className="font-semibold text-gray-800 text-base mb-1">
+                    {selectedClient}
+                  </div>
                   <div className="text-xs text-gray-500 mb-2">
-                    Lat: {selectedClientLocation.lat}, Lng: {selectedClientLocation.lng}
+                    Lat: {selectedClientLocation.lat}, Lng:{" "}
+                    {selectedClientLocation.lng}
                   </div>
                   {selectedClientCode && (
                     <div className="mb-2 text-xs text-gray-700">
-                      <span className="font-semibold">Código:</span> {selectedClientCode}
+                      <span className="font-semibold">Código:</span>{" "}
+                      {selectedClientCode}
                     </div>
                   )}
                   {routeInfo && (
                     <div className="mb-2 text-xs text-blue-700">
-                      Distancia: {(routeInfo.distance / 1000).toFixed(2)} km &nbsp;•&nbsp; ETA: {Math.round(routeInfo.duration / 60)} min
+                      Distancia: {(routeInfo.distance / 1000).toFixed(2)} km
+                      &nbsp;•&nbsp; ETA: {Math.round(routeInfo.duration / 60)}{" "}
+                      min
                     </div>
                   )}
                   <div className="flex gap-2">
@@ -850,9 +1026,12 @@ export default function NavegarPage() {
                       disabled={!selectedClientLocation || isLocating}
                     >
                       {isLocating ? (
-                        <span className="flex items-center justify-center"><RefreshCw className="h-4 w-4 animate-spin mr-2" />Obteniendo ubicación…</span>
+                        <span className="flex items-center justify-center">
+                          <RefreshCw className="h-4 w-4 animate-spin mr-2" />
+                          Obteniendo ubicación…
+                        </span>
                       ) : (
-                        'Navegar'
+                        "Navegar"
                       )}
                     </button>
                     <button
@@ -860,14 +1039,18 @@ export default function NavegarPage() {
                       onClick={() => {
                         if (selectedClientLocation) {
                           const url = `https://www.google.com/maps/dir/?api=1&destination=${selectedClientLocation.lat},${selectedClientLocation.lng}`;
-                          window.open(url, '_blank');
+                          window.open(url, "_blank");
                         }
                       }}
                       disabled={!selectedClientLocation}
                       title="Abrir en Google Maps"
                     >
-                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+                      <svg
+                        className="w-4 h-4"
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                      >
+                        <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
                       </svg>
                       Maps
                     </button>
@@ -880,4 +1063,4 @@ export default function NavegarPage() {
       </div>
     </div>
   );
-} 
+}

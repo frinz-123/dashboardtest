@@ -1,30 +1,34 @@
-'use client'
+"use client";
 
-import { useEffect, useState } from 'react'
-import { AlertCircle, X } from 'lucide-react'
+import { useEffect, useState } from "react";
+import { AlertCircle, X } from "lucide-react";
 
 interface ErrorToastProps {
-  message: string
-  onClose: () => void
-  duration?: number
+  message: string;
+  onClose: () => void;
+  duration?: number;
 }
 
-export default function ErrorToast({ message, onClose, duration = 5000 }: ErrorToastProps) {
-  const [isVisible, setIsVisible] = useState(true)
+export default function ErrorToast({
+  message,
+  onClose,
+  duration = 5000,
+}: ErrorToastProps) {
+  const [isVisible, setIsVisible] = useState(true);
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      setIsVisible(false)
-      setTimeout(onClose, 300) // Wait for fade out animation
-    }, duration)
+      setIsVisible(false);
+      setTimeout(onClose, 300); // Wait for fade out animation
+    }, duration);
 
-    return () => clearTimeout(timer)
-  }, [duration, onClose])
+    return () => clearTimeout(timer);
+  }, [duration, onClose]);
 
   return (
     <div
       className={`fixed bottom-4 right-4 z-50 max-w-sm bg-red-50 border border-red-200 rounded-lg shadow-lg p-4 transition-all duration-300 ${
-        isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'
+        isVisible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"
       }`}
     >
       <div className="flex items-start gap-3">
@@ -35,8 +39,8 @@ export default function ErrorToast({ message, onClose, duration = 5000 }: ErrorT
         </div>
         <button
           onClick={() => {
-            setIsVisible(false)
-            setTimeout(onClose, 300)
+            setIsVisible(false);
+            setTimeout(onClose, 300);
           }}
           className="text-red-600 hover:text-red-800 transition-colors"
         >
@@ -44,5 +48,5 @@ export default function ErrorToast({ message, onClose, duration = 5000 }: ErrorT
         </button>
       </div>
     </div>
-  )
+  );
 }

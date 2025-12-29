@@ -1,36 +1,36 @@
-'use client'
+"use client";
 
-import React, { Component, ReactNode } from 'react'
+import React, { Component, ReactNode } from "react";
 
 interface Props {
-  children: ReactNode
-  fallback?: ReactNode
-  onError?: (error: Error, errorInfo: React.ErrorInfo) => void
+  children: ReactNode;
+  fallback?: ReactNode;
+  onError?: (error: Error, errorInfo: React.ErrorInfo) => void;
 }
 
 interface State {
-  hasError: boolean
-  error?: Error
+  hasError: boolean;
+  error?: Error;
 }
 
 export class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
-    super(props)
-    this.state = { hasError: false }
+    super(props);
+    this.state = { hasError: false };
   }
 
   static getDerivedStateFromError(error: Error): State {
-    return { hasError: true, error }
+    return { hasError: true, error };
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('ErrorBoundary caught an error:', error, errorInfo)
+    console.error("ErrorBoundary caught an error:", error, errorInfo);
 
     // Call optional error handler
-    this.props.onError?.(error, errorInfo)
+    this.props.onError?.(error, errorInfo);
 
     // In production, you might want to log to an error reporting service
-    if (process.env.NODE_ENV === 'production') {
+    if (process.env.NODE_ENV === "production") {
       // Example: logErrorToService(error, errorInfo)
     }
   }
@@ -38,7 +38,7 @@ export class ErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.hasError) {
       if (this.props.fallback) {
-        return this.props.fallback
+        return this.props.fallback;
       }
 
       return (
@@ -64,9 +64,10 @@ export class ErrorBoundary extends Component<Props, State> {
                 Algo salió mal
               </h3>
               <p className="mt-2 text-sm text-gray-500">
-                Ha ocurrido un error inesperado. Por favor, recarga la página o intenta de nuevo más tarde.
+                Ha ocurrido un error inesperado. Por favor, recarga la página o
+                intenta de nuevo más tarde.
               </p>
-              {process.env.NODE_ENV === 'development' && this.state.error && (
+              {process.env.NODE_ENV === "development" && this.state.error && (
                 <details className="mt-4 text-left">
                   <summary className="text-sm font-medium text-gray-700 cursor-pointer">
                     Detalles del error (solo desarrollo)
@@ -84,7 +85,9 @@ export class ErrorBoundary extends Component<Props, State> {
                   Recargar página
                 </button>
                 <button
-                  onClick={() => this.setState({ hasError: false, error: undefined })}
+                  onClick={() =>
+                    this.setState({ hasError: false, error: undefined })
+                  }
                   className="w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
                 >
                   Intentar de nuevo
@@ -93,11 +96,11 @@ export class ErrorBoundary extends Component<Props, State> {
             </div>
           </div>
         </div>
-      )
+      );
     }
 
-    return this.props.children
+    return this.props.children;
   }
 }
 
-export default ErrorBoundary
+export default ErrorBoundary;

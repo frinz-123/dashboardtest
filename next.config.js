@@ -1,9 +1,9 @@
-const withPWA = require('next-pwa')({
-  dest: 'public',
-  disable: process.env.NODE_ENV === 'development',
+const withPWA = require("next-pwa")({
+  dest: "public",
+  disable: process.env.NODE_ENV === "development",
   register: true,
   skipWaiting: true,
-})
+});
 
 module.exports = withPWA({
   eslint: {
@@ -13,6 +13,6 @@ module.exports = withPWA({
     ignoreBuildErrors: true,
   },
   images: {
-    domains: ['your-domain.com'],
+    domains: ["your-domain.com"],
   },
-})
+});

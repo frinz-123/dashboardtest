@@ -1917,7 +1917,10 @@ export default function InspectorPeriodosPage() {
       </main>
 
       {/* Sale Detail Drawer */}
-      <Drawer open={!!selectedSale} onOpenChange={(open) => !open && setSelectedSale(null)}>
+      <Drawer
+        open={!!selectedSale}
+        onOpenChange={(open) => !open && setSelectedSale(null)}
+      >
         <DrawerContent className="max-h-[85vh]">
           <DrawerHeader className="border-b border-gray-100 pb-4">
             <DrawerTitle className="text-left">
@@ -1927,11 +1930,14 @@ export default function InspectorPeriodosPage() {
               {selectedSale && (
                 <div className="flex items-center gap-3 mt-1">
                   <span>
-                    {new Date(selectedSale.fechaSinHora).toLocaleDateString("es-ES", {
-                      weekday: "long",
-                      day: "numeric",
-                      month: "long",
-                    })}
+                    {new Date(selectedSale.fechaSinHora).toLocaleDateString(
+                      "es-ES",
+                      {
+                        weekday: "long",
+                        day: "numeric",
+                        month: "long",
+                      },
+                    )}
                   </span>
                   {selectedSale.submissionTime && (
                     <span className="text-gray-400">
@@ -1997,7 +2003,10 @@ export default function InspectorPeriodosPage() {
                         Total Productos
                       </span>
                       <span className="text-sm font-bold text-gray-800">
-                        {Object.values(selectedSale.products).reduce((sum, qty) => sum + qty, 0)}
+                        {Object.values(selectedSale.products).reduce(
+                          (sum, qty) => sum + qty,
+                          0,
+                        )}
                       </span>
                     </div>
                   </div>

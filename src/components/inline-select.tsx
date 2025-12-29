@@ -1,25 +1,25 @@
-"use client"
+"use client";
 
-import * as React from "react"
-import { Globe, User } from 'lucide-react'
-import { Input } from "@/components/ui/input"
+import * as React from "react";
+import { Globe, User } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
+} from "@/components/ui/select";
 
 interface InlineSelectOption {
-  value: string
-  label: string
+  value: string;
+  label: string;
 }
 
 interface InlineSelectInputProps {
-  options: InlineSelectOption[]
-  defaultValue?: string
-  placeholder?: string
+  options: InlineSelectOption[];
+  defaultValue?: string;
+  placeholder?: string;
 }
 
 export function InlineSelectInput({
@@ -49,6 +49,5 @@ export function InlineSelectInput({
         </div>
       </div>
     </div>
-  )
+  );
 }
-

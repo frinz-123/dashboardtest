@@ -1,6 +1,6 @@
-import NextAuth from "next-auth"
-import GoogleProvider from "next-auth/providers/google"
-import { AuthOptions } from "next-auth"
+import NextAuth from "next-auth";
+import GoogleProvider from "next-auth/providers/google";
+import { AuthOptions } from "next-auth";
 
 export const authOptions: AuthOptions = {
   providers: [
@@ -10,51 +10,51 @@ export const authOptions: AuthOptions = {
     }),
   ],
   pages: {
-    signIn: '/auth/signin',
+    signIn: "/auth/signin",
   },
   callbacks: {
     async signIn({ user, account: _, profile: __ }) {
       const allowedEmails = [
-        'ventas1productoselrey@gmail.com',
-        'ventas2productoselrey@gmail.com',
-        'ventas3productoselrey@gmail.com',
-        'ventasmztproductoselrey.com@gmail.com',
-        'franzcharbell@gmail.com',
-        'cesar.reyes.ochoa@gmail.com',
-        'arturo.elreychiltepin@gmail.com',
-        'ventasmochisproductoselrey@gmail.com',
-        'alopezelrey@gmail.com',
-        'promotoriaelrey@gmail.com', 
-        'ventas4productoselrey@gmail.com',
-        'bodegaelrey034@gmail.com',
-        process.env.OVERRIDE_EMAIL
-      ].filter(Boolean)
-      
-      return allowedEmails.includes(user.email?.toLowerCase() || '')
+        "ventas1productoselrey@gmail.com",
+        "ventas2productoselrey@gmail.com",
+        "ventas3productoselrey@gmail.com",
+        "ventasmztproductoselrey.com@gmail.com",
+        "franzcharbell@gmail.com",
+        "cesar.reyes.ochoa@gmail.com",
+        "arturo.elreychiltepin@gmail.com",
+        "ventasmochisproductoselrey@gmail.com",
+        "alopezelrey@gmail.com",
+        "promotoriaelrey@gmail.com",
+        "ventas4productoselrey@gmail.com",
+        "bodegaelrey034@gmail.com",
+        process.env.OVERRIDE_EMAIL,
+      ].filter(Boolean);
+
+      return allowedEmails.includes(user.email?.toLowerCase() || "");
     },
     async redirect({ url, baseUrl }) {
       // Allows relative callback URLs
-      if (url.startsWith("/")) return `${baseUrl}${url}`
+      if (url.startsWith("/")) return `${baseUrl}${url}`;
       // Allows callback URLs on the same origin
-      else if (new URL(url).origin === baseUrl) return url
-      return baseUrl
+      else if (new URL(url).origin === baseUrl) return url;
+      return baseUrl;
     },
     async session({ session, token }) {
-      return session
+      return session;
     },
     async jwt({ token, user }) {
       if (user) {
-        token.id = user.id
+        token.id = user.id;
       }
-      return token
-    }
+      return token;
+    },
   },
   secret: process.env.NEXTAUTH_SECRET,
   session: {
     strategy: "jwt",
   },
-}
+};
 
-const handler = NextAuth(authOptions)
+const handler = NextAuth(authOptions);
 
-export { handler as GET, handler as POST }
+export { handler as GET, handler as POST };

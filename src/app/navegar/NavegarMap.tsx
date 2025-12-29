@@ -1,21 +1,27 @@
 "use client";
 
-import React, { useEffect, useRef, useState, useImperativeHandle, forwardRef } from "react";
+import React, {
+  useEffect,
+  useRef,
+  useState,
+  useImperativeHandle,
+  forwardRef,
+} from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
 
 const DEFAULT_CENTER = { lng: -110.962, lat: 29.072 }; // Hermosillo, Sonora, MX
-const FALLBACK_CENTER = { lng: -107.3940, lat: 24.8091 }; // Culiacán, Sinaloa
+const FALLBACK_CENTER = { lng: -107.394, lat: 24.8091 }; // Culiacán, Sinaloa
 
 // Function to get pin color based on codigo
 const getPinColor = (codigo?: string, isSelected: boolean = false) => {
   if (!codigo) return isSelected ? "#007AFF" : "#007AFF"; // Default blue
-  
+
   const codigoLower = codigo.toLowerCase();
   let baseColor = "#007AFF"; // Default blue
-  
+
   if (codigoLower.includes("cley")) {
     baseColor = "#DC2626"; // Red
   } else if (codigoLower.includes("tere")) {
@@ -27,7 +33,7 @@ const getPinColor = (codigo?: string, isSelected: boolean = false) => {
   } else if (codigoLower.includes("kiosk")) {
     baseColor = "#9333EA"; // Purple
   }
-  
+
   return baseColor;
 };
 
@@ -53,11 +59,27 @@ type NavegarMapProps = {
   onRouteInfo?: (info: RouteInfo | null) => void;
 };
 
-const NavegarMap = forwardRef(function NavegarMap({ clients, selectedClient, onSelectClient, currentLocation, routeTo, onRouteInfo, onUserLocationChange }: NavegarMapProps & { onUserLocationChange?: (loc: { lat: number, lng: number } | null) => void }, ref) {
+const NavegarMap = forwardRef(function NavegarMap(
+  {
+    clients,
+    selectedClient,
+    onSelectClient,
+    currentLocation,
+    routeTo,
+    onRouteInfo,
+    onUserLocationChange,
+  }: NavegarMapProps & {
+    onUserLocationChange?: (loc: { lat: number; lng: number } | null) => void;
+  },
+  ref,
+) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const markers = useRef<mapboxgl.Marker[]>([]);
-  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [userLocation, setUserLocation] = useState<{
+    lat: number;
+    lng: number;
+  } | null>(null);
   const [locationTried, setLocationTried] = useState(false);
   const [route, setRoute] = useState<RouteInfo | null>(null);
   const routeLayerId = "route-line";
@@ -69,13 +91,19 @@ const NavegarMap = forwardRef(function NavegarMap({ clients, selectedClient, onS
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
           (pos) => {
-            setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+            setUserLocation({
+              lat: pos.coords.latitude,
+              lng: pos.coords.longitude,
+            });
           },
           (err) => {
-            console.warn("[NavegarMap] Geolocation failed, using Culiacán fallback", err);
+            console.warn(
+              "[NavegarMap] Geolocation failed, using Culiacán fallback",
+              err,
+            );
             setUserLocation(FALLBACK_CENTER);
           },
-          { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+          { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 },
         );
       } else {
         setUserLocation(FALLBACK_CENTER);
@@ -97,7 +125,7 @@ const NavegarMap = forwardRef(function NavegarMap({ clients, selectedClient, onS
           (err) => {
             reject(err);
           },
-          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
         );
       } else {
         reject(new Error("Geolocation not supported"));
@@ -227,10 +255,10 @@ const NavegarMap = forwardRef(function NavegarMap({ clients, selectedClient, onS
       el.style.height = "22px";
       const isSelected = client.name === selectedClient;
       const pinColor = getPinColor(client.codigo, isSelected);
-      
+
       el.style.background = isSelected ? pinColor : "#fff";
-      el.style.border = isSelected 
-        ? `3px solid ${pinColor}` 
+      el.style.border = isSelected
+        ? `3px solid ${pinColor}`
         : `2px solid ${pinColor}`;
       el.style.borderRadius = "50%";
       el.style.boxShadow = "0 2px 8px rgba(0,0,0,0.15)";
@@ -279,7 +307,7 @@ const NavegarMap = forwardRef(function NavegarMap({ clients, selectedClient, onS
       markers.current.push(
         new mapboxgl.Marker(el)
           .setLngLat([userLocation.lng, userLocation.lat])
-          .addTo(map.current!)
+          .addTo(map.current!),
       );
     }
   }, [clients, selectedClient, onSelectClient, currentLocation, userLocation]);
@@ -300,14 +328,20 @@ const NavegarMap = forwardRef(function NavegarMap({ clients, selectedClient, onS
     return (
       <div className="w-full h-screen flex items-center justify-center bg-white">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-        <span className="ml-3 text-gray-500 text-sm">Obteniendo ubicación...</span>
+        <span className="ml-3 text-gray-500 text-sm">
+          Obteniendo ubicación...
+        </span>
       </div>
     );
   }
 
   return (
-    <div ref={mapContainer} className="w-full h-screen" style={{ borderRadius: 0 }} />
+    <div
+      ref={mapContainer}
+      className="w-full h-screen"
+      style={{ borderRadius: 0 }}
+    />
   );
 });
 
-export default NavegarMap; 
+export default NavegarMap;

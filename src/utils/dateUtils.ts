@@ -17,14 +17,26 @@ export function getCurrentPeriodInfo(date = new Date()) {
   const timeDiff = normalizedDate.getTime() - normalizedPeriodStart.getTime();
   const daysSinceStart = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
 
-  const periodNumber = Math.floor(daysSinceStart / (WEEKS_PER_PERIOD * DAYS_PER_WEEK)) + 11; // Starting from period 11
+  const periodNumber =
+    Math.floor(daysSinceStart / (WEEKS_PER_PERIOD * DAYS_PER_WEEK)) + 11; // Starting from period 11
   const daysIntoPeriod = daysSinceStart % (WEEKS_PER_PERIOD * DAYS_PER_WEEK);
   const weekInPeriod = Math.floor(daysIntoPeriod / DAYS_PER_WEEK) + 1;
   const dayInWeek = (daysIntoPeriod % DAYS_PER_WEEK) + 1;
 
-  const periodStartDate = new Date(normalizedPeriodStart.getTime() + (periodNumber - 11) * WEEKS_PER_PERIOD * DAYS_PER_WEEK * 24 * 60 * 60 * 1000);
+  const periodStartDate = new Date(
+    normalizedPeriodStart.getTime() +
+      (periodNumber - 11) *
+        WEEKS_PER_PERIOD *
+        DAYS_PER_WEEK *
+        24 *
+        60 *
+        60 *
+        1000,
+  );
   const periodEndDate = new Date(periodStartDate);
-  periodEndDate.setDate(periodEndDate.getDate() + (WEEKS_PER_PERIOD * DAYS_PER_WEEK) - 1);
+  periodEndDate.setDate(
+    periodEndDate.getDate() + WEEKS_PER_PERIOD * DAYS_PER_WEEK - 1,
+  );
   periodEndDate.setHours(23, 59, 59, 999);
 
   return {
@@ -32,16 +44,20 @@ export function getCurrentPeriodInfo(date = new Date()) {
     weekInPeriod,
     dayInWeek,
     periodStartDate,
-    periodEndDate
+    periodEndDate,
   };
 }
 
 export function getWeekDates(date = new Date()) {
   const { periodStartDate } = getCurrentPeriodInfo(date);
-  const daysSinceStart = Math.floor((date.getTime() - periodStartDate.getTime()) / (1000 * 60 * 60 * 24));
+  const daysSinceStart = Math.floor(
+    (date.getTime() - periodStartDate.getTime()) / (1000 * 60 * 60 * 24),
+  );
   const weekStartOffset = daysSinceStart - (daysSinceStart % 7);
 
-  const weekStart = new Date(periodStartDate.getTime() + weekStartOffset * 24 * 60 * 60 * 1000);
+  const weekStart = new Date(
+    periodStartDate.getTime() + weekStartOffset * 24 * 60 * 60 * 1000,
+  );
   weekStart.setHours(0, 0, 0, 0);
 
   const weekEnd = new Date(weekStart.getTime() + 6 * 24 * 60 * 60 * 1000);
@@ -50,7 +66,11 @@ export function getWeekDates(date = new Date()) {
   return { weekStart, weekEnd };
 }
 
-export function isDateInPeriod(date: Date, periodStartDate: Date, periodEndDate: Date) {
+export function isDateInPeriod(
+  date: Date,
+  periodStartDate: Date,
+  periodEndDate: Date,
+) {
   return date >= periodStartDate && date <= periodEndDate;
 }
 
@@ -74,23 +94,34 @@ export function getPeriodDateRange(periodNumber: number): {
 
   // Calculate the start date for this period
   const daysFromStart = (periodNumber - 11) * WEEKS_PER_PERIOD * DAYS_PER_WEEK;
-  const periodStartDate = new Date(normalizedPeriodStart.getTime() + daysFromStart * 24 * 60 * 60 * 1000);
+  const periodStartDate = new Date(
+    normalizedPeriodStart.getTime() + daysFromStart * 24 * 60 * 60 * 1000,
+  );
 
   // Calculate end date (28 days later, minus 1 day, end of day)
   const periodEndDate = new Date(periodStartDate);
-  periodEndDate.setDate(periodEndDate.getDate() + (WEEKS_PER_PERIOD * DAYS_PER_WEEK) - 1);
+  periodEndDate.setDate(
+    periodEndDate.getDate() + WEEKS_PER_PERIOD * DAYS_PER_WEEK - 1,
+  );
   periodEndDate.setHours(23, 59, 59, 999);
 
   // Create a human-readable label
-  const startMonth = periodStartDate.toLocaleDateString('es-ES', { month: 'short', day: 'numeric' });
-  const endMonth = periodEndDate.toLocaleDateString('es-ES', { month: 'short', day: 'numeric', year: 'numeric' });
+  const startMonth = periodStartDate.toLocaleDateString("es-ES", {
+    month: "short",
+    day: "numeric",
+  });
+  const endMonth = periodEndDate.toLocaleDateString("es-ES", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
   const label = `${startMonth} - ${endMonth}`;
 
   return {
     periodNumber,
     periodStartDate,
     periodEndDate,
-    label
+    label,
   };
 }
 
@@ -117,7 +148,7 @@ export function getAllPeriods(): Array<{
     periods.push({
       ...periodInfo,
       isCurrent: p === currentPeriod,
-      isCompleted: periodInfo.periodEndDate < now
+      isCompleted: periodInfo.periodEndDate < now,
     });
   }
 
@@ -139,20 +170,30 @@ export function getPeriodWeeks(periodNumber: number): Array<{
   const weeks = [];
 
   for (let w = 0; w < WEEKS_PER_PERIOD; w++) {
-    const weekStart = new Date(periodStartDate.getTime() + w * DAYS_PER_WEEK * 24 * 60 * 60 * 1000);
+    const weekStart = new Date(
+      periodStartDate.getTime() + w * DAYS_PER_WEEK * 24 * 60 * 60 * 1000,
+    );
     weekStart.setHours(0, 0, 0, 0);
 
-    const weekEnd = new Date(weekStart.getTime() + (DAYS_PER_WEEK - 1) * 24 * 60 * 60 * 1000);
+    const weekEnd = new Date(
+      weekStart.getTime() + (DAYS_PER_WEEK - 1) * 24 * 60 * 60 * 1000,
+    );
     weekEnd.setHours(23, 59, 59, 999);
 
-    const startLabel = weekStart.toLocaleDateString('es-ES', { month: 'short', day: 'numeric' });
-    const endLabel = weekEnd.toLocaleDateString('es-ES', { month: 'short', day: 'numeric' });
+    const startLabel = weekStart.toLocaleDateString("es-ES", {
+      month: "short",
+      day: "numeric",
+    });
+    const endLabel = weekEnd.toLocaleDateString("es-ES", {
+      month: "short",
+      day: "numeric",
+    });
 
     weeks.push({
       weekNumber: w + 1,
       weekStart,
       weekEnd,
-      label: `S${w + 1}: ${startLabel} - ${endLabel}`
+      label: `S${w + 1}: ${startLabel} - ${endLabel}`,
     });
   }
 
@@ -162,10 +203,13 @@ export function getPeriodWeeks(periodNumber: number): Array<{
 /**
  * Get default date range for current year
  */
-export function getCurrentYearDateRange(): { dateFrom: string; dateTo: string } {
+export function getCurrentYearDateRange(): {
+  dateFrom: string;
+  dateTo: string;
+} {
   const currentYear = new Date().getFullYear();
   const dateFrom = `${currentYear}-01-01`;
-  const dateTo = new Date().toISOString().split('T')[0];
+  const dateTo = new Date().toISOString().split("T")[0];
   return { dateFrom, dateTo };
 }
 
@@ -173,8 +217,12 @@ export function getCurrentYearDateRange(): { dateFrom: string; dateTo: string } 
  * Parse and validate date range, returning Date objects
  * If no dates provided, defaults to current year
  */
-export function parseDateRange(dateFrom?: string, dateTo?: string): { fromDate: Date; toDate: Date } {
-  const { dateFrom: defaultFrom, dateTo: defaultTo } = getCurrentYearDateRange();
+export function parseDateRange(
+  dateFrom?: string,
+  dateTo?: string,
+): { fromDate: Date; toDate: Date } {
+  const { dateFrom: defaultFrom, dateTo: defaultTo } =
+    getCurrentYearDateRange();
 
   const fromDate = dateFrom ? new Date(dateFrom) : new Date(defaultFrom);
   const toDate = dateTo ? new Date(dateTo) : new Date(defaultTo);
@@ -189,10 +237,11 @@ export function parseDateRange(dateFrom?: string, dateTo?: string): { fromDate: 
  * Format date range for display
  */
 export function formatDateRange(dateFrom?: string, dateTo?: string): string {
-  const { dateFrom: defaultFrom, dateTo: defaultTo } = getCurrentYearDateRange();
+  const { dateFrom: defaultFrom, dateTo: defaultTo } =
+    getCurrentYearDateRange();
 
   if (!dateFrom && !dateTo) {
-    return 'Año actual';
+    return "Año actual";
   }
 
   return `${dateFrom || defaultFrom} al ${dateTo || defaultTo}`;
@@ -203,11 +252,11 @@ export function formatDateRange(dateFrom?: string, dateTo?: string): string {
  */
 export function debounce<T extends (...args: any[]) => any>(
   func: T,
-  wait: number
+  wait: number,
 ): (...args: Parameters<T>) => void {
   let timeout: NodeJS.Timeout | null = null;
 
-  return function(this: any, ...args: Parameters<T>) {
+  return function (this: any, ...args: Parameters<T>) {
     const context = this;
 
     if (timeout) {

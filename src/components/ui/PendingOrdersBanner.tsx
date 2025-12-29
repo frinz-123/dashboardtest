@@ -1,9 +1,18 @@
-'use client';
+"use client";
 
-import React from 'react';
-import { Wifi, WifiOff, Clock, AlertTriangle, CheckCircle, RefreshCw, MapPin, X } from 'lucide-react';
-import { QueueState } from '@/hooks/useSubmissionQueue';
-import { QueuedSubmission } from '@/utils/submissionQueue';
+import React from "react";
+import {
+  Wifi,
+  WifiOff,
+  Clock,
+  AlertTriangle,
+  CheckCircle,
+  RefreshCw,
+  MapPin,
+  X,
+} from "lucide-react";
+import { QueueState } from "@/hooks/useSubmissionQueue";
+import { QueuedSubmission } from "@/utils/submissionQueue";
 
 interface PendingOrdersBannerProps {
   state: QueueState;
@@ -20,7 +29,14 @@ export default function PendingOrdersBanner({
   onRemove,
   isRefreshingLocation = false,
 }: PendingOrdersBannerProps) {
-  const { pendingCount, isProcessing, isOnline, items, hasStaleLocation, currentItem } = state;
+  const {
+    pendingCount,
+    isProcessing,
+    isOnline,
+    items,
+    hasStaleLocation,
+    currentItem,
+  } = state;
 
   // Don't show anything if there are no pending items and we're online
   if (pendingCount === 0 && isOnline) {
@@ -29,13 +45,13 @@ export default function PendingOrdersBanner({
 
   const getStatusIcon = (item: QueuedSubmission) => {
     switch (item.status) {
-      case 'sending':
+      case "sending":
         return <RefreshCw className="w-4 h-4 animate-spin text-blue-500" />;
-      case 'locationStale':
+      case "locationStale":
         return <MapPin className="w-4 h-4 text-orange-500" />;
-      case 'failed':
+      case "failed":
         return <AlertTriangle className="w-4 h-4 text-red-500" />;
-      case 'pending':
+      case "pending":
         return <Clock className="w-4 h-4 text-gray-500" />;
       default:
         return <Clock className="w-4 h-4 text-gray-500" />;
@@ -44,22 +60,25 @@ export default function PendingOrdersBanner({
 
   const getStatusText = (item: QueuedSubmission) => {
     switch (item.status) {
-      case 'sending':
-        return 'Enviando...';
-      case 'locationStale':
-        return 'Ubicacion expirada';
-      case 'failed':
-        return 'Error - Toca para reintentar';
-      case 'pending':
-        return isOnline ? 'En cola...' : 'Esperando conexion...';
+      case "sending":
+        return "Enviando...";
+      case "locationStale":
+        return "Ubicacion expirada";
+      case "failed":
+        return "Error - Toca para reintentar";
+      case "pending":
+        return isOnline ? "En cola..." : "Esperando conexion...";
       default:
-        return 'Pendiente';
+        return "Pendiente";
     }
   };
 
   const formatTime = (timestamp: number) => {
     const date = new Date(timestamp);
-    return date.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+    return date.toLocaleTimeString("es-MX", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
   };
 
   return (
@@ -68,7 +87,9 @@ export default function PendingOrdersBanner({
       {!isOnline && (
         <div className="bg-red-500 text-white px-4 py-2 flex items-center justify-center gap-2">
           <WifiOff className="w-4 h-4" />
-          <span className="text-sm font-medium">Sin conexion - Los pedidos se enviaran automaticamente</span>
+          <span className="text-sm font-medium">
+            Sin conexion - Los pedidos se enviaran automaticamente
+          </span>
         </div>
       )}
 
@@ -78,7 +99,9 @@ export default function PendingOrdersBanner({
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <MapPin className="w-4 h-4" />
-              <span className="text-sm font-medium">Tu ubicacion ha expirado</span>
+              <span className="text-sm font-medium">
+                Tu ubicacion ha expirado
+              </span>
             </div>
             <button
               onClick={onRefreshLocation}
@@ -114,7 +137,8 @@ export default function PendingOrdersBanner({
                 <WifiOff className="w-4 h-4 text-red-600" />
               )}
               <span className="text-sm font-medium text-blue-900">
-                {pendingCount} pedido{pendingCount !== 1 ? 's' : ''} pendiente{pendingCount !== 1 ? 's' : ''}
+                {pendingCount} pedido{pendingCount !== 1 ? "s" : ""} pendiente
+                {pendingCount !== 1 ? "s" : ""}
               </span>
             </div>
             {isProcessing && currentItem && (
@@ -130,10 +154,13 @@ export default function PendingOrdersBanner({
               <div
                 key={item.id}
                 className={`flex items-center justify-between bg-white rounded px-2 py-1.5 text-sm ${
-                  item.status === 'failed' ? 'border border-red-200' :
-                  item.status === 'locationStale' ? 'border border-orange-200' :
-                  item.status === 'sending' ? 'border border-blue-200' :
-                  'border border-gray-200'
+                  item.status === "failed"
+                    ? "border border-red-200"
+                    : item.status === "locationStale"
+                      ? "border border-orange-200"
+                      : item.status === "sending"
+                        ? "border border-blue-200"
+                        : "border border-gray-200"
                 }`}
               >
                 <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -149,7 +176,9 @@ export default function PendingOrdersBanner({
                       {item.retryCount > 0 && (
                         <>
                           <span>•</span>
-                          <span className="text-orange-600">Intento {item.retryCount + 1}</span>
+                          <span className="text-orange-600">
+                            Intento {item.retryCount + 1}
+                          </span>
                         </>
                       )}
                     </div>
@@ -157,16 +186,21 @@ export default function PendingOrdersBanner({
                 </div>
 
                 <div className="flex items-center gap-1 ml-2">
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${
-                    item.status === 'sending' ? 'bg-blue-100 text-blue-700' :
-                    item.status === 'locationStale' ? 'bg-orange-100 text-orange-700' :
-                    item.status === 'failed' ? 'bg-red-100 text-red-700' :
-                    'bg-gray-100 text-gray-700'
-                  }`}>
+                  <span
+                    className={`text-xs px-2 py-0.5 rounded-full ${
+                      item.status === "sending"
+                        ? "bg-blue-100 text-blue-700"
+                        : item.status === "locationStale"
+                          ? "bg-orange-100 text-orange-700"
+                          : item.status === "failed"
+                            ? "bg-red-100 text-red-700"
+                            : "bg-gray-100 text-gray-700"
+                    }`}
+                  >
                     {getStatusText(item)}
                   </span>
 
-                  {item.status === 'failed' && (
+                  {item.status === "failed" && (
                     <button
                       onClick={() => onRetry(item.id)}
                       className="p-1 hover:bg-gray-100 rounded"
@@ -176,7 +210,8 @@ export default function PendingOrdersBanner({
                     </button>
                   )}
 
-                  {(item.status === 'failed' || item.status === 'locationStale') && (
+                  {(item.status === "failed" ||
+                    item.status === "locationStale") && (
                     <button
                       onClick={() => onRemove(item.id)}
                       className="p-1 hover:bg-red-100 rounded"

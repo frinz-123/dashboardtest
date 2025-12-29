@@ -1,4 +1,4 @@
-'use client'
+"use client";
 
 export default function SellerSkeleton() {
   return (
@@ -31,5 +31,5 @@ export default function SellerSkeleton() {
         </div>
       ))}
     </div>
-  )
+  );
 }

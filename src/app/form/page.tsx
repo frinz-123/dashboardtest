@@ -1,31 +1,24 @@
 "use client";
 
-import React, {
-  useState,
-  useEffect,
-  useRef,
-  useMemo,
-  useCallback,
-} from "react";
+import { Menu, ShoppingCart } from "lucide-react";
 import Link from "next/link";
-import { Menu, ShoppingCart, CheckCircle2 } from "lucide-react";
+import { useSession } from "next-auth/react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import CleyOrderQuestion from "@/components/comp-166";
 import BlurIn from "@/components/ui/blur-in";
 import LabelNumbers from "@/components/ui/labelnumbers";
+import ClientMap from "@/components/ui/Map";
+import PendingOrdersBanner from "@/components/ui/PendingOrdersBanner";
 import SearchInput from "@/components/ui/SearchInput";
-import Map from "@/components/ui/Map";
-import InputGray from "@/components/ui/InputGray";
-import { useSession } from "next-auth/react";
-import CleyOrderQuestion from "@/components/comp-166";
-import Toast, { useToast } from "@/components/ui/Toast";
-import { haptics } from "@/utils/haptics";
 import {
   ClientSearchSkeleton,
-  ProductListSkeleton,
   MapSkeleton,
+  ProductListSkeleton,
 } from "@/components/ui/SkeletonLoader";
+import Toast, { useToast } from "@/components/ui/Toast";
 import { useSubmissionQueue } from "@/hooks/useSubmissionQueue";
-import PendingOrdersBanner from "@/components/ui/PendingOrdersBanner";
 import { getCurrentPeriodInfo } from "@/utils/dateUtils";
+import { haptics } from "@/utils/haptics";
 
 const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY;
 const spreadsheetId = process.env.NEXT_PUBLIC_SPREADSHEET_ID;
@@ -87,7 +80,6 @@ const PRODUCTS: string[] = [
 ];
 
 const MIN_MOVEMENT_THRESHOLD = 5; // Align with map for precise updates
-const MAX_LOCATION_AGE = 90000; // 90 seconds in milliseconds
 const MAX_CLIENT_DISTANCE = 450; // Maximum allowed distance to client in meters
 const ARCHIVE_MARKER = "archivado no usar";
 
@@ -775,7 +767,7 @@ const getProductPrice = (
   context?: { clientName?: string; sellerEmail?: string | null },
 ): number => {
   const normalizedCode = clientCode.toUpperCase();
-  let priceList = PRICES[normalizedCode] || PRICES["EFT"];
+  const priceList = PRICES[normalizedCode] || PRICES.EFT;
 
   // Logic Breaking Change: Special Pricing Rules for EFT
   if (normalizedCode === "EFT") {
@@ -815,12 +807,6 @@ const getProductPrice = (
   return price || 0;
 };
 
-type Client = {
-  name: string;
-  lat: number;
-  lng: number;
-};
-
 // Update the calculateDistance function to be more precise
 const calculateDistance = (
   lat1: number,
@@ -843,11 +829,16 @@ const calculateDistance = (
 };
 
 // Add a debounce utility function near the throttle function at the bottom
-function debounce(func: Function, wait: number) {
-  let timeout: NodeJS.Timeout;
-  return function (this: any, ...args: any[]) {
+function debounce<Args extends unknown[]>(
+  func: (...args: Args) => void,
+  wait: number,
+) {
+  let timeout: ReturnType<typeof setTimeout>;
+  return (...args: Args) => {
     clearTimeout(timeout);
-    timeout = setTimeout(() => func.apply(this, args), wait);
+    timeout = setTimeout(() => {
+      func(...args);
+    }, wait);
   };
 }
 
@@ -895,9 +886,6 @@ export default function FormPage() {
 
   // 🔧 CRITICAL: Ref-based guard for immediate double-click prevention
   const isSubmittingRef = useRef(false);
-  // Track current submission to detect duplicate attempts
-  const currentSubmissionIdRef = useRef<string | null>(null);
-
   // Admin override states
   const [overrideEmail, setOverrideEmail] = useState<string>("");
   const [overrideDate, setOverrideDate] = useState<string>("");
@@ -912,7 +900,7 @@ export default function FormPage() {
 
     try {
       const selectedDate = new Date(overrideDate);
-      if (isNaN(selectedDate.getTime())) {
+      if (Number.isNaN(selectedDate.getTime())) {
         return { periodCode: "", monthCode: "" };
       }
 
@@ -975,9 +963,46 @@ export default function FormPage() {
   );
   const formatCurrency = (value: number) => currencyFormatter.format(value);
 
+  const calculateOrderDetails = useCallback(() => {
+    if (!selectedClient) return [];
+
+    const clientCode = getClientCode(selectedClient);
+    // Use overrideEmail if set (admin mode), otherwise use session/cached email
+    const currentEmail = overrideEmail || session?.user?.email || cachedEmail;
+    const details: {
+      product: string;
+      quantity: number;
+      price: number;
+      subtotal: number;
+    }[] = [];
+
+    Object.entries(quantities).forEach(([product, quantity]) => {
+      if (quantity > 0) {
+        const price = getProductPrice(clientCode, product, {
+          clientName: selectedClient,
+          sellerEmail: currentEmail,
+        });
+        details.push({
+          product,
+          quantity,
+          price,
+          subtotal: price * quantity,
+        });
+      }
+    });
+
+    return details;
+  }, [
+    cachedEmail,
+    overrideEmail,
+    quantities,
+    selectedClient,
+    session?.user?.email,
+  ]);
+
   const orderDetails = useMemo(
     () => calculateOrderDetails(),
-    [selectedClient, quantities, session?.user?.email, cachedEmail],
+    [calculateOrderDetails],
   );
 
   // Add a debounced search handler
@@ -1040,6 +1065,71 @@ export default function FormPage() {
     }
   };
 
+  // Modify fetchClientNames to handle errors better
+  const fetchClientNames = useCallback(async (signal?: AbortSignal) => {
+    setIsLoading(true);
+    try {
+      const response = await fetch(
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:C?key=${googleApiKey}`,
+        { signal },
+      );
+      if (!response.ok) {
+        throw new Error("Failed to fetch client data");
+      }
+      const data = await response.json();
+      const clients: Record<string, { lat: number; lng: number }> = {};
+      const rows = Array.isArray(data.values) ? data.values.slice(1) : [];
+      const names = rows
+        .map((row: unknown) => {
+          if (!Array.isArray(row)) return null;
+          const name = row[0];
+          if (!name) return null;
+          const normalizedName = normalizeText(String(name));
+          if (normalizedName.includes(NORMALIZED_ARCHIVE_MARKER)) return null;
+          const lat = row[1];
+          const lng = row[2];
+          if (lat != null && lng != null) {
+            const parsedLat = parseFloat(String(lat));
+            const parsedLng = parseFloat(String(lng));
+            if (!Number.isNaN(parsedLat) && !Number.isNaN(parsedLng)) {
+              clients[String(name)] = {
+                lat: parsedLat,
+                lng: parsedLng,
+              };
+            }
+          }
+          return String(name);
+        })
+        .filter((name: string | null): name is string => Boolean(name));
+
+      const uniqueNames = Array.from(new Set(names));
+      setClientNames(uniqueNames as string[]);
+      setClientLocations(clients);
+
+      try {
+        localStorage.setItem(
+          "clientData",
+          JSON.stringify({ names: uniqueNames, locations: clients }),
+        );
+      } catch (_e) {
+        // ignore cache write errors
+      }
+    } catch (error) {
+      const isAbortError =
+        typeof DOMException !== "undefined" &&
+        error instanceof DOMException &&
+        error.name === "AbortError";
+      if (isAbortError) return;
+      console.error("Error fetching client names:", error);
+      setValidationErrors((prev) => ({
+        ...prev,
+        client: "Error loading clients. Please try again.",
+      }));
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
   // Handler for refreshing location when queue has stale items
   const handleRefreshLocationForQueue = useCallback(() => {
     setIsRefreshingLocation(true);
@@ -1058,14 +1148,14 @@ export default function FormPage() {
           setIsLoading(false);
         }
       }
-    } catch (e) {
+    } catch (_e) {
       // ignore cache errors
     }
 
     const controller = new AbortController();
     fetchClientNames(controller.signal);
     return () => controller.abort();
-  }, []);
+  }, [fetchClientNames]);
 
   // Initialize cached email on component mount
   useEffect(() => {
@@ -1184,59 +1274,6 @@ export default function FormPage() {
     }
   }, [selectedClient, currentLocation, clientLocations]);
 
-  // Modify fetchClientNames to handle errors better
-  const fetchClientNames = async (signal?: AbortSignal) => {
-    setIsLoading(true);
-    try {
-      const response = await fetch(
-        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:C?key=${googleApiKey}`,
-        { signal },
-      );
-      if (!response.ok) {
-        throw new Error("Failed to fetch client data");
-      }
-      const data = await response.json();
-      const clients: Record<string, { lat: number; lng: number }> = {};
-      const names = (data.values?.slice(1) || [])
-        .map((row: any[]) => {
-          const name = row[0];
-          if (!name) return null;
-          const normalizedName = normalizeText(String(name));
-          if (normalizedName.includes(NORMALIZED_ARCHIVE_MARKER)) return null;
-          if (row[1] && row[2]) {
-            clients[name] = {
-              lat: parseFloat(row[1]),
-              lng: parseFloat(row[2]),
-            };
-          }
-          return name;
-        })
-        .filter(Boolean);
-
-      const uniqueNames = Array.from(new Set(names));
-      setClientNames(uniqueNames as string[]);
-      setClientLocations(clients);
-
-      try {
-        localStorage.setItem(
-          "clientData",
-          JSON.stringify({ names: uniqueNames, locations: clients }),
-        );
-      } catch (e) {
-        // ignore cache write errors
-      }
-    } catch (error) {
-      if ((error as any)?.name === "AbortError") return;
-      console.error("Error fetching client names:", error);
-      setValidationErrors((prev) => ({
-        ...prev,
-        client: "Error loading clients. Please try again.",
-      }));
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const distanceToClient = useMemo(() => {
     if (!selectedClient || !currentLocation || !clientLocations[selectedClient])
       return null;
@@ -1299,22 +1336,6 @@ export default function FormPage() {
     console.log("Override Emails:", OVERRIDE_EMAILS); // Debug log
     console.log("Current user email:", email); // Debug log
     return email ? OVERRIDE_EMAILS.includes(email) : false;
-  };
-
-  // Add form validation
-  const validateForm = (): boolean => {
-    const errors: typeof validationErrors = {};
-
-    if (!selectedClient) {
-      errors.client = "Por favor selecciona un cliente";
-    }
-
-    if (!currentLocation) {
-      errors.location = "Se requiere acceso a la ubicación";
-    }
-
-    setValidationErrors(errors);
-    return Object.keys(errors).length === 0;
   };
 
   // 🔧 QUEUE-BASED SUBMISSION: Guarantees delivery even with poor connectivity
@@ -1463,11 +1484,12 @@ export default function FormPage() {
           4000,
         );
       }
-    } catch (err: any) {
+    } catch (err) {
+      const errMessage = err instanceof Error ? err.message : String(err);
       console.error("❌ QUEUE FAILURE:", err);
 
       // Check if this is a duplicate error
-      if (err.message?.includes("DUPLICATE")) {
+      if (errMessage.includes("DUPLICATE")) {
         haptics.light();
         success(
           "Pedido ya en cola",
@@ -1491,7 +1513,7 @@ export default function FormPage() {
         haptics.error();
         error(
           "Error",
-          err.message ||
+          errMessage ||
             "No se pudo guardar el pedido. Por favor, intenta de nuevo.",
           4000,
         );
@@ -1502,37 +1524,6 @@ export default function FormPage() {
       console.log("🔓 SUBMISSION GUARD RELEASED");
     }
   };
-
-  function calculateOrderDetails() {
-    if (!selectedClient) return [];
-
-    const clientCode = getClientCode(selectedClient);
-    // Use overrideEmail if set (admin mode), otherwise use session/cached email
-    const currentEmail = overrideEmail || session?.user?.email || cachedEmail;
-    const details: {
-      product: string;
-      quantity: number;
-      price: number;
-      subtotal: number;
-    }[] = [];
-
-    Object.entries(quantities).forEach(([product, quantity]) => {
-      if (quantity > 0) {
-        const price = getProductPrice(clientCode, product, {
-          clientName: selectedClient,
-          sellerEmail: currentEmail,
-        });
-        details.push({
-          product,
-          quantity,
-          price,
-          subtotal: price * quantity,
-        });
-      }
-    });
-
-    return details;
-  }
 
   // Add loading state UI with skeletons
   if (isLoading) {
@@ -1607,6 +1598,7 @@ export default function FormPage() {
         <div className="flex items-center relative">
           <div className="relative">
             <button
+              type="button"
               className="p-1 rounded-full hover:bg-gray-200 transition-colors duration-200"
               onClick={() => setIsMenuOpen(!isMenuOpen)}
             >
@@ -1680,9 +1672,10 @@ export default function FormPage() {
           {filteredClients.length > 0 && (
             <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
               {filteredClients.map((name) => (
-                <div
+                <button
                   key={name}
-                  className="px-4 py-2 text-sm hover:bg-gray-100 cursor-pointer"
+                  type="button"
+                  className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100"
                   onClick={() => {
                     haptics.light(); // Haptic feedback for client selection
                     setSelectedClient(name);
@@ -1691,7 +1684,7 @@ export default function FormPage() {
                   }}
                 >
                   {name}
-                </div>
+                </button>
               ))}
               {debouncedSearchTerm && filteredClients.length === 20 && (
                 <div className="px-4 py-2 text-xs text-gray-500 italic">
@@ -1736,10 +1729,14 @@ export default function FormPage() {
 
           {/* Email Selector */}
           <div className="mb-3">
-            <label className="block text-gray-700 font-semibold text-xs mb-2">
+            <label
+              htmlFor="override-email"
+              className="block text-gray-700 font-semibold text-xs mb-2"
+            >
               Seleccionar Vendedor
             </label>
             <select
+              id="override-email"
               value={overrideEmail}
               onChange={(e) => {
                 haptics.light();
@@ -1764,10 +1761,14 @@ export default function FormPage() {
 
           {/* Date Picker */}
           <div className="mb-3">
-            <label className="block text-gray-700 font-semibold text-xs mb-2">
+            <label
+              htmlFor="override-date"
+              className="block text-gray-700 font-semibold text-xs mb-2"
+            >
               Seleccionar Fecha
             </label>
             <input
+              id="override-date"
               type="datetime-local"
               value={overrideDate}
               onChange={(e) => {
@@ -1804,7 +1805,10 @@ export default function FormPage() {
 
           {/* Period Selector - Now shows calculated value and allows manual override */}
           <div className="mb-3">
-            <label className="block text-gray-700 font-semibold text-xs mb-2">
+            <label
+              htmlFor="override-period"
+              className="block text-gray-700 font-semibold text-xs mb-2"
+            >
               Periodo (Columna AL){" "}
               {overrideDate && (
                 <span className="text-purple-500 font-normal">
@@ -1813,6 +1817,7 @@ export default function FormPage() {
               )}
             </label>
             <select
+              id="override-period"
               value={overridePeriod}
               onChange={(e) => {
                 haptics.light();
@@ -1842,10 +1847,14 @@ export default function FormPage() {
 
           {/* Month Code Display - Auto-calculated from date */}
           <div>
-            <label className="block text-gray-700 font-semibold text-xs mb-2">
+            <label
+              htmlFor="override-month-code"
+              className="block text-gray-700 font-semibold text-xs mb-2"
+            >
               Código de Mes (Columna AO)
             </label>
             <input
+              id="override-month-code"
               type="text"
               value={overrideMonthCode}
               onChange={(e) => {
@@ -1874,7 +1883,7 @@ export default function FormPage() {
         <h2 className="text-gray-700 font-semibold text-xs mb-3">
           Ubicación Actual
         </h2>
-        <Map
+        <ClientMap
           onLocationUpdate={handleLocationUpdate}
           clientLocation={
             selectedClient ? clientLocations[selectedClient] : null
@@ -1979,6 +1988,7 @@ export default function FormPage() {
         className={`${Object.values(quantities).some((q) => q > 0) ? "mb-80" : "mb-3"}`}
       >
         <button
+          type="button"
           className={`w-full py-3 rounded-lg font-medium transition-all duration-300 disabled:cursor-not-allowed transform hover:scale-[1.02] active:scale-[0.98] bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50`}
           onClick={handleSubmit}
           disabled={
@@ -2029,13 +2039,18 @@ export default function FormPage() {
 }
 
 // Utility function for throttling
-function throttle(func: Function, limit: number) {
-  let inThrottle: boolean;
-  return function (this: any, ...args: any[]) {
+function throttle<Args extends unknown[]>(
+  func: (...args: Args) => void,
+  limit: number,
+) {
+  let inThrottle = false;
+  return (...args: Args) => {
     if (!inThrottle) {
-      func.apply(this, args);
+      func(...args);
       inThrottle = true;
-      setTimeout(() => (inThrottle = false), limit);
+      setTimeout(() => {
+        inThrottle = false;
+      }, limit);
     }
   };
 }

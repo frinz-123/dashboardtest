@@ -10,10 +10,10 @@
  * - Prevents duplicate submissions via content fingerprinting
  */
 
-const DB_NAME = 'elrey-submissions';
+const DB_NAME = "elrey-submissions";
 const DB_VERSION = 1;
-const STORE_NAME = 'pending-orders';
-const SYNC_TAG = 'order-submission-sync';
+const STORE_NAME = "pending-orders";
+const SYNC_TAG = "order-submission-sync";
 
 // Location is considered stale after 90 seconds
 const MAX_LOCATION_AGE_MS = 90000;
@@ -22,14 +22,14 @@ const MAX_LOCATION_AGE_MS = 90000;
 const DUPLICATE_WINDOW_MS = 300000;
 
 export type SubmissionStatus =
-  | 'pending'           // Waiting to be sent
-  | 'sending'           // Currently being sent
-  | 'locationStale'     // Location too old, needs refresh
-  | 'failed'            // Failed after max retries
-  | 'completed';        // Successfully sent
+  | "pending" // Waiting to be sent
+  | "sending" // Currently being sent
+  | "locationStale" // Location too old, needs refresh
+  | "failed" // Failed after max retries
+  | "completed"; // Successfully sent
 
 export interface QueuedSubmission {
-  id: string;                    // Unique submission ID
+  id: string; // Unique submission ID
   payload: {
     clientName: string;
     clientCode: string;
@@ -52,11 +52,11 @@ export interface QueuedSubmission {
     overrideMonthCode: string | null;
   };
   status: SubmissionStatus;
-  createdAt: number;             // When the submission was queued
-  lastAttemptAt: number | null;  // Last retry attempt timestamp
-  retryCount: number;            // Number of retry attempts
-  errorMessage: string | null;   // Last error message
-  isAdmin: boolean;              // Admin users bypass location checks
+  createdAt: number; // When the submission was queued
+  lastAttemptAt: number | null; // Last retry attempt timestamp
+  retryCount: number; // Number of retry attempts
+  errorMessage: string | null; // Last error message
+  isAdmin: boolean; // Admin users bypass location checks
 }
 
 class SubmissionQueue {
@@ -74,11 +74,14 @@ class SubmissionQueue {
    * Clean up old fingerprints periodically
    */
   private cleanupFingerprints() {
-    if (typeof window === 'undefined') return;
+    if (typeof window === "undefined") return;
 
     setInterval(() => {
       const now = Date.now();
-      for (const [fingerprint, timestamp] of this.recentFingerprints.entries()) {
+      for (const [
+        fingerprint,
+        timestamp,
+      ] of this.recentFingerprints.entries()) {
         if (now - timestamp > DUPLICATE_WINDOW_MS) {
           this.recentFingerprints.delete(fingerprint);
         }
@@ -90,12 +93,14 @@ class SubmissionQueue {
    * Generate a fingerprint for a submission payload to detect duplicates
    * Uses client name, products, and a time window
    */
-  private generateFingerprint(payload: QueuedSubmission['payload']): string {
+  private generateFingerprint(payload: QueuedSubmission["payload"]): string {
     // Create a deterministic string from the key fields
     const productKeys = Object.keys(payload.products).sort();
     const productString = productKeys
-      .map(k => `${k}:${payload.products[k as keyof typeof payload.products]}`)
-      .join('|');
+      .map(
+        (k) => `${k}:${payload.products[k as keyof typeof payload.products]}`,
+      )
+      .join("|");
 
     // Round timestamp to 30-second windows to catch rapid duplicates
     const timeWindow = Math.floor(Date.now() / 30000);
@@ -106,12 +111,14 @@ class SubmissionQueue {
   /**
    * Check if a submission is a duplicate based on content fingerprint
    */
-  async isDuplicate(payload: QueuedSubmission['payload']): Promise<{ isDuplicate: boolean; existingId?: string }> {
+  async isDuplicate(
+    payload: QueuedSubmission["payload"],
+  ): Promise<{ isDuplicate: boolean; existingId?: string }> {
     const fingerprint = this.generateFingerprint(payload);
 
     // Check in-memory cache first
     if (this.recentFingerprints.has(fingerprint)) {
-      console.warn('🔄 DUPLICATE DETECTED (fingerprint match):', fingerprint);
+      console.warn("🔄 DUPLICATE DETECTED (fingerprint match):", fingerprint);
       return { isDuplicate: true };
     }
 
@@ -120,7 +127,7 @@ class SubmissionQueue {
     for (const item of pending) {
       const itemFingerprint = this.generateFingerprint(item.payload);
       if (itemFingerprint === fingerprint) {
-        console.warn('🔄 DUPLICATE DETECTED (queue match):', {
+        console.warn("🔄 DUPLICATE DETECTED (queue match):", {
           fingerprint,
           existingId: item.id,
           existingStatus: item.status,
@@ -137,8 +144,8 @@ class SubmissionQueue {
    * Falls back to manual processing if Background Sync is not supported
    */
   async requestBackgroundSync(): Promise<boolean> {
-    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
-      console.log('Background Sync not available: no service worker');
+    if (typeof window === "undefined" || !("serviceWorker" in navigator)) {
+      console.log("Background Sync not available: no service worker");
       return false;
     }
 
@@ -146,24 +153,26 @@ class SubmissionQueue {
       const registration = await navigator.serviceWorker.ready;
 
       // Check if Background Sync is supported
-      if ('sync' in registration) {
+      if ("sync" in registration) {
         await (registration as any).sync.register(SYNC_TAG);
-        console.log('📡 Background Sync registered:', SYNC_TAG);
+        console.log("📡 Background Sync registered:", SYNC_TAG);
         return true;
       } else {
-        console.log('Background Sync not supported, falling back to manual processing');
+        console.log(
+          "Background Sync not supported, falling back to manual processing",
+        );
         return false;
       }
     } catch (error) {
-      console.error('Failed to register Background Sync:', error);
+      console.error("Failed to register Background Sync:", error);
       return false;
     }
   }
 
   private async initDB(): Promise<boolean> {
     return new Promise((resolve) => {
-      if (typeof window === 'undefined' || !window.indexedDB) {
-        console.warn('IndexedDB not available, queue will not persist');
+      if (typeof window === "undefined" || !window.indexedDB) {
+        console.warn("IndexedDB not available, queue will not persist");
         resolve(false);
         return;
       }
@@ -171,13 +180,13 @@ class SubmissionQueue {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
 
       request.onerror = () => {
-        console.error('Failed to open IndexedDB:', request.error);
+        console.error("Failed to open IndexedDB:", request.error);
         resolve(false);
       };
 
       request.onsuccess = () => {
         this.db = request.result;
-        console.log('IndexedDB initialized for submission queue');
+        console.log("IndexedDB initialized for submission queue");
         resolve(true);
       };
 
@@ -185,16 +194,16 @@ class SubmissionQueue {
         const db = (event.target as IDBOpenDBRequest).result;
 
         if (!db.objectStoreNames.contains(STORE_NAME)) {
-          const store = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
-          store.createIndex('status', 'status', { unique: false });
-          store.createIndex('createdAt', 'createdAt', { unique: false });
+          const store = db.createObjectStore(STORE_NAME, { keyPath: "id" });
+          store.createIndex("status", "status", { unique: false });
+          store.createIndex("createdAt", "createdAt", { unique: false });
         }
       };
     });
   }
 
   private notifyListeners() {
-    this.listeners.forEach(listener => listener());
+    this.listeners.forEach((listener) => listener());
   }
 
   /**
@@ -209,22 +218,31 @@ class SubmissionQueue {
    * Add a submission to the queue
    * Returns the queued submission, or throws if it's a duplicate
    */
-  async add(submission: Omit<QueuedSubmission, 'status' | 'createdAt' | 'lastAttemptAt' | 'retryCount' | 'errorMessage'>): Promise<QueuedSubmission> {
+  async add(
+    submission: Omit<
+      QueuedSubmission,
+      "status" | "createdAt" | "lastAttemptAt" | "retryCount" | "errorMessage"
+    >,
+  ): Promise<QueuedSubmission> {
     await this.dbReady;
 
     // Check for duplicates first
-    const { isDuplicate, existingId } = await this.isDuplicate(submission.payload);
+    const { isDuplicate, existingId } = await this.isDuplicate(
+      submission.payload,
+    );
     if (isDuplicate) {
-      console.warn('🚫 Rejecting duplicate submission:', {
+      console.warn("🚫 Rejecting duplicate submission:", {
         clientName: submission.payload.clientName,
         existingId,
       });
-      throw new Error(`DUPLICATE: Este pedido ya esta en cola${existingId ? ` (ID: ${existingId})` : ''}`);
+      throw new Error(
+        `DUPLICATE: Este pedido ya esta en cola${existingId ? ` (ID: ${existingId})` : ""}`,
+      );
     }
 
     const queuedSubmission: QueuedSubmission = {
       ...submission,
-      status: 'pending',
+      status: "pending",
       createdAt: Date.now(),
       lastAttemptAt: null,
       retryCount: 0,
@@ -237,24 +255,24 @@ class SubmissionQueue {
 
     if (this.db) {
       return new Promise((resolve, reject) => {
-        const transaction = this.db!.transaction([STORE_NAME], 'readwrite');
+        const transaction = this.db!.transaction([STORE_NAME], "readwrite");
         const store = transaction.objectStore(STORE_NAME);
         const request = store.add(queuedSubmission);
 
         request.onsuccess = () => {
-          console.log('✅ Submission queued:', queuedSubmission.id);
+          console.log("✅ Submission queued:", queuedSubmission.id);
           this.notifyListeners();
 
           // Request Background Sync to process when online
-          this.requestBackgroundSync().catch(err => {
-            console.log('Background Sync not triggered:', err.message);
+          this.requestBackgroundSync().catch((err) => {
+            console.log("Background Sync not triggered:", err.message);
           });
 
           resolve(queuedSubmission);
         };
 
         request.onerror = () => {
-          console.error('Failed to queue submission:', request.error);
+          console.error("Failed to queue submission:", request.error);
           // Remove fingerprint on failure
           this.recentFingerprints.delete(fingerprint);
           reject(request.error);
@@ -265,11 +283,11 @@ class SubmissionQueue {
     // Fallback to localStorage if IndexedDB is not available
     const queue = this.getLocalStorageQueue();
     queue.push(queuedSubmission);
-    localStorage.setItem('pending-submissions', JSON.stringify(queue));
+    localStorage.setItem("pending-submissions", JSON.stringify(queue));
     this.notifyListeners();
 
     // Request Background Sync
-    this.requestBackgroundSync().catch(() => { });
+    this.requestBackgroundSync().catch(() => {});
 
     return queuedSubmission;
   }
@@ -282,7 +300,7 @@ class SubmissionQueue {
 
     if (this.db) {
       return new Promise((resolve, reject) => {
-        const transaction = this.db!.transaction([STORE_NAME], 'readonly');
+        const transaction = this.db!.transaction([STORE_NAME], "readonly");
         const store = transaction.objectStore(STORE_NAME);
         const request = store.getAll();
 
@@ -290,7 +308,7 @@ class SubmissionQueue {
           const all = request.result as QueuedSubmission[];
           // Return items that are not completed, sorted by creation time
           const pending = all
-            .filter(s => s.status !== 'completed')
+            .filter((s) => s.status !== "completed")
             .sort((a, b) => a.createdAt - b.createdAt);
           resolve(pending);
         };
@@ -299,7 +317,7 @@ class SubmissionQueue {
       });
     }
 
-    return this.getLocalStorageQueue().filter(s => s.status !== 'completed');
+    return this.getLocalStorageQueue().filter((s) => s.status !== "completed");
   }
 
   /**
@@ -310,7 +328,7 @@ class SubmissionQueue {
 
     if (this.db) {
       return new Promise((resolve, reject) => {
-        const transaction = this.db!.transaction([STORE_NAME], 'readwrite');
+        const transaction = this.db!.transaction([STORE_NAME], "readwrite");
         const store = transaction.objectStore(STORE_NAME);
         const getRequest = store.get(id);
 
@@ -338,10 +356,10 @@ class SubmissionQueue {
 
     // Fallback to localStorage
     const queue = this.getLocalStorageQueue();
-    const index = queue.findIndex(s => s.id === id);
+    const index = queue.findIndex((s) => s.id === id);
     if (index !== -1) {
       queue[index] = { ...queue[index], ...updates };
-      localStorage.setItem('pending-submissions', JSON.stringify(queue));
+      localStorage.setItem("pending-submissions", JSON.stringify(queue));
       this.notifyListeners();
     }
   }
@@ -354,12 +372,12 @@ class SubmissionQueue {
 
     if (this.db) {
       return new Promise((resolve, reject) => {
-        const transaction = this.db!.transaction([STORE_NAME], 'readwrite');
+        const transaction = this.db!.transaction([STORE_NAME], "readwrite");
         const store = transaction.objectStore(STORE_NAME);
         const request = store.delete(id);
 
         request.onsuccess = () => {
-          console.log('Submission removed from queue:', id);
+          console.log("Submission removed from queue:", id);
           this.notifyListeners();
           resolve();
         };
@@ -368,21 +386,24 @@ class SubmissionQueue {
       });
     }
 
-    const queue = this.getLocalStorageQueue().filter(s => s.id !== id);
-    localStorage.setItem('pending-submissions', JSON.stringify(queue));
+    const queue = this.getLocalStorageQueue().filter((s) => s.id !== id);
+    localStorage.setItem("pending-submissions", JSON.stringify(queue));
     this.notifyListeners();
   }
 
   /**
    * Update location for a queued submission
    */
-  async updateLocation(id: string, location: QueuedSubmission['payload']['location']): Promise<void> {
+  async updateLocation(
+    id: string,
+    location: QueuedSubmission["payload"]["location"],
+  ): Promise<void> {
     await this.update(id, {
       payload: {
         ...(await this.getById(id))?.payload,
         location,
-      } as QueuedSubmission['payload'],
-      status: 'pending', // Reset to pending since location is now fresh
+      } as QueuedSubmission["payload"],
+      status: "pending", // Reset to pending since location is now fresh
       errorMessage: null,
     });
   }
@@ -395,7 +416,7 @@ class SubmissionQueue {
 
     if (this.db) {
       return new Promise((resolve, reject) => {
-        const transaction = this.db!.transaction([STORE_NAME], 'readonly');
+        const transaction = this.db!.transaction([STORE_NAME], "readonly");
         const store = transaction.objectStore(STORE_NAME);
         const request = store.get(id);
 
@@ -405,7 +426,7 @@ class SubmissionQueue {
     }
 
     const queue = this.getLocalStorageQueue();
-    return queue.find(s => s.id === id) || null;
+    return queue.find((s) => s.id === id) || null;
   }
 
   /**
@@ -437,28 +458,32 @@ class SubmissionQueue {
     await this.dbReady;
 
     if (this.db) {
-      const transaction = this.db.transaction([STORE_NAME], 'readwrite');
+      const transaction = this.db.transaction([STORE_NAME], "readwrite");
       const store = transaction.objectStore(STORE_NAME);
       const request = store.getAll();
 
       request.onsuccess = () => {
         const all = request.result as QueuedSubmission[];
-        all.filter(s => s.status === 'completed').forEach(s => {
-          store.delete(s.id);
-        });
+        all
+          .filter((s) => s.status === "completed")
+          .forEach((s) => {
+            store.delete(s.id);
+          });
         this.notifyListeners();
       };
       return;
     }
 
-    const queue = this.getLocalStorageQueue().filter(s => s.status !== 'completed');
-    localStorage.setItem('pending-submissions', JSON.stringify(queue));
+    const queue = this.getLocalStorageQueue().filter(
+      (s) => s.status !== "completed",
+    );
+    localStorage.setItem("pending-submissions", JSON.stringify(queue));
     this.notifyListeners();
   }
 
   private getLocalStorageQueue(): QueuedSubmission[] {
     try {
-      const stored = localStorage.getItem('pending-submissions');
+      const stored = localStorage.getItem("pending-submissions");
       return stored ? JSON.parse(stored) : [];
     } catch {
       return [];

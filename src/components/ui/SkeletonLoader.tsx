@@ -1,19 +1,19 @@
-'use client'
+"use client";
 
-import React from 'react'
+import React from "react";
 
 interface SkeletonProps {
-  className?: string
-  animate?: boolean
+  className?: string;
+  animate?: boolean;
 }
 
-export function Skeleton({ className = '', animate = true }: SkeletonProps) {
+export function Skeleton({ className = "", animate = true }: SkeletonProps) {
   return (
-    <div 
-      className={`bg-gray-200 rounded ${animate ? 'animate-pulse' : ''} ${className}`}
+    <div
+      className={`bg-gray-200 rounded ${animate ? "animate-pulse" : ""} ${className}`}
       aria-label="Loading..."
     />
-  )
+  );
 }
 
 export function ClientSearchSkeleton() {
@@ -26,7 +26,7 @@ export function ClientSearchSkeleton() {
         <Skeleton className="h-4 w-3/4" />
       </div>
     </div>
-  )
+  );
 }
 
 export function ProductListSkeleton() {
@@ -43,7 +43,7 @@ export function ProductListSkeleton() {
         </div>
       ))}
     </div>
-  )
+  );
 }
 
 export function MapSkeleton() {
@@ -59,5 +59,5 @@ export function MapSkeleton() {
         </div>
       </div>
     </div>
-  )
+  );
 }

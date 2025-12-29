@@ -1,31 +1,31 @@
-'use client'
+"use client";
 
-import { useEffect } from 'react'
+import { useEffect } from "react";
 
 export function ZoomPrevention() {
   useEffect(() => {
     function preventZoom(e: TouchEvent) {
       if (e.touches.length > 1) {
-        e.preventDefault()
+        e.preventDefault();
       }
     }
 
     function preventDefaultZoom(e: WheelEvent) {
       if (e.ctrlKey) {
-        e.preventDefault()
+        e.preventDefault();
       }
     }
 
-    document.addEventListener('touchstart', preventZoom, { passive: false })
-    document.addEventListener('touchmove', preventZoom, { passive: false })
-    document.addEventListener('wheel', preventDefaultZoom, { passive: false })
+    document.addEventListener("touchstart", preventZoom, { passive: false });
+    document.addEventListener("touchmove", preventZoom, { passive: false });
+    document.addEventListener("wheel", preventDefaultZoom, { passive: false });
 
     return () => {
-      document.removeEventListener('touchstart', preventZoom)
-      document.removeEventListener('touchmove', preventZoom)
-      document.removeEventListener('wheel', preventDefaultZoom)
-    }
-  }, [])
+      document.removeEventListener("touchstart", preventZoom);
+      document.removeEventListener("touchmove", preventZoom);
+      document.removeEventListener("wheel", preventDefaultZoom);
+    };
+  }, []);
 
-  return null
-} 
+  return null;
+}

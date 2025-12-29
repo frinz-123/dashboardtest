@@ -1,13 +1,13 @@
-import '@testing-library/jest-dom'
+import "@testing-library/jest-dom";
 
 // Mock Next.js router
-jest.mock('next/router', () => ({
+jest.mock("next/router", () => ({
   useRouter() {
     return {
-      route: '/',
-      pathname: '/',
+      route: "/",
+      pathname: "/",
       query: {},
-      asPath: '/',
+      asPath: "/",
       push: jest.fn(),
       pop: jest.fn(),
       reload: jest.fn(),
@@ -19,12 +19,12 @@ jest.mock('next/router', () => ({
         off: jest.fn(),
         emit: jest.fn(),
       },
-    }
+    };
   },
-}))
+}));
 
 // Mock Next.js navigation
-jest.mock('next/navigation', () => ({
+jest.mock("next/navigation", () => ({
   useRouter() {
     return {
       push: jest.fn(),
@@ -33,18 +33,18 @@ jest.mock('next/navigation', () => ({
       back: jest.fn(),
       forward: jest.fn(),
       refresh: jest.fn(),
-    }
+    };
   },
-  usePathname: () => '/',
+  usePathname: () => "/",
   useSearchParams: () => new URLSearchParams(),
-}))
+}));
 
 // Mock environment variables for tests
-process.env.NEXTAUTH_URL = 'http://localhost:3000'
-process.env.NEXTAUTH_SECRET = 'test-secret'
+process.env.NEXTAUTH_URL = "http://localhost:3000";
+process.env.NEXTAUTH_SECRET = "test-secret";
 
 // Mock Mapbox GL
-jest.mock('mapbox-gl', () => ({
+jest.mock("mapbox-gl", () => ({
   Map: jest.fn(() => ({
     on: jest.fn(),
     remove: jest.fn(),
@@ -57,22 +57,23 @@ jest.mock('mapbox-gl', () => ({
     })),
   })),
   NavigationControl: jest.fn(),
-}))
+}));
 
 // Mock Google APIs
 global.google = {
   sheets: jest.fn(),
-}
+};
 
 // Suppress console warnings in tests
-const originalWarn = console.warn
+const originalWarn = console.warn;
 beforeAll(() => {
   console.warn = (...args) => {
-    if (args[0]?.includes?.('Warning: ReactDOM.render is no longer supported')) return
-    originalWarn.call(console, ...args)
-  }
-})
+    if (args[0]?.includes?.("Warning: ReactDOM.render is no longer supported"))
+      return;
+    originalWarn.call(console, ...args);
+  };
+});
 
 afterAll(() => {
-  console.warn = originalWarn
-})
+  console.warn = originalWarn;
+});

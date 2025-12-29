@@ -3,7 +3,13 @@
 "use client";
 
 import { Minus, Plus } from "lucide-react";
-import { Button, Group, Input, Label, NumberField } from "react-aria-components";
+import {
+  Button,
+  Group,
+  Input,
+  Label,
+  NumberField,
+} from "react-aria-components";
 
 interface LabelNumbersProps {
   label: string;
@@ -11,17 +17,15 @@ interface LabelNumbersProps {
   onChange: (value: number) => void;
 }
 
-export default function LabelNumbers({ label, value, onChange }: LabelNumbersProps) {
+export default function LabelNumbers({
+  label,
+  value,
+  onChange,
+}: LabelNumbersProps) {
   return (
-    <NumberField 
-      defaultValue={value} 
-      minValue={0}
-      onChange={onChange}
-    >
+    <NumberField defaultValue={value} minValue={0} onChange={onChange}>
       <div className="space-y-2">
-        <Label className="text-sm font-normal text-foreground">
-          {label}
-        </Label>
+        <Label className="text-sm font-normal text-foreground">{label}</Label>
         <Group className="relative inline-flex h-9 w-full items-center overflow-hidden whitespace-nowrap rounded-lg border border-input text-sm shadow-sm shadow-black/[.04] ring-offset-background transition-shadow data-[focus-within]:border-ring data-[disabled]:opacity-50 data-[focus-within]:outline-none data-[focus-within]:ring-2 data-[focus-within]:ring-ring/30 data-[focus-within]:ring-offset-2">
           <Button
             slot="decrement"

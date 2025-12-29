@@ -1,15 +1,27 @@
-"use client"
+"use client";
 
-import type * as React from "react"
-import * as RadioGroupPrimitive from "@radix-ui/react-radio-group"
+import type * as React from "react";
+import * as RadioGroupPrimitive from "@radix-ui/react-radio-group";
 
-import { cn } from "@/lib/utils"
+import { cn } from "@/lib/utils";
 
-function RadioGroup({ className, ...props }: React.ComponentProps<typeof RadioGroupPrimitive.Root>) {
-  return <RadioGroupPrimitive.Root data-slot="radio-group" className={cn("grid gap-3", className)} {...props} />
+function RadioGroup({
+  className,
+  ...props
+}: React.ComponentProps<typeof RadioGroupPrimitive.Root>) {
+  return (
+    <RadioGroupPrimitive.Root
+      data-slot="radio-group"
+      className={cn("grid gap-3", className)}
+      {...props}
+    />
+  );
 }
 
-function RadioGroupItem({ className, ...props }: React.ComponentProps<typeof RadioGroupPrimitive.Item>) {
+function RadioGroupItem({
+  className,
+  ...props
+}: React.ComponentProps<typeof RadioGroupPrimitive.Item>) {
   return (
     <RadioGroupPrimitive.Item
       data-slot="radio-group-item"
@@ -20,12 +32,18 @@ function RadioGroupItem({ className, ...props }: React.ComponentProps<typeof Rad
       {...props}
     >
       <RadioGroupPrimitive.Indicator className="flex items-center justify-center text-current">
-        <svg width="6" height="6" viewBox="0 0 6 6" fill="currentcolor" xmlns="http://www.w3.org/2000/svg">
+        <svg
+          width="6"
+          height="6"
+          viewBox="0 0 6 6"
+          fill="currentcolor"
+          xmlns="http://www.w3.org/2000/svg"
+        >
           <circle cx="3" cy="3" r="3" />
         </svg>
       </RadioGroupPrimitive.Indicator>
     </RadioGroupPrimitive.Item>
-  )
+  );
 }
 
-export { RadioGroup, RadioGroupItem }
+export { RadioGroup, RadioGroupItem };

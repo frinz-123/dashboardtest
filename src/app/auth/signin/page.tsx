@@ -1,7 +1,7 @@
-'use client'
+"use client";
 
-import { signIn } from 'next-auth/react'
-import Image from 'next/image'
+import { signIn } from "next-auth/react";
+import Image from "next/image";
 
 export default function SignIn() {
   return (
@@ -15,7 +15,7 @@ export default function SignIn() {
         <div className="mt-8 space-y-6">
           <div>
             <button
-              onClick={() => signIn('google', { callbackUrl: '/' })}
+              onClick={() => signIn("google", { callbackUrl: "/" })}
               className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 border-gray-300"
             >
               <span className="absolute left-0 inset-y-0 flex items-center pl-3">
@@ -33,5 +33,5 @@ export default function SignIn() {
         </div>
       </div>
     </div>
-  )
-} 
+  );
+}
