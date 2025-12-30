@@ -124,13 +124,14 @@ export async function POST(req: Request) {
       : null;
     const queuedAge =
       typeof queuedAt === "number" ? Date.now() - queuedAt : null;
+    const isQueuedSubmission = typeof queuedAt === "number";
+    const normalizedAttemptNumber =
+      typeof attemptNumber === "number" ? attemptNumber : 1;
 
-    // If the order sat in the queue for longer than our GPS freshness window,
-    // treat it as a delayed queued submission and trust the stored coordinates
-    // instead of asking for a fresh location when the user is already away.
-    const isDelayedQueuedSubmission =
-      queuedAge !== null && queuedAge > MAX_LOCATION_AGE;
-    const allowQueuedStaleLocation = !isAdmin && isDelayedQueuedSubmission;
+    // Queued submissions already passed client-side checks (button gating),
+    // so skip all location validations on the server for queued attempts.
+    const shouldBypassLocationChecks = !isAdmin && isQueuedSubmission;
+    const allowQueuedStaleLocation = shouldBypassLocationChecks;
 
     // ✅ VALIDATION: Enhanced logging for email tracking
     console.log("🔍 FORM SUBMISSION RECEIVED:", {
@@ -167,7 +168,9 @@ export async function POST(req: Request) {
       maxAllowedLocationAgeMs: MAX_LOCATION_AGE,
       isAdminOverrideEffective: isAdmin,
       allowQueuedStaleLocation,
-      isDelayedQueuedSubmission,
+      isQueuedSubmission,
+      normalizedAttemptNumber,
+      shouldBypassLocationChecks,
     });
 
     // ✅ VALIDATION: Location validation
@@ -192,9 +195,9 @@ export async function POST(req: Request) {
       location.accuracy !== undefined &&
       location.accuracy > MAX_LOCATION_ACCURACY
     ) {
-      if (isDelayedQueuedSubmission) {
+      if (shouldBypassLocationChecks) {
         console.log(
-          "🛰️ QUEUED ORDER: Bypassing GPS accuracy check for delayed submission",
+          "🛰️ QUEUED ORDER: Bypassing GPS accuracy check for queued submission",
           {
             accuracy: location.accuracy,
             maxAllowed: MAX_LOCATION_ACCURACY,
@@ -348,9 +351,9 @@ export async function POST(req: Request) {
 
           // Validate distance to client (skip for admin override users)
           if (!isAdmin && distanceToClient > MAX_CLIENT_DISTANCE) {
-            if (isDelayedQueuedSubmission) {
+            if (shouldBypassLocationChecks) {
               console.log(
-                "🛰️ QUEUED ORDER: Bypassing distance validation for delayed submission",
+                "🛰️ QUEUED ORDER: Bypassing distance validation for queued submission",
                 {
                   distance: distanceToClient,
                   maxAllowed: MAX_CLIENT_DISTANCE,

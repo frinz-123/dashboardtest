@@ -1196,6 +1196,10 @@ export default function FormPage() {
   useEffect(() => {
     if (debouncedSearchTerm) {
       const normalizedSearch = normalizeText(debouncedSearchTerm);
+      const searchTerms = normalizedSearch
+        .split(" ")
+        .map((term) => term.trim())
+        .filter(Boolean);
       const MAX_RESULTS = 20; // Limit to 20 results for better performance
 
       console.log("🔎 Buscando clientes normalizados:", {
@@ -1209,7 +1213,8 @@ export default function FormPage() {
           if (!name) return false;
           const normalizedName = normalizeText(name);
           if (normalizedName.includes(NORMALIZED_ARCHIVE_MARKER)) return false;
-          return normalizedName.includes(normalizedSearch);
+          if (!searchTerms.length) return false;
+          return searchTerms.every((term) => normalizedName.includes(term));
         })
         .slice(0, MAX_RESULTS);
 

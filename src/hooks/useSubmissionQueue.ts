@@ -73,6 +73,7 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
 
   const isProcessingRef = useRef(false);
   const processIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const autoRetriedIdsRef = useRef<Set<string>>(new Set());
 
   // Load initial state
   const loadQueue = useCallback(async () => {
@@ -190,10 +191,24 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
   );
 
   // Determine if a failed item should be auto-retried (typically location errors)
-  const shouldAutoRetryFailedItem = (item: QueuedSubmission) =>
-    item.status === "failed" &&
-    typeof item.errorMessage === "string" &&
-    /ubicaci|location|gps|precisi|lejos|distance/i.test(item.errorMessage);
+  const shouldAutoRetryFailedItem = useCallback((item: QueuedSubmission) => {
+    if (autoRetriedIdsRef.current.has(item.id)) return false;
+    if (item.status !== "failed") return false;
+    if (typeof item.errorMessage !== "string") return false;
+    if (!/ubicaci|location|gps|precisi|lejos|distance/i.test(item.errorMessage))
+      return false;
+
+    const location = item.payload?.location;
+    if (
+      !location ||
+      typeof location.lat !== "number" ||
+      typeof location.lng !== "number"
+    ) {
+      return false;
+    }
+
+    return true;
+  }, []);
 
   // Process all pending items in the queue
   const processQueue = useCallback(async () => {
@@ -226,6 +241,7 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
           retryCount: Math.min(item.retryCount, MAX_RETRIES - 1),
           errorMessage: null,
         });
+        autoRetriedIdsRef.current.add(item.id);
       }
 
       // Refresh items after recovery to ensure we process the updated state
@@ -260,7 +276,7 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
       setState((prev) => ({ ...prev, isProcessing: false, currentItem: null }));
       await loadQueue();
     }
-  }, [processItem, loadQueue]);
+  }, [processItem, loadQueue, shouldAutoRetryFailedItem]);
 
   // Add a new submission to the queue
   const addToQueue = useCallback(
