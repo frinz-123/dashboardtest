@@ -124,8 +124,13 @@ export async function POST(req: Request) {
       : null;
     const queuedAge =
       typeof queuedAt === "number" ? Date.now() - queuedAt : null;
-    const allowQueuedStaleLocation =
-      !isAdmin && queuedAge !== null && queuedAge > MAX_LOCATION_AGE;
+
+    // If the order sat in the queue for longer than our GPS freshness window,
+    // treat it as a delayed queued submission and trust the stored coordinates
+    // instead of asking for a fresh location when the user is already away.
+    const isDelayedQueuedSubmission =
+      queuedAge !== null && queuedAge > MAX_LOCATION_AGE;
+    const allowQueuedStaleLocation = !isAdmin && isDelayedQueuedSubmission;
 
     // ✅ VALIDATION: Enhanced logging for email tracking
     console.log("🔍 FORM SUBMISSION RECEIVED:", {
@@ -162,6 +167,7 @@ export async function POST(req: Request) {
       maxAllowedLocationAgeMs: MAX_LOCATION_AGE,
       isAdminOverrideEffective: isAdmin,
       allowQueuedStaleLocation,
+      isDelayedQueuedSubmission,
     });
 
     // ✅ VALIDATION: Location validation
@@ -186,20 +192,34 @@ export async function POST(req: Request) {
       location.accuracy !== undefined &&
       location.accuracy > MAX_LOCATION_ACCURACY
     ) {
-      console.error("❌ LOCATION VALIDATION FAILED: Poor GPS accuracy", {
-        accuracy: location.accuracy,
-        maxAllowed: MAX_LOCATION_ACCURACY,
-        timestamp: new Date().toISOString(),
-        clientName,
-        userEmail,
-      });
-      return NextResponse.json(
-        {
-          success: false,
-          error: `La precisión del GPS es insuficiente (±${Math.round(location.accuracy)}m). Por favor, espera unos segundos para obtener una mejor señal.`,
-        },
-        { status: 400 },
-      );
+      if (isDelayedQueuedSubmission) {
+        console.log(
+          "🛰️ QUEUED ORDER: Bypassing GPS accuracy check for delayed submission",
+          {
+            accuracy: location.accuracy,
+            maxAllowed: MAX_LOCATION_ACCURACY,
+            queuedAge,
+            clientName,
+            userEmail,
+            timestamp: new Date().toISOString(),
+          },
+        );
+      } else {
+        console.error("❌ LOCATION VALIDATION FAILED: Poor GPS accuracy", {
+          accuracy: location.accuracy,
+          maxAllowed: MAX_LOCATION_ACCURACY,
+          timestamp: new Date().toISOString(),
+          clientName,
+          userEmail,
+        });
+        return NextResponse.json(
+          {
+            success: false,
+            error: `La precisión del GPS es insuficiente (±${Math.round(location.accuracy)}m). Por favor, espera unos segundos para obtener una mejor señal.`,
+          },
+          { status: 400 },
+        );
+      }
     }
 
     // Log if admin bypassed GPS accuracy check
@@ -328,23 +348,37 @@ export async function POST(req: Request) {
 
           // Validate distance to client (skip for admin override users)
           if (!isAdmin && distanceToClient > MAX_CLIENT_DISTANCE) {
-            console.error(
-              "❌ LOCATION VALIDATION FAILED: Too far from client",
-              {
-                distance: distanceToClient,
-                maxAllowed: MAX_CLIENT_DISTANCE,
-                clientName,
-                userEmail,
-                timestamp: new Date().toISOString(),
-              },
-            );
-            return NextResponse.json(
-              {
-                success: false,
-                error: `Estás demasiado lejos del cliente (${Math.round(distanceToClient)}m). Por favor, acércate a la ubicación del cliente para continuar.`,
-              },
-              { status: 400 },
-            );
+            if (isDelayedQueuedSubmission) {
+              console.log(
+                "🛰️ QUEUED ORDER: Bypassing distance validation for delayed submission",
+                {
+                  distance: distanceToClient,
+                  maxAllowed: MAX_CLIENT_DISTANCE,
+                  clientName,
+                  userEmail,
+                  queuedAge,
+                  timestamp: new Date().toISOString(),
+                },
+              );
+            } else {
+              console.error(
+                "❌ LOCATION VALIDATION FAILED: Too far from client",
+                {
+                  distance: distanceToClient,
+                  maxAllowed: MAX_CLIENT_DISTANCE,
+                  clientName,
+                  userEmail,
+                  timestamp: new Date().toISOString(),
+                },
+              );
+              return NextResponse.json(
+                {
+                  success: false,
+                  error: `Estás demasiado lejos del cliente (${Math.round(distanceToClient)}m). Por favor, acércate a la ubicación del cliente para continuar.`,
+                },
+                { status: 400 },
+              );
+            }
           }
 
           // Log if admin bypassed distance check

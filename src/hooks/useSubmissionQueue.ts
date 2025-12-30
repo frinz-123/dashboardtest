@@ -189,6 +189,12 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
     [sendSubmission],
   );
 
+  // Determine if a failed item should be auto-retried (typically location errors)
+  const shouldAutoRetryFailedItem = (item: QueuedSubmission) =>
+    item.status === "failed" &&
+    typeof item.errorMessage === "string" &&
+    /ubicaci|location|gps|precisi|lejos|distance/i.test(item.errorMessage);
+
   // Process all pending items in the queue
   const processQueue = useCallback(async () => {
     if (isProcessingRef.current) {
@@ -205,7 +211,27 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
     setState((prev) => ({ ...prev, isProcessing: true }));
 
     try {
-      const items = await submissionQueue.getPending();
+      let items = await submissionQueue.getPending();
+
+      // Auto-recover failed items that were blocked by location checks
+      const failedToRecover = items.filter(shouldAutoRetryFailedItem);
+      for (const item of failedToRecover) {
+        console.log(
+          "♻️ Auto-retrying failed item after location bypass fix:",
+          item.id,
+          item.errorMessage,
+        );
+        await submissionQueue.update(item.id, {
+          status: "pending",
+          retryCount: Math.min(item.retryCount, MAX_RETRIES - 1),
+          errorMessage: null,
+        });
+      }
+
+      // Refresh items after recovery to ensure we process the updated state
+      if (failedToRecover.length > 0) {
+        items = await submissionQueue.getPending();
+      }
 
       for (const item of items) {
         // Skip items that are already being sent or have failed
