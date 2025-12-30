@@ -337,6 +337,10 @@ export default function InspectorPeriodosPage() {
       .sort((a, b) => b.totalSales - a.totalSales);
   }, [selectedPeriod, salesData]);
 
+  const visibleSellerStats = useMemo(() => {
+    return sellerStats.filter((s) => !hiddenSellers.has(s.email));
+  }, [sellerStats, hiddenSellers]);
+
   // Sales by code for filtered data
   const salesByCode = useMemo(() => {
     const byCode: Record<string, { total: number; count: number }> = {};
@@ -421,20 +425,22 @@ export default function InspectorPeriodosPage() {
 
   // Summary stats
   const summaryStats = useMemo(() => {
-    if (sellerStats.length === 0) return null;
+    if (visibleSellerStats.length === 0) return null;
 
-    const totalTeamSales = sellerStats.reduce(
+    const totalTeamSales = visibleSellerStats.reduce(
       (sum, s) => sum + s.totalSales,
       0,
     );
-    const totalTeamGoal = sellerStats.reduce((sum, s) => sum + s.goal, 0);
+    const totalTeamGoal = visibleSellerStats.reduce((sum, s) => sum + s.goal, 0);
     const avgProgress =
-      sellerStats.length > 0
-        ? sellerStats.reduce((sum, s) => sum + s.progress, 0) /
-          sellerStats.length
+      visibleSellerStats.length > 0
+        ? visibleSellerStats.reduce((sum, s) => sum + s.progress, 0) /
+          visibleSellerStats.length
         : 0;
-    const sellersOnTrack = sellerStats.filter((s) => s.progress >= 100).length;
-    const bestPerformer = sellerStats[0];
+    const sellersOnTrack = visibleSellerStats.filter(
+      (s) => s.progress >= 100,
+    ).length;
+    const bestPerformer = visibleSellerStats[0];
 
     return {
       totalTeamSales,
@@ -443,7 +449,7 @@ export default function InspectorPeriodosPage() {
       sellersOnTrack,
       bestPerformer,
     };
-  }, [sellerStats]);
+  }, [visibleSellerStats]);
 
   // Current seller stats (when viewing seller detail)
   const currentSellerStats = useMemo(() => {
@@ -498,10 +504,6 @@ export default function InspectorPeriodosPage() {
       return newSet;
     });
   };
-
-  const visibleSellerStats = useMemo(() => {
-    return sellerStats.filter((s) => !hiddenSellers.has(s.email));
-  }, [sellerStats, hiddenSellers]);
 
   // Loading state
   if (status === "loading") {
@@ -895,7 +897,7 @@ export default function InspectorPeriodosPage() {
                   </span>
                 </div>
                 <p className="text-xl font-bold text-gray-800">
-                  {currentSellerStats.progress.toFixed(1)}%
+                  {currentSellerStats.progress.toFixed(2)}%
                 </p>
                 <div className="w-full h-2 bg-gray-100 rounded-full mt-2">
                   <div
@@ -1321,10 +1323,11 @@ export default function InspectorPeriodosPage() {
                     </span>
                   </div>
                   <p className="text-xl font-bold text-gray-800">
-                    {summaryStats.avgProgress.toFixed(1)}%
+                    {summaryStats.avgProgress.toFixed(2)}%
                   </p>
                   <p className="text-xs text-gray-500 mt-1">
-                    {summaryStats.sellersOnTrack} de {sellerStats.length} en
+                    {summaryStats.sellersOnTrack} de{" "}
+                    {visibleSellerStats.length} en
                     meta
                   </p>
                 </div>
@@ -1375,7 +1378,7 @@ export default function InspectorPeriodosPage() {
               <div className="h-[300px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
-                    data={sellerStats}
+                    data={visibleSellerStats}
                     layout="vertical"
                     margin={{ left: 80, right: 20, top: 10, bottom: 10 }}
                   >
@@ -1404,7 +1407,7 @@ export default function InspectorPeriodosPage() {
                       }}
                     />
                     <Bar dataKey="totalSales" radius={[0, 4, 4, 0]}>
-                      {sellerStats.map((entry, index) => (
+                      {visibleSellerStats.map((entry, index) => (
                         <Cell
                           key={`cell-${index}`}
                           fill={COLORS[index % COLORS.length]}
@@ -1567,7 +1570,7 @@ export default function InspectorPeriodosPage() {
                             <span
                               className={`text-xs font-medium px-2 py-0.5 rounded-full ${getProgressColor(seller.progress)}`}
                             >
-                              {seller.progress.toFixed(1)}%
+                              {seller.progress.toFixed(2)}%
                             </span>
                           </div>
                         </td>
@@ -1599,7 +1602,7 @@ export default function InspectorPeriodosPage() {
                                   (seller.efectivoSales /
                                     EFECTIVO_GOALS[seller.name]) *
                                   100
-                                ).toFixed(0)}
+                                ).toFixed(2)}
                                 %
                               </span>
                             </div>
@@ -1664,7 +1667,7 @@ export default function InspectorPeriodosPage() {
                                 0,
                               ) / visibleSellerStats.length
                             : 0
-                          ).toFixed(1)}
+                          ).toFixed(2)}
                           % prom
                         </span>
                       </td>
@@ -1818,25 +1821,27 @@ export default function InspectorPeriodosPage() {
                         data={[
                           {
                             name: "En meta (100%+)",
-                            value: sellerStats.filter((s) => s.progress >= 100)
-                              .length,
+                            value: visibleSellerStats.filter(
+                              (s) => s.progress >= 100,
+                            ).length,
                           },
                           {
                             name: "Cerca (75-99%)",
-                            value: sellerStats.filter(
+                            value: visibleSellerStats.filter(
                               (s) => s.progress >= 75 && s.progress < 100,
                             ).length,
                           },
                           {
                             name: "Medio (50-74%)",
-                            value: sellerStats.filter(
+                            value: visibleSellerStats.filter(
                               (s) => s.progress >= 50 && s.progress < 75,
                             ).length,
                           },
                           {
                             name: "Bajo (<50%)",
-                            value: sellerStats.filter((s) => s.progress < 50)
-                              .length,
+                            value: visibleSellerStats.filter(
+                              (s) => s.progress < 50,
+                            ).length,
                           },
                         ].filter((d) => d.value > 0)}
                         cx="50%"
@@ -1875,13 +1880,16 @@ export default function InspectorPeriodosPage() {
                       Vendedores activos
                     </span>
                     <span className="font-medium text-gray-800">
-                      {sellerStats.filter((s) => s.totalSales > 0).length}
+                      {visibleSellerStats.filter((s) => s.totalSales > 0).length}
                     </span>
                   </div>
                   <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                     <span className="text-sm text-gray-600">Total visitas</span>
                     <span className="font-medium text-gray-800">
-                      {sellerStats.reduce((sum, s) => sum + s.visitsCount, 0)}
+                      {visibleSellerStats.reduce(
+                        (sum, s) => sum + s.visitsCount,
+                        0,
+                      )}
                     </span>
                   </div>
                   <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
@@ -1889,7 +1897,7 @@ export default function InspectorPeriodosPage() {
                       Cumplieron meta
                     </span>
                     <span className="font-medium text-green-600">
-                      {sellerStats.filter((s) => s.progress >= 100).length}
+                      {visibleSellerStats.filter((s) => s.progress >= 100).length}
                     </span>
                   </div>
                   <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
