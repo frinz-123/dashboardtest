@@ -1,15 +1,8 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import "./globals.css";
 import AuthProvider from "@/components/providers/AuthProvider";
 import { ZoomPrevention } from "@/components/ZoomPrevention";
 import ClientDataPrefetcher from "@/components/ClientDataPrefetcher";
-
-const inter = Inter({
-  subsets: ["latin"],
-  display: "swap",
-  variable: "--font-inter",
-});
 
 export const metadata: Metadata = {
   title: "Dashboard El rey",
@@ -29,8 +22,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={inter.variable}>
+    <html lang="en">
       <head>
+        <link rel="preconnect" href="https://rsms.me/" />
+        <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
         <link rel="icon" type="image/svg+xml" href="/icons/favicon.svg" />
         <link rel="icon" href="/icons/favicon.ico" sizes="any" />
         <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
@@ -61,7 +56,7 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className={`${inter.variable} antialiased scroll-container`}>
+      <body className="antialiased scroll-container">
         <ZoomPrevention />
         <ClientDataPrefetcher />
         <AuthProvider>{children}</AuthProvider>
