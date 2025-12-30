@@ -4,10 +4,10 @@ import { Menu, ShoppingCart } from "lucide-react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import CleyOrderQuestion from "@/components/comp-166";
 import BlurIn from "@/components/ui/blur-in";
 import LabelNumbers from "@/components/ui/labelnumbers";
-import ClientMap from "@/components/ui/Map";
 import PendingOrdersBanner from "@/components/ui/PendingOrdersBanner";
 import SearchInput from "@/components/ui/SearchInput";
 import {
@@ -19,6 +19,12 @@ import Toast, { useToast } from "@/components/ui/Toast";
 import { useSubmissionQueue } from "@/hooks/useSubmissionQueue";
 import { getCurrentPeriodInfo } from "@/utils/dateUtils";
 import { haptics } from "@/utils/haptics";
+
+// Lazy load Map component to reduce initial bundle size
+const ClientMap = dynamic(() => import("@/components/ui/Map"), {
+  ssr: false,
+  loading: () => <MapSkeleton />,
+});
 
 const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY;
 const spreadsheetId = process.env.NEXT_PUBLIC_SPREADSHEET_ID;
