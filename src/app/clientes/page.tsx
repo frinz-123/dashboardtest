@@ -346,10 +346,24 @@ function ClientesDesatendidos({
   analyticsData,
   isLoading,
   onSelectClient,
+  dateFilter,
+  setDateFilter,
+  customDateFrom,
+  setCustomDateFrom,
+  customDateTo,
+  setCustomDateTo,
 }: {
   analyticsData: AnalyticsData | null;
   isLoading: boolean;
   onSelectClient: (clientName: string) => void;
+  dateFilter: "currentMonth" | "30d" | "2m" | "6m" | "year" | "custom";
+  setDateFilter: (
+    filter: "currentMonth" | "30d" | "2m" | "6m" | "year" | "custom",
+  ) => void;
+  customDateFrom: string;
+  setCustomDateFrom: (date: string) => void;
+  customDateTo: string;
+  setCustomDateTo: (date: string) => void;
 }) {
   const [sortBy, setSortBy] = useState<
     "score" | "ventas" | "visitas" | "ultimaVisita"
@@ -469,6 +483,101 @@ function ClientesDesatendidos({
             </p>
           </div>
         </div>
+
+        {/* Date Filter Controls */}
+        <div className="space-y-2">
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => setDateFilter("currentMonth")}
+              className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
+                dateFilter === "currentMonth"
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              }`}
+            >
+              Mes Actual
+            </button>
+            <button
+              onClick={() => setDateFilter("30d")}
+              className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
+                dateFilter === "30d"
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              }`}
+            >
+              Últimos 30 días
+            </button>
+            <button
+              onClick={() => setDateFilter("2m")}
+              className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
+                dateFilter === "2m"
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              }`}
+            >
+              Últimos 2 meses
+            </button>
+            <button
+              onClick={() => setDateFilter("6m")}
+              className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
+                dateFilter === "6m"
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              }`}
+            >
+              Últimos 6 meses
+            </button>
+            <button
+              onClick={() => setDateFilter("year")}
+              className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
+                dateFilter === "year"
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              }`}
+            >
+              Este Año
+            </button>
+            <button
+              onClick={() => setDateFilter("custom")}
+              className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
+                dateFilter === "custom"
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              }`}
+            >
+              Personalizado
+            </button>
+          </div>
+
+          {/* Custom Date Range Inputs */}
+          {dateFilter === "custom" && (
+            <div className="grid grid-cols-2 gap-2 pt-2">
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">
+                  Desde
+                </label>
+                <input
+                  type="date"
+                  value={customDateFrom}
+                  onChange={(e) => setCustomDateFrom(e.target.value)}
+                  className="w-full text-xs border border-gray-300 rounded px-2 py-1.5"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-600 mb-1">
+                  Hasta
+                </label>
+                <input
+                  type="date"
+                  value={customDateTo}
+                  onChange={(e) => setCustomDateTo(e.target.value)}
+                  className="w-full text-xs border border-gray-300 rounded px-2 py-1.5"
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
         <div>
           <input
             value={query}
@@ -1303,6 +1412,18 @@ export default function ClientesPage() {
   ] = useState<string>("");
   const [productosPorCodigoCustomDateTo, setProductosPorCodigoCustomDateTo] =
     useState<string>("");
+  const [clientesDesatendidosData, setClientesDesatendidosData] =
+    useState<AnalyticsData | null>(null);
+  const [isLoadingClientesDesatendidos, setIsLoadingClientesDesatendidos] =
+    useState(false);
+  const [clientesDesatendidosDateFilter, setClientesDesatendidosDateFilter] =
+    useState<"currentMonth" | "30d" | "2m" | "6m" | "year" | "custom">("year");
+  const [
+    clientesDesatendidosCustomDateFrom,
+    setClientesDesatendidosCustomDateFrom,
+  ] = useState<string>("");
+  const [clientesDesatendidosCustomDateTo, setClientesDesatendidosCustomDateTo] =
+    useState<string>("");
 
   const throttledLocationUpdate = useRef(
     throttle((location: { lat: number; lng: number }) => {
@@ -1387,6 +1508,27 @@ export default function ClientesPage() {
     productosPorCodigoDateFilter,
     productosPorCodigoCustomDateFrom,
     productosPorCodigoCustomDateTo,
+    isAllowed,
+    status,
+  ]);
+
+  // Fetch clientes desatendidos data when date filter changes (including initial load)
+  useEffect(() => {
+    if (!isAllowed || status !== "authenticated") return;
+
+    const { startDate, endDate } = getClientesDesatendidosDateRange();
+    const dateFrom = startDate.toISOString().split("T")[0];
+    const dateTo = endDate.toISOString().split("T")[0];
+
+    console.log("🔄 Fetching clientes desatendidos with date range:", {
+      dateFrom,
+      dateTo,
+    });
+    fetchClientesDesatendidosData(dateFrom, dateTo);
+  }, [
+    clientesDesatendidosDateFilter,
+    clientesDesatendidosCustomDateFrom,
+    clientesDesatendidosCustomDateTo,
     isAllowed,
     status,
   ]);
@@ -1538,6 +1680,36 @@ export default function ClientesPage() {
       console.error("🚨 Error fetching productos por codigo data:", error);
     } finally {
       setIsLoadingProductosPorCodigo(false);
+    }
+  };
+
+  const fetchClientesDesatendidosData = async (
+    dateFrom?: string,
+    dateTo?: string,
+  ) => {
+    setIsLoadingClientesDesatendidos(true);
+    try {
+      console.log("🔍 Fetching clientes desatendidos data with date filters:", {
+        dateFrom,
+        dateTo,
+      });
+      const params = new URLSearchParams({ action: "analytics" });
+      if (dateFrom) params.append("dateFrom", dateFrom);
+      if (dateTo) params.append("dateTo", dateTo);
+
+      const response = await fetch(`/api/clientes?${params.toString()}`);
+      const data = await response.json();
+      console.log("📊 Frontend received clientes desatendidos data:", data);
+      if (data.success) {
+        console.log("✅ Setting clientes desatendidos data:", data.data);
+        setClientesDesatendidosData(data.data);
+      } else {
+        console.error("❌ Error fetching clientes desatendidos:", data.error);
+      }
+    } catch (error) {
+      console.error("🚨 Error fetching clientes desatendidos data:", error);
+    } finally {
+      setIsLoadingClientesDesatendidos(false);
     }
   };
 
@@ -1764,6 +1936,48 @@ export default function ClientesPage() {
         ) {
           startDate = new Date(productosPorCodigoCustomDateFrom);
           endDate = new Date(productosPorCodigoCustomDateTo);
+        } else {
+          startDate = new Date(now.getFullYear(), 0, 1);
+        }
+        break;
+      default:
+        startDate = new Date(now.getFullYear(), 0, 1);
+    }
+
+    return { startDate, endDate };
+  };
+
+  const getClientesDesatendidosDateRange = () => {
+    const now = new Date();
+    let startDate: Date;
+    let endDate = now;
+
+    switch (clientesDesatendidosDateFilter) {
+      case "currentMonth":
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        break;
+      case "30d":
+        startDate = new Date();
+        startDate.setDate(now.getDate() - 30);
+        break;
+      case "2m":
+        startDate = new Date();
+        startDate.setMonth(now.getMonth() - 2);
+        break;
+      case "6m":
+        startDate = new Date();
+        startDate.setMonth(now.getMonth() - 6);
+        break;
+      case "year":
+        startDate = new Date(now.getFullYear(), 0, 1);
+        break;
+      case "custom":
+        if (
+          clientesDesatendidosCustomDateFrom &&
+          clientesDesatendidosCustomDateTo
+        ) {
+          startDate = new Date(clientesDesatendidosCustomDateFrom);
+          endDate = new Date(clientesDesatendidosCustomDateTo);
         } else {
           startDate = new Date(now.getFullYear(), 0, 1);
         }
@@ -2609,12 +2823,18 @@ export default function ClientesPage() {
           {/* Clientes Desatendidos */}
           <div className="bg-white rounded-lg p-4 border border-[#E2E4E9]">
             <ClientesDesatendidos
-              analyticsData={analyticsData}
-              isLoading={isLoadingAnalytics}
+              analyticsData={clientesDesatendidosData}
+              isLoading={isLoadingClientesDesatendidos}
               onSelectClient={(name: string) => {
                 setSelectedClient(name);
                 setSearchTerm(name);
               }}
+              dateFilter={clientesDesatendidosDateFilter}
+              setDateFilter={setClientesDesatendidosDateFilter}
+              customDateFrom={clientesDesatendidosCustomDateFrom}
+              setCustomDateFrom={setClientesDesatendidosCustomDateFrom}
+              customDateTo={clientesDesatendidosCustomDateTo}
+              setCustomDateTo={setClientesDesatendidosCustomDateTo}
             />
           </div>
 
