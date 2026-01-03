@@ -9,6 +9,9 @@ import React, {
 } from "react";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
+import convex from "@turf/convex";
+import { featureCollection, point } from "@turf/helpers";
+import { PenTool } from "lucide-react";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
 
@@ -83,6 +86,9 @@ const NavegarMap = forwardRef(function NavegarMap(
   const [locationTried, setLocationTried] = useState(false);
   const [route, setRoute] = useState<RouteInfo | null>(null);
   const routeLayerId = "route-line";
+  const [showDibujo, setShowDibujo] = useState(false);
+  const polygonLayerId = "clients-polygon";
+  const polygonSourceId = "clients-polygon-source";
 
   // Try to get user location on mount
   useEffect(() => {
@@ -323,6 +329,77 @@ const NavegarMap = forwardRef(function NavegarMap(
     }
   }, [selectedClient, clients]);
 
+  // Draw/remove polygon around filtered clients when Dibujo is toggled
+  useEffect(() => {
+    if (!map.current) return;
+
+    const removePolygon = () => {
+      if (map.current?.getLayer(polygonLayerId)) {
+        map.current.removeLayer(polygonLayerId);
+      }
+      if (map.current?.getLayer(polygonLayerId + "-outline")) {
+        map.current.removeLayer(polygonLayerId + "-outline");
+      }
+      if (map.current?.getSource(polygonSourceId)) {
+        map.current.removeSource(polygonSourceId);
+      }
+    };
+
+    if (!showDibujo || clients.length < 3) {
+      removePolygon();
+      return;
+    }
+
+    // Create points from clients
+    const points = clients.map((c) => point([c.lng, c.lat]));
+    const fc = featureCollection(points);
+
+    // Calculate convex hull
+    const hull = convex(fc);
+
+    if (!hull) {
+      removePolygon();
+      return;
+    }
+
+    // Remove existing polygon layers/sources first
+    removePolygon();
+
+    // Add the polygon source and layers
+    map.current.addSource(polygonSourceId, {
+      type: "geojson",
+      data: hull,
+    });
+
+    // Add fill layer
+    map.current.addLayer({
+      id: polygonLayerId,
+      type: "fill",
+      source: polygonSourceId,
+      paint: {
+        "fill-color": "#8B5CF6",
+        "fill-opacity": 0.2,
+      },
+    });
+
+    // Add outline layer
+    map.current.addLayer({
+      id: polygonLayerId + "-outline",
+      type: "line",
+      source: polygonSourceId,
+      paint: {
+        "line-color": "#8B5CF6",
+        "line-width": 2,
+        "line-dasharray": [2, 2],
+      },
+    });
+
+    // Cleanup on unmount or when dependencies change
+    return () => {
+      removePolygon();
+    };
+  }, [showDibujo, clients]);
+
   // Show loading state while determining user location
   if (!userLocation && !clients.length && !currentLocation) {
     return (
@@ -336,11 +413,35 @@ const NavegarMap = forwardRef(function NavegarMap(
   }
 
   return (
-    <div
-      ref={mapContainer}
-      className="w-full h-screen"
-      style={{ borderRadius: 0 }}
-    />
+    <div className="relative w-full h-screen">
+      <div
+        ref={mapContainer}
+        className="w-full h-full"
+        style={{ borderRadius: 0 }}
+      />
+      {/* Dibujo toggle button - top right */}
+      <button
+        onClick={() => setShowDibujo((prev) => !prev)}
+        className={`absolute top-3 right-3 z-10 flex items-center gap-1.5 px-3 py-2 rounded-lg shadow-lg text-sm font-medium transition-all ${
+          showDibujo
+            ? "bg-purple-600 text-white hover:bg-purple-700"
+            : "bg-white text-gray-700 hover:bg-gray-50 border border-gray-200"
+        }`}
+        title={showDibujo ? "Ocultar área de cobertura" : "Mostrar área de cobertura"}
+      >
+        <PenTool className="w-4 h-4" />
+        <span>Dibujo</span>
+        {showDibujo && clients.length >= 3 && (
+          <span className="ml-1 text-xs opacity-80">({clients.length})</span>
+        )}
+      </button>
+      {/* Info tooltip when Dibujo is active but not enough clients */}
+      {showDibujo && clients.length < 3 && (
+        <div className="absolute top-16 right-3 z-10 bg-yellow-50 border border-yellow-200 text-yellow-800 text-xs px-3 py-2 rounded-lg shadow-md max-w-[200px]">
+          Se necesitan al menos 3 clientes para dibujar el área de cobertura
+        </div>
+      )}
+    </div>
   );
 });
 

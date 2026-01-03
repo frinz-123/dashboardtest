@@ -16,7 +16,8 @@
       "Bash(npx tsc:*)",
       "Bash(npx shadcn@latest add:*)",
       "Bash(timeout 15 npm run dev)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "WebSearch"
     ],
     "deny": [],
     "ask": []
