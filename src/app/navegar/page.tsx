@@ -1,13 +1,10 @@
 "use client";
 
 import React, { useEffect, useState, useRef, useMemo } from "react";
-import dynamic from "next/dynamic";
 import SearchInput from "@/components/ui/SearchInput";
 import NavegarMap, { Client as NavegarClient, RouteInfo } from "./NavegarMap";
 import { XCircle, Navigation, RefreshCw, MapPin, X } from "lucide-react";
 import debounce from "lodash.debounce";
-
-const Map = dynamic(() => import("@/components/ui/Map"), { ssr: false });
 
 const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY;
 const spreadsheetId = process.env.NEXT_PUBLIC_SPREADSHEET_ID;
@@ -17,19 +14,13 @@ const DAYS_WITHOUT_VISIT = 30;
 const DEFAULT_VISIT_DATE = "1/1/2024";
 
 export default function NavegarPage() {
-  const [clientNames, setClientNames] = useState<string[]>([]);
-  const [clientLocations, setClientLocations] = useState<
-    Record<string, { lat: number; lng: number }>
-  >({});
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
   const debouncedSetSearchTerm = useMemo(
     () => debounce(setDebouncedSearchTerm, 300),
     [],
   );
-  const [filteredClients, setFilteredClients] = useState<string[]>([]);
   const [selectedClient, setSelectedClient] = useState<string>("");
-  const [isLoading, setIsLoading] = useState(true);
   const mapRef = useRef<any>(null);
   const [routeInfo, setRouteInfo] = useState<RouteInfo | null>(null);
   const [routeMode, setRouteMode] = useState(false);
@@ -43,23 +34,15 @@ export default function NavegarPage() {
     lat: number;
     lng: number;
   } | null>(null);
-  const [selectedClientCode, setSelectedClientCode] = useState<string | null>(
-    null,
-  );
   const [codigoFilter, setCodigoFilter] = useState<string | null>(null);
   const [codigoDropdownOpen, setCodigoDropdownOpen] = useState(false);
   const codigoChipRef = useRef<HTMLButtonElement>(null);
   const [vendedorFilter, setVendedorFilter] = useState<string | null>(null);
   const [vendedorDropdownOpen, setVendedorDropdownOpen] = useState(false);
   const vendedorChipRef = useRef<HTMLButtonElement>(null);
-  const [clientVendedorMap, setClientVendedorMap] = useState<
-    Record<string, string>
-  >({});
   const [sinVisitarFilter, setSinVisitarFilter] = useState(false);
   const [sheetRows, setSheetRows] = useState<any[]>([]);
   const [sheetHeaders, setSheetHeaders] = useState<string[]>([]);
-  const [fetchError, setFetchError] = useState<string | null>(null);
-  const [isSheetLoading, setIsSheetLoading] = useState(true);
 
   // Date filter state
   const [dateFilter, setDateFilter] = useState<{
@@ -83,8 +66,6 @@ export default function NavegarPage() {
   // Batch fetch all data from Google Sheets once
   useEffect(() => {
     const fetchAllData = async () => {
-      setIsSheetLoading(true);
-      setFetchError(null);
       try {
         const response = await fetch(
           `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:AN?key=${googleApiKey}`,
@@ -94,20 +75,48 @@ export default function NavegarPage() {
         setSheetHeaders(data.values[0]);
         setSheetRows(data.values.slice(1));
       } catch (e) {
-        setFetchError("Error al cargar los datos de Google Sheets");
         setSheetRows([]);
-      } finally {
-        setIsSheetLoading(false);
       }
     };
     fetchAllData();
   }, []);
 
   // Memoized maps and unique values
+  const clientLocations = useMemo(() => {
+    const locations: Record<string, { lat: number; lng: number }> = {};
+    sheetRows.forEach((row) => {
+      const name = row[0];
+      const lat = row[1];
+      const lng = row[2];
+      if (
+        name &&
+        lat &&
+        lng &&
+        !name.includes("**ARCHIVADO NO USAR**")
+      ) {
+        locations[name] = {
+          lat: parseFloat(lat),
+          lng: parseFloat(lng),
+        };
+      }
+    });
+    return locations;
+  }, [sheetRows]);
+
+  const clientNames = useMemo(() => {
+    const names = sheetRows
+      .map((row) => row[0])
+      .filter(
+        (name: string) => name && !name.includes("**ARCHIVADO NO USAR**"),
+      );
+    return Array.from(new Set(names));
+  }, [sheetRows]);
+
   const allClientCodes = useMemo(() => {
     const codigoIndex = sheetHeaders.findIndex(
       (h) => h.toLowerCase() === "codigo",
     );
+    if (codigoIndex === -1) return [];
     return sheetRows
       .map((row) => ({ name: row[0], code: row[codigoIndex] || "" }))
       .filter(
@@ -189,6 +198,14 @@ export default function NavegarPage() {
     return uniqueVendedores;
   }, [clientVendedorMapping]);
 
+  const selectedClientCode = useMemo(() => {
+    if (!selectedClient) return null;
+    return (
+      allClientCodes.find((client) => client.name === selectedClient)?.code ||
+      null
+    );
+  }, [allClientCodes, selectedClient]);
+
   // Unique emails for filter dropdown
   const uniqueEmails = useMemo(() => {
     const emails = Array.from(
@@ -231,6 +248,12 @@ export default function NavegarPage() {
     debouncedSetSearchTerm(searchTerm);
   }, [searchTerm, debouncedSetSearchTerm]);
 
+  useEffect(() => {
+    return () => {
+      debouncedSetSearchTerm.cancel();
+    };
+  }, [debouncedSetSearchTerm]);
+
   // Filtered clients by search
   const filteredClientsBySearch = useMemo(() => {
     if (!debouncedSearchTerm) return [];
@@ -267,92 +290,7 @@ export default function NavegarPage() {
     return diffDays > DAYS_WITHOUT_VISIT;
   };
 
-  // Fetch client code (Codigo, column AG) when a client is selected
-  useEffect(() => {
-    const fetchCodigo = async () => {
-      if (!selectedClient) {
-        setSelectedClientCode(null);
-        return;
-      }
-      try {
-        // Fetch the row for the selected client from the sheet
-        const response = await fetch(
-          `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:AN?key=${googleApiKey}`,
-        );
-        if (!response.ok) throw new Error("Failed to fetch client data");
-        const data = await response.json();
-        const headers = data.values[0];
-        const codigoIndex = headers.findIndex(
-          (h: string) => h.toLowerCase() === "codigo",
-        );
-        if (codigoIndex === -1) {
-          setSelectedClientCode(null);
-          return;
-        }
-        const clientRow = (data.values as string[][]).find(
-          (row) => row[0] === selectedClient,
-        );
-        if (clientRow && clientRow[codigoIndex]) {
-          setSelectedClientCode(clientRow[codigoIndex]);
-        } else {
-          setSelectedClientCode(null);
-        }
-      } catch (e) {
-        setSelectedClientCode(null);
-      }
-    };
-    fetchCodigo();
-  }, [selectedClient]);
-
-  // Fetch all client names on load
-  useEffect(() => {
-    const fetchClientNames = async () => {
-      try {
-        const response = await fetch(
-          `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:C?key=${googleApiKey}`,
-        );
-        if (!response.ok) throw new Error("Failed to fetch client data");
-        const data = await response.json();
-        const clients: Record<string, { lat: number; lng: number }> = {};
-        const names = (data.values?.slice(1) || [])
-          .map((row: any[]) => {
-            const name = row[0];
-            if (
-              name &&
-              row[1] &&
-              row[2] &&
-              !name.includes("**ARCHIVADO NO USAR**")
-            ) {
-              clients[name] = {
-                lat: parseFloat(row[1]),
-                lng: parseFloat(row[2]),
-              };
-            }
-            return name;
-          })
-          .filter(
-            (name: string) => name && !name.includes("**ARCHIVADO NO USAR**"),
-          );
-        // Double-check deduplication and clean up the client names
-        const cleanNames = Array.from(new Set(names.filter(Boolean)));
-        setClientNames(cleanNames as string[]);
-        setClientLocations(clients);
-      } catch (error) {
-        // TODO: handle error UI
-        setClientNames([]);
-        setClientLocations({});
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchClientNames();
-  }, []);
-
-  // This effect is no longer needed since vendedor data is loaded in fetchAllData
-  // Keeping for compatibility but simplified
-  useEffect(() => {
-    setClientVendedorMap(clientVendedorMapping);
-  }, [clientVendedorMapping]);
+  // Data is derived from fetchAllData via memoized selectors above.
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -450,17 +388,18 @@ export default function NavegarPage() {
 
     // Apply vendedor filter if active and not excluded
     if (vendedorFilter && excludeFilter !== "vendedor") {
-      const vendedorClients = Object.entries(clientVendedorMapping)
-        .filter(([name, vendedor]) => vendedor === vendedorFilter)
-        .map(([name]) => name);
-      baseClients = baseClients.filter((name) =>
-        vendedorClients.includes(name),
+      const vendedorClients = new Set(
+        Object.entries(clientVendedorMapping)
+          .filter(([, vendedor]) => vendedor === vendedorFilter)
+          .map(([name]) => name),
       );
+      baseClients = baseClients.filter((name) => vendedorClients.has(name));
     }
 
     // Apply sin visitar filter if active and not excluded
     if (sinVisitarFilter && excludeFilter !== "sinVisitar") {
-      const sinVisitarClients = Object.entries(clientLastVisitMap)
+      const sinVisitarClients = new Set(
+        Object.entries(clientLastVisitMap)
         .filter(([name, fecha]) => {
           if (!fecha || fecha === DEFAULT_VISIT_DATE) return true;
           const [month, day, year] = fecha.split("/").map(Number);
@@ -472,15 +411,15 @@ export default function NavegarPage() {
 
           return diffDays > DAYS_WITHOUT_VISIT;
         })
-        .map(([name]) => name);
-      baseClients = baseClients.filter((name) =>
-        sinVisitarClients.includes(name),
+        .map(([name]) => name),
       );
+      baseClients = baseClients.filter((name) => sinVisitarClients.has(name));
     }
 
     // Apply date filter if active and not excluded
     if (dateFilter && excludeFilter !== "date") {
-      const dateClients = Object.entries(clientLastVisitMap)
+      const dateClients = new Set(
+        Object.entries(clientLastVisitMap)
         .filter(([name, fecha]) => {
           if (!fecha || fecha === DEFAULT_VISIT_DATE) return false;
           const clientDateISO = sheetDateToISO(fecha);
@@ -501,16 +440,19 @@ export default function NavegarPage() {
           }
           return false;
         })
-        .map(([name]) => name);
-      baseClients = baseClients.filter((name) => dateClients.includes(name));
+        .map(([name]) => name),
+      );
+      baseClients = baseClients.filter((name) => dateClients.has(name));
     }
 
     // Apply email filter if active and not excluded
     if (emailFilter && excludeFilter !== "email") {
-      const emailClients = Object.entries(clientLastEmailMap)
-        .filter(([name, email]) => email === emailFilter)
-        .map(([name]) => name);
-      baseClients = baseClients.filter((name) => emailClients.includes(name));
+      const emailClients = new Set(
+        Object.entries(clientLastEmailMap)
+          .filter(([, email]) => email === emailFilter)
+          .map(([name]) => name),
+      );
+      baseClients = baseClients.filter((name) => emailClients.has(name));
     }
 
     return baseClients;
@@ -688,7 +630,10 @@ export default function NavegarPage() {
     if (sets.length === 0) return null;
 
     // Intersect all sets
-    let result = sets.reduce((a, b) => a.filter((x) => b.includes(x)));
+    let result = sets.reduce((a, b) => {
+      const setB = new Set(b);
+      return a.filter((x) => setB.has(x));
+    });
 
     // CRITICAL: Deduplicate the results to prevent React key warnings
     return Array.from(new Set(result));
@@ -784,20 +729,29 @@ export default function NavegarPage() {
   };
 
   // Prepare client list for map
-  const clientList: NavegarClient[] = (
-    filteredNames || (searchTerm ? filteredClientsBySearch : clientNames)
-  )
-    .map((name) => {
-      // Find the codigo for this client
-      const clientCode = allClientCodes.find((c) => c.name === name)?.code;
-      return {
-        name,
-        lat: clientLocations[name]?.lat,
-        lng: clientLocations[name]?.lng,
-        codigo: clientCode,
-      };
-    })
-    .filter((c) => c.lat && c.lng);
+  const clientList: NavegarClient[] = useMemo(() => {
+    const names =
+      filteredNames || (searchTerm ? filteredClientsBySearch : clientNames);
+    return names
+      .map((name) => {
+        // Find the codigo for this client
+        const clientCode = allClientCodes.find((c) => c.name === name)?.code;
+        return {
+          name,
+          lat: clientLocations[name]?.lat,
+          lng: clientLocations[name]?.lng,
+          codigo: clientCode,
+        };
+      })
+      .filter((c) => c.lat && c.lng);
+  }, [
+    allClientCodes,
+    clientLocations,
+    clientNames,
+    filteredClientsBySearch,
+    filteredNames,
+    searchTerm,
+  ]);
 
   // Only show selected client if it is in the filtered list
   const selectedClientLocation =
@@ -863,17 +817,25 @@ export default function NavegarPage() {
   };
 
   // Only show selected client in route mode if it is in the filtered list
-  const mapClients =
-    routeMode && selectedClient && selectedClientLocation
-      ? [
-          {
-            name: selectedClient,
-            lat: selectedClientLocation.lat,
-            lng: selectedClientLocation.lng,
-            codigo: allClientCodes.find((c) => c.name === selectedClient)?.code,
-          },
-        ]
-      : clientList;
+  const mapClients = useMemo(() => {
+    if (routeMode && selectedClient && selectedClientLocation) {
+      return [
+        {
+          name: selectedClient,
+          lat: selectedClientLocation.lat,
+          lng: selectedClientLocation.lng,
+          codigo: allClientCodes.find((c) => c.name === selectedClient)?.code,
+        },
+      ];
+    }
+    return clientList;
+  }, [
+    allClientCodes,
+    clientList,
+    routeMode,
+    selectedClient,
+    selectedClientLocation,
+  ]);
 
   return (
     <div
@@ -1249,7 +1211,6 @@ export default function NavegarPage() {
                 onClear={() => {
                   setSearchTerm("");
                   setSelectedClient("");
-                  setFilteredClients([]);
                   setRouteInfo(null);
                   setRouteMode(false);
                 }}
