@@ -61,6 +61,22 @@ export default function NavegarPage() {
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [isSheetLoading, setIsSheetLoading] = useState(true);
 
+  // Date filter state
+  const [dateFilter, setDateFilter] = useState<{
+    type: "single" | "range";
+    date?: string; // ISO format YYYY-MM-DD for single
+    startDate?: string; // ISO format for range start
+    endDate?: string; // ISO format for range end
+  } | null>(null);
+  const [dateDropdownOpen, setDateDropdownOpen] = useState(false);
+  const dateChipRef = useRef<HTMLDivElement>(null);
+  const [dateFilterMode, setDateFilterMode] = useState<"single" | "range">("single");
+
+  // Email filter state
+  const [emailFilter, setEmailFilter] = useState<string | null>(null);
+  const [emailDropdownOpen, setEmailDropdownOpen] = useState(false);
+  const emailChipRef = useRef<HTMLButtonElement>(null);
+
   // Add filtering state
   const [isFiltering, setIsFiltering] = useState(false);
 
@@ -172,6 +188,43 @@ export default function NavegarPage() {
     );
     return uniqueVendedores;
   }, [clientVendedorMapping]);
+
+  // Unique emails for filter dropdown
+  const uniqueEmails = useMemo(() => {
+    const emails = Array.from(
+      new Set(Object.values(clientLastEmailMap).filter(Boolean)),
+    );
+    return emails.sort();
+  }, [clientLastEmailMap]);
+
+  // Helper: convert sheet date (MM/DD/YYYY) to ISO (YYYY-MM-DD)
+  const sheetDateToISO = (sheetDate: string): string | null => {
+    if (!sheetDate) return null;
+    const [month, day, year] = sheetDate.split("/").map(Number);
+    if (!month || !day || !year) return null;
+    return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  };
+
+  // Helper: convert ISO date (YYYY-MM-DD) to Date object at midnight
+  const isoToDate = (isoDate: string): Date | null => {
+    if (!isoDate) return null;
+    const [year, month, day] = isoDate.split("-").map(Number);
+    if (!year || !month || !day) return null;
+    const d = new Date(year, month - 1, day);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  };
+
+  // Helper: format ISO date for display
+  const formatISODate = (isoDate: string): string => {
+    if (!isoDate) return "";
+    const [year, month, day] = isoDate.split("-").map(Number);
+    const monthNames = [
+      "Ene", "Feb", "Mar", "Abr", "May", "Jun",
+      "Jul", "Ago", "Sep", "Oct", "Nov", "Dic",
+    ];
+    return `${day} ${monthNames[month - 1]} ${year}`;
+  };
 
   // Debounced search
   useEffect(() => {
@@ -341,9 +394,49 @@ export default function NavegarPage() {
     };
   }, [vendedorDropdownOpen]);
 
+  // Close Date dropdown on outside click
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        dateChipRef.current &&
+        !dateChipRef.current.contains(event.target as Node)
+      ) {
+        setDateDropdownOpen(false);
+      }
+    }
+    if (dateDropdownOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    } else {
+      document.removeEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [dateDropdownOpen]);
+
+  // Close Email dropdown on outside click
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        emailChipRef.current &&
+        !emailChipRef.current.contains(event.target as Node)
+      ) {
+        setEmailDropdownOpen(false);
+      }
+    }
+    if (emailDropdownOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    } else {
+      document.removeEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [emailDropdownOpen]);
+
   // Helper function to apply all filters except the specified one
   const getFilteredClientsExcluding = (
-    excludeFilter: "codigo" | "vendedor" | "sinVisitar",
+    excludeFilter: "codigo" | "vendedor" | "sinVisitar" | "date" | "email",
   ) => {
     let baseClients = clientNames;
 
@@ -385,6 +478,41 @@ export default function NavegarPage() {
       );
     }
 
+    // Apply date filter if active and not excluded
+    if (dateFilter && excludeFilter !== "date") {
+      const dateClients = Object.entries(clientLastVisitMap)
+        .filter(([name, fecha]) => {
+          if (!fecha || fecha === DEFAULT_VISIT_DATE) return false;
+          const clientDateISO = sheetDateToISO(fecha);
+          if (!clientDateISO) return false;
+          const clientDate = isoToDate(clientDateISO);
+          if (!clientDate) return false;
+
+          if (dateFilter.type === "single" && dateFilter.date) {
+            const filterDate = isoToDate(dateFilter.date);
+            if (!filterDate) return false;
+            return clientDate.getTime() === filterDate.getTime();
+          } else if (dateFilter.type === "range") {
+            const startDate = dateFilter.startDate ? isoToDate(dateFilter.startDate) : null;
+            const endDate = dateFilter.endDate ? isoToDate(dateFilter.endDate) : null;
+            if (startDate && clientDate < startDate) return false;
+            if (endDate && clientDate > endDate) return false;
+            return true;
+          }
+          return false;
+        })
+        .map(([name]) => name);
+      baseClients = baseClients.filter((name) => dateClients.includes(name));
+    }
+
+    // Apply email filter if active and not excluded
+    if (emailFilter && excludeFilter !== "email") {
+      const emailClients = Object.entries(clientLastEmailMap)
+        .filter(([name, email]) => email === emailFilter)
+        .map(([name]) => name);
+      baseClients = baseClients.filter((name) => emailClients.includes(name));
+    }
+
     return baseClients;
   };
 
@@ -416,6 +544,38 @@ export default function NavegarPage() {
           (now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24);
 
         return diffDays > DAYS_WITHOUT_VISIT;
+      }).length
+    : 0;
+
+  // Count clients that match the date filter (considering other active filters)
+  const dateClientCount = dateFilter
+    ? getFilteredClientsExcluding("date").filter((name) => {
+        const fecha = clientLastVisitMap[name];
+        if (!fecha || fecha === DEFAULT_VISIT_DATE) return false;
+        const clientDateISO = sheetDateToISO(fecha);
+        if (!clientDateISO) return false;
+        const clientDate = isoToDate(clientDateISO);
+        if (!clientDate) return false;
+
+        if (dateFilter.type === "single" && dateFilter.date) {
+          const filterDate = isoToDate(dateFilter.date);
+          if (!filterDate) return false;
+          return clientDate.getTime() === filterDate.getTime();
+        } else if (dateFilter.type === "range") {
+          const startDate = dateFilter.startDate ? isoToDate(dateFilter.startDate) : null;
+          const endDate = dateFilter.endDate ? isoToDate(dateFilter.endDate) : null;
+          if (startDate && clientDate < startDate) return false;
+          if (endDate && clientDate > endDate) return false;
+          return true;
+        }
+        return false;
+      }).length
+    : 0;
+
+  // Count clients that match the email filter (considering other active filters)
+  const emailClientCount = emailFilter
+    ? getFilteredClientsExcluding("email").filter((name) => {
+        return clientLastEmailMap[name] === emailFilter;
       }).length
     : 0;
 
@@ -461,9 +621,50 @@ export default function NavegarPage() {
     return Array.from(new Set(result));
   }, [sinVisitarFilter, clientLastVisitMap]);
 
+  const filteredByDate = useMemo(() => {
+    if (!dateFilter) return null;
+
+    const result = Object.entries(clientLastVisitMap)
+      .filter(([name, fecha]) => {
+        if (!fecha || fecha === DEFAULT_VISIT_DATE) return false;
+        const clientDateISO = sheetDateToISO(fecha);
+        if (!clientDateISO) return false;
+        const clientDate = isoToDate(clientDateISO);
+        if (!clientDate) return false;
+
+        if (dateFilter.type === "single" && dateFilter.date) {
+          const filterDate = isoToDate(dateFilter.date);
+          if (!filterDate) return false;
+          return clientDate.getTime() === filterDate.getTime();
+        } else if (dateFilter.type === "range") {
+          const startDate = dateFilter.startDate ? isoToDate(dateFilter.startDate) : null;
+          const endDate = dateFilter.endDate ? isoToDate(dateFilter.endDate) : null;
+          if (startDate && clientDate < startDate) return false;
+          if (endDate && clientDate > endDate) return false;
+          return true;
+        }
+        return false;
+      })
+      .map(([name]) => name);
+
+    // Deduplicate to prevent duplicate keys
+    return Array.from(new Set(result));
+  }, [dateFilter, clientLastVisitMap]);
+
+  const filteredByEmail = useMemo(() => {
+    if (!emailFilter) return null;
+
+    const result = Object.entries(clientLastEmailMap)
+      .filter(([name, email]) => email === emailFilter)
+      .map(([name]) => name);
+
+    // Deduplicate to prevent duplicate keys
+    return Array.from(new Set(result));
+  }, [emailFilter, clientLastEmailMap]);
+
   // Memoize the final filtered names to prevent infinite loops
   const filteredNames = useMemo(() => {
-    if (!codigoFilter && !vendedorFilter && !sinVisitarFilter) {
+    if (!codigoFilter && !vendedorFilter && !sinVisitarFilter && !dateFilter && !emailFilter) {
       return null;
     }
 
@@ -477,6 +678,12 @@ export default function NavegarPage() {
     if (sinVisitarFilter && filteredBySinVisitar) {
       sets.push(filteredBySinVisitar);
     }
+    if (dateFilter && filteredByDate) {
+      sets.push(filteredByDate);
+    }
+    if (emailFilter && filteredByEmail) {
+      sets.push(filteredByEmail);
+    }
 
     if (sets.length === 0) return null;
 
@@ -489,9 +696,13 @@ export default function NavegarPage() {
     codigoFilter,
     vendedorFilter,
     sinVisitarFilter,
+    dateFilter,
+    emailFilter,
     filteredByCode,
     filteredByVendedor,
     filteredBySinVisitar,
+    filteredByDate,
+    filteredByEmail,
   ]);
 
   // Debounce filtering state to avoid flashing unfiltered results
@@ -505,12 +716,14 @@ export default function NavegarPage() {
     sinVisitarFilter,
     codigoFilter,
     vendedorFilter,
+    dateFilter,
+    emailFilter,
     clientNames,
   ]);
 
   // Check if any filters are active
   const hasActiveFilters = Boolean(
-    codigoFilter || vendedorFilter || sinVisitarFilter,
+    codigoFilter || vendedorFilter || sinVisitarFilter || dateFilter || emailFilter,
   );
 
   // Get the final filtered client list with visit dates
@@ -795,6 +1008,170 @@ export default function NavegarPage() {
               </span>
             )}
           </button>
+          {/* Date filter chip - wrapped in container for outside click detection */}
+          <div ref={dateChipRef} className="relative">
+            <button
+              className={`px-2 py-1 rounded-full text-xs border flex items-center gap-1 ${dateFilter ? "bg-purple-600 text-white border-purple-600" : "bg-gray-100 text-gray-700 border-gray-300 hover:bg-purple-100"} transition-colors`}
+              onClick={() => setDateDropdownOpen((open) => !open)}
+              type="button"
+            >
+              Fecha
+              {dateFilter
+                ? dateFilter.type === "single" && dateFilter.date
+                  ? `: ${formatISODate(dateFilter.date)} (${dateClientCount})`
+                  : dateFilter.type === "range"
+                    ? `: ${dateFilter.startDate ? formatISODate(dateFilter.startDate) : "..."} - ${dateFilter.endDate ? formatISODate(dateFilter.endDate) : "..."} (${dateClientCount})`
+                    : ""
+                : ""}
+              {dateFilter && (
+                <span
+                  className="ml-1 cursor-pointer text-white bg-purple-700 rounded-full px-1.5 py-0.5 text-xs hover:bg-purple-800"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDateFilter(null);
+                    setDateDropdownOpen(false);
+                  }}
+                  title="Limpiar filtro"
+                >
+                  ×
+                </span>
+              )}
+            </button>
+            {dateDropdownOpen && (
+              <div className="absolute left-0 bottom-full mb-2 z-20 bg-white border border-gray-200 rounded-lg shadow-lg w-72 p-3 animate-fade-in">
+                <div className="mb-3">
+                  <label className="text-xs font-medium text-gray-700 mb-1 block">
+                    Tipo de filtro
+                  </label>
+                  <div className="flex gap-2">
+                    <button
+                      className={`flex-1 px-2 py-1 rounded text-xs border ${dateFilterMode === "single" ? "bg-purple-600 text-white border-purple-600" : "bg-gray-100 text-gray-700 border-gray-300"}`}
+                      onClick={() => setDateFilterMode("single")}
+                      type="button"
+                    >
+                      Fecha única
+                    </button>
+                    <button
+                      className={`flex-1 px-2 py-1 rounded text-xs border ${dateFilterMode === "range" ? "bg-purple-600 text-white border-purple-600" : "bg-gray-100 text-gray-700 border-gray-300"}`}
+                      onClick={() => setDateFilterMode("range")}
+                      type="button"
+                    >
+                      Rango
+                    </button>
+                  </div>
+                </div>
+                {dateFilterMode === "single" ? (
+                  <div>
+                    <label className="text-xs font-medium text-gray-700 mb-1 block">
+                      Seleccionar fecha
+                    </label>
+                    <input
+                      type="date"
+                      className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
+                      value={dateFilter?.type === "single" ? dateFilter.date || "" : ""}
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          setDateFilter({ type: "single", date: e.target.value });
+                        }
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div>
+                      <label className="text-xs font-medium text-gray-700 mb-1 block">
+                        Desde
+                      </label>
+                      <input
+                        type="date"
+                        className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
+                        value={dateFilter?.type === "range" ? dateFilter.startDate || "" : ""}
+                        onChange={(e) => {
+                          setDateFilter((prev) => ({
+                            type: "range",
+                            startDate: e.target.value || undefined,
+                            endDate: prev?.type === "range" ? prev.endDate : undefined,
+                          }));
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-gray-700 mb-1 block">
+                        Hasta
+                      </label>
+                      <input
+                        type="date"
+                        className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
+                        value={dateFilter?.type === "range" ? dateFilter.endDate || "" : ""}
+                        onChange={(e) => {
+                          setDateFilter((prev) => ({
+                            type: "range",
+                            startDate: prev?.type === "range" ? prev.startDate : undefined,
+                            endDate: e.target.value || undefined,
+                          }));
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+                <button
+                  className="mt-3 w-full px-2 py-1.5 bg-gray-100 text-gray-700 rounded text-xs hover:bg-gray-200"
+                  onClick={() => {
+                    setDateFilter(null);
+                    setDateDropdownOpen(false);
+                  }}
+                  type="button"
+                >
+                  Limpiar
+                </button>
+              </div>
+            )}
+          </div>
+          {/* Email filter chip */}
+          <button
+            ref={emailChipRef}
+            className={`px-2 py-1 rounded-full text-xs border flex items-center gap-1 ${emailFilter ? "bg-orange-600 text-white border-orange-600" : "bg-gray-100 text-gray-700 border-gray-300 hover:bg-orange-100"} transition-colors`}
+            onClick={() => setEmailDropdownOpen((open) => !open)}
+            type="button"
+          >
+            Email
+            {emailFilter ? `: ${emailFilter.length > 15 ? emailFilter.substring(0, 15) + "..." : emailFilter} (${emailClientCount})` : ""}
+            {emailFilter && (
+              <span
+                className="ml-1 cursor-pointer text-white bg-orange-700 rounded-full px-1.5 py-0.5 text-xs hover:bg-orange-800"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setEmailFilter(null);
+                  setEmailDropdownOpen(false);
+                }}
+                title="Limpiar filtro"
+              >
+                ×
+              </span>
+            )}
+          </button>
+          {emailDropdownOpen && (
+            <div className="absolute right-0 bottom-10 z-20 bg-white border border-gray-200 rounded-lg shadow-lg w-64 max-h-64 overflow-y-auto animate-fade-in">
+              {uniqueEmails.map((email) => (
+                <button
+                  key={email}
+                  className={`block w-full text-left px-4 py-2 text-xs hover:bg-orange-100 ${emailFilter === email ? "bg-orange-600 text-white" : ""}`}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    setEmailFilter(email);
+                    setEmailDropdownOpen(false);
+                  }}
+                >
+                  {email}
+                </button>
+              ))}
+              {uniqueEmails.length === 0 && (
+                <div className="px-4 py-2 text-xs text-gray-400">
+                  Sin emails
+                </div>
+              )}
+            </div>
+          )}
         </div>
         <div className="w-full max-w-md mx-auto flex justify-end px-4">
           <button
@@ -892,6 +1269,8 @@ export default function NavegarPage() {
                         setCodigoFilter(null);
                         setVendedorFilter(null);
                         setSinVisitarFilter(false);
+                        setDateFilter(null);
+                        setEmailFilter(null);
                       }}
                     >
                       Limpiar filtros
