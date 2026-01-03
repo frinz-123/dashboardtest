@@ -56,6 +56,10 @@ export default function NavegarPage() {
     Record<string, string>
   >({});
   const [sinVisitarFilter, setSinVisitarFilter] = useState(false);
+  const [dateFilterStart, setDateFilterStart] = useState<string>("");
+  const [dateFilterEnd, setDateFilterEnd] = useState<string>("");
+  const [dateDropdownOpen, setDateDropdownOpen] = useState(false);
+  const dateChipRef = useRef<HTMLButtonElement>(null);
   const [sheetRows, setSheetRows] = useState<any[]>([]);
   const [sheetHeaders, setSheetHeaders] = useState<string[]>([]);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -197,6 +201,24 @@ export default function NavegarPage() {
 
   // Utility: get last visit date for a client
   const getLastVisitDate = (name: string) => clientLastVisitMap[name] || null;
+
+  const parseSheetDate = (dateStr: string | null) => {
+    if (!dateStr || dateStr === DEFAULT_VISIT_DATE) return null;
+    const [month, day, year] = dateStr.split("/").map(Number);
+    if (!day || !month || !year) return null;
+    const date = new Date(year, month - 1, day);
+    date.setHours(0, 0, 0, 0);
+    return date;
+  };
+
+  const parseInputDate = (value: string) => {
+    if (!value) return null;
+    const [year, month, day] = value.split("-").map(Number);
+    if (!day || !month || !year) return null;
+    const date = new Date(year, month - 1, day);
+    date.setHours(0, 0, 0, 0);
+    return date;
+  };
 
   // Utility: check if client is 'sin visitar'
   const isSinVisitar = (name: string) => {
@@ -341,9 +363,29 @@ export default function NavegarPage() {
     };
   }, [vendedorDropdownOpen]);
 
+  // Close date dropdown on outside click
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (
+        dateChipRef.current &&
+        !dateChipRef.current.contains(event.target as Node)
+      ) {
+        setDateDropdownOpen(false);
+      }
+    }
+    if (dateDropdownOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    } else {
+      document.removeEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [dateDropdownOpen]);
+
   // Helper function to apply all filters except the specified one
   const getFilteredClientsExcluding = (
-    excludeFilter: "codigo" | "vendedor" | "sinVisitar",
+    excludeFilter: "codigo" | "vendedor" | "sinVisitar" | "fecha",
   ) => {
     let baseClients = clientNames;
 
@@ -385,6 +427,26 @@ export default function NavegarPage() {
       );
     }
 
+    // Apply date filter if active and not excluded
+    if (dateFilterStart && excludeFilter !== "fecha") {
+      const startDate = parseInputDate(dateFilterStart);
+      const endDate = parseInputDate(dateFilterEnd) || startDate;
+      if (startDate && endDate) {
+        const [minDate, maxDate] =
+          startDate <= endDate ? [startDate, endDate] : [endDate, startDate];
+        const dateClients = Object.entries(clientLastVisitMap)
+          .filter(([name, fecha]) => {
+            const visitDate = parseSheetDate(fecha);
+            if (!visitDate || !name) return false;
+            return visitDate >= minDate && visitDate <= maxDate;
+          })
+          .map(([name]) => name);
+        baseClients = baseClients.filter((name) =>
+          dateClients.includes(name),
+        );
+      }
+    }
+
     return baseClients;
   };
 
@@ -416,6 +478,19 @@ export default function NavegarPage() {
           (now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24);
 
         return diffDays > DAYS_WITHOUT_VISIT;
+      }).length
+    : 0;
+
+  const dateClientCount = dateFilterStart
+    ? getFilteredClientsExcluding("fecha").filter((name) => {
+        const visitDate = parseSheetDate(clientLastVisitMap[name] || null);
+        if (!visitDate) return false;
+        const startDate = parseInputDate(dateFilterStart);
+        const endDate = parseInputDate(dateFilterEnd) || startDate;
+        if (!startDate || !endDate) return false;
+        const [minDate, maxDate] =
+          startDate <= endDate ? [startDate, endDate] : [endDate, startDate];
+        return visitDate >= minDate && visitDate <= maxDate;
       }).length
     : 0;
 
@@ -461,9 +536,27 @@ export default function NavegarPage() {
     return Array.from(new Set(result));
   }, [sinVisitarFilter, clientLastVisitMap]);
 
+  const filteredByDate = useMemo(() => {
+    if (!dateFilterStart) return null;
+    const startDate = parseInputDate(dateFilterStart);
+    const endDate = parseInputDate(dateFilterEnd) || startDate;
+    if (!startDate || !endDate) return null;
+    const [minDate, maxDate] =
+      startDate <= endDate ? [startDate, endDate] : [endDate, startDate];
+    const result = Object.entries(clientLastVisitMap)
+      .filter(([name, fecha]) => {
+        const visitDate = parseSheetDate(fecha);
+        if (!visitDate || !name) return false;
+        return visitDate >= minDate && visitDate <= maxDate;
+      })
+      .map(([name]) => name);
+
+    return Array.from(new Set(result));
+  }, [dateFilterStart, dateFilterEnd, clientLastVisitMap]);
+
   // Memoize the final filtered names to prevent infinite loops
   const filteredNames = useMemo(() => {
-    if (!codigoFilter && !vendedorFilter && !sinVisitarFilter) {
+    if (!codigoFilter && !vendedorFilter && !sinVisitarFilter && !dateFilterStart) {
       return null;
     }
 
@@ -476,6 +569,9 @@ export default function NavegarPage() {
     }
     if (sinVisitarFilter && filteredBySinVisitar) {
       sets.push(filteredBySinVisitar);
+    }
+    if (dateFilterStart && filteredByDate) {
+      sets.push(filteredByDate);
     }
 
     if (sets.length === 0) return null;
@@ -505,12 +601,14 @@ export default function NavegarPage() {
     sinVisitarFilter,
     codigoFilter,
     vendedorFilter,
+    dateFilterStart,
+    dateFilterEnd,
     clientNames,
   ]);
 
   // Check if any filters are active
   const hasActiveFilters = Boolean(
-    codigoFilter || vendedorFilter || sinVisitarFilter,
+    codigoFilter || vendedorFilter || sinVisitarFilter || dateFilterStart,
   );
 
   // Get the final filtered client list with visit dates
@@ -568,6 +666,25 @@ export default function NavegarPage() {
     } catch {
       return "Fecha inválida";
     }
+  };
+
+  const formatDateFilterLabel = () => {
+    if (!dateFilterStart) return "";
+    const startDate = parseInputDate(dateFilterStart);
+    const endDate = parseInputDate(dateFilterEnd);
+    if (!startDate) return "";
+    const format = (date: Date) =>
+      `${date.getDate().toString().padStart(2, "0")}/${(
+        date.getMonth() + 1
+      )
+        .toString()
+        .padStart(2, "0")}/${date.getFullYear()}`;
+    if (!endDate) {
+      return format(startDate);
+    }
+    const [minDate, maxDate] =
+      startDate <= endDate ? [startDate, endDate] : [endDate, startDate];
+    return `${format(minDate)} – ${format(maxDate)}`;
   };
 
   // Prepare client list for map
@@ -795,6 +912,79 @@ export default function NavegarPage() {
               </span>
             )}
           </button>
+          {/* Fecha filter chip */}
+          <button
+            ref={dateChipRef}
+            className={`px-2 py-1 rounded-full text-xs border flex items-center gap-1 ${dateFilterStart ? "bg-purple-600 text-white border-purple-600" : "bg-gray-100 text-gray-700 border-gray-300 hover:bg-purple-100"} transition-colors`}
+            onClick={() => setDateDropdownOpen((open) => !open)}
+            type="button"
+          >
+            Fecha
+            {dateFilterStart
+              ? `: ${formatDateFilterLabel()} (${dateClientCount})`
+              : ""}
+            {dateFilterStart && (
+              <span
+                className="ml-1 cursor-pointer text-white bg-purple-700 rounded-full px-1.5 py-0.5 text-xs hover:bg-purple-800"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setDateFilterStart("");
+                  setDateFilterEnd("");
+                  setDateDropdownOpen(false);
+                }}
+                title="Limpiar filtro"
+              >
+                ×
+              </span>
+            )}
+          </button>
+          {dateDropdownOpen && (
+            <div className="absolute left-0 bottom-10 z-20 bg-white border border-gray-200 rounded-lg shadow-lg w-72 p-3 animate-fade-in">
+              <div className="text-xs text-gray-500 mb-2">
+                Selecciona una fecha específica o un rango.
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="text-xs text-gray-600">
+                  Desde
+                  <input
+                    type="date"
+                    className="mt-1 w-full border border-gray-200 rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-purple-200"
+                    value={dateFilterStart}
+                    onChange={(e) => setDateFilterStart(e.target.value)}
+                  />
+                </label>
+                <label className="text-xs text-gray-600">
+                  Hasta
+                  <input
+                    type="date"
+                    className="mt-1 w-full border border-gray-200 rounded-md px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-purple-200"
+                    value={dateFilterEnd}
+                    onChange={(e) => setDateFilterEnd(e.target.value)}
+                    min={dateFilterStart || undefined}
+                  />
+                </label>
+                <div className="flex justify-between pt-1">
+                  <button
+                    className="text-xs text-gray-500 hover:text-gray-700"
+                    onClick={() => {
+                      setDateFilterStart("");
+                      setDateFilterEnd("");
+                    }}
+                    type="button"
+                  >
+                    Limpiar
+                  </button>
+                  <button
+                    className="text-xs text-purple-600 hover:text-purple-800"
+                    onClick={() => setDateDropdownOpen(false)}
+                    type="button"
+                  >
+                    Aplicar
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
         <div className="w-full max-w-md mx-auto flex justify-end px-4">
           <button
@@ -892,6 +1082,8 @@ export default function NavegarPage() {
                         setCodigoFilter(null);
                         setVendedorFilter(null);
                         setSinVisitarFilter(false);
+                        setDateFilterStart("");
+                        setDateFilterEnd("");
                       }}
                     >
                       Limpiar filtros
