@@ -58,7 +58,7 @@ export default function SearchInput({
       <input
         ref={inputRef}
         className={`
-          w-full py-2.5 pl-10 pr-10 text-sm
+          w-full min-h-[44px] py-3 pl-10 pr-10 text-base
           bg-white border rounded-xl
           transition-all duration-200 ease-out
           placeholder:text-gray-400
