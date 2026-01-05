@@ -419,10 +419,10 @@ const NavegarMap = forwardRef(function NavegarMap(
         className="w-full h-full"
         style={{ borderRadius: 0 }}
       />
-      {/* Dibujo toggle button - top right */}
+      {/* Dibujo toggle button - top left */}
       <button
         onClick={() => setShowDibujo((prev) => !prev)}
-        className={`absolute top-3 right-3 z-10 flex items-center gap-1.5 px-3 py-2 rounded-lg shadow-lg text-sm font-medium transition-all ${
+        className={`absolute top-3 left-3 z-10 flex items-center gap-1.5 px-3 py-2 rounded-lg shadow-lg text-sm font-medium transition-all ${
           showDibujo
             ? "bg-purple-600 text-white hover:bg-purple-700"
             : "bg-white text-gray-700 hover:bg-gray-50 border border-gray-200"
@@ -437,7 +437,7 @@ const NavegarMap = forwardRef(function NavegarMap(
       </button>
       {/* Info tooltip when Dibujo is active but not enough clients */}
       {showDibujo && clients.length < 3 && (
-        <div className="absolute top-16 right-3 z-10 bg-yellow-50 border border-yellow-200 text-yellow-800 text-xs px-3 py-2 rounded-lg shadow-md max-w-[200px]">
+        <div className="absolute top-16 left-3 z-10 bg-yellow-50 border border-yellow-200 text-yellow-800 text-xs px-3 py-2 rounded-lg shadow-md max-w-[200px]">
           Se necesitan al menos 3 clientes para dibujar el área de cobertura
         </div>
       )}

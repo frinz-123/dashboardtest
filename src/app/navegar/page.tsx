@@ -4,7 +4,7 @@ import React, { useEffect, useState, useRef, useMemo } from "react";
 import dynamic from "next/dynamic";
 import SearchInput from "@/components/ui/SearchInput";
 import NavegarMap, { Client as NavegarClient, RouteInfo } from "./NavegarMap";
-import { XCircle, Navigation, RefreshCw, MapPin, X } from "lucide-react";
+import { Navigation, RefreshCw, MapPin, X } from "lucide-react";
 import debounce from "lodash.debounce";
 
 const Map = dynamic(() => import("@/components/ui/Map"), { ssr: false });
@@ -52,9 +52,6 @@ export default function NavegarPage() {
   const [vendedorFilter, setVendedorFilter] = useState<string | null>(null);
   const [vendedorDropdownOpen, setVendedorDropdownOpen] = useState(false);
   const vendedorChipRef = useRef<HTMLButtonElement>(null);
-  const [clientVendedorMap, setClientVendedorMap] = useState<
-    Record<string, string>
-  >({});
   const [sinVisitarFilter, setSinVisitarFilter] = useState(false);
   const [sheetRows, setSheetRows] = useState<any[]>([]);
   const [sheetHeaders, setSheetHeaders] = useState<string[]>([]);
@@ -215,17 +212,6 @@ export default function NavegarPage() {
     return d;
   };
 
-  // Helper: format ISO date for display
-  const formatISODate = (isoDate: string): string => {
-    if (!isoDate) return "";
-    const [year, month, day] = isoDate.split("-").map(Number);
-    const monthNames = [
-      "Ene", "Feb", "Mar", "Abr", "May", "Jun",
-      "Jul", "Ago", "Sep", "Oct", "Nov", "Dic",
-    ];
-    return `${day} ${monthNames[month - 1]} ${year}`;
-  };
-
   // Debounced search
   useEffect(() => {
     debouncedSetSearchTerm(searchTerm);
@@ -266,43 +252,6 @@ export default function NavegarPage() {
       (now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24);
     return diffDays > DAYS_WITHOUT_VISIT;
   };
-
-  // Fetch client code (Codigo, column AG) when a client is selected
-  useEffect(() => {
-    const fetchCodigo = async () => {
-      if (!selectedClient) {
-        setSelectedClientCode(null);
-        return;
-      }
-      try {
-        // Fetch the row for the selected client from the sheet
-        const response = await fetch(
-          `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:AN?key=${googleApiKey}`,
-        );
-        if (!response.ok) throw new Error("Failed to fetch client data");
-        const data = await response.json();
-        const headers = data.values[0];
-        const codigoIndex = headers.findIndex(
-          (h: string) => h.toLowerCase() === "codigo",
-        );
-        if (codigoIndex === -1) {
-          setSelectedClientCode(null);
-          return;
-        }
-        const clientRow = (data.values as string[][]).find(
-          (row) => row[0] === selectedClient,
-        );
-        if (clientRow && clientRow[codigoIndex]) {
-          setSelectedClientCode(clientRow[codigoIndex]);
-        } else {
-          setSelectedClientCode(null);
-        }
-      } catch (e) {
-        setSelectedClientCode(null);
-      }
-    };
-    fetchCodigo();
-  }, [selectedClient]);
 
   // Fetch all client names on load
   useEffect(() => {
@@ -348,83 +297,35 @@ export default function NavegarPage() {
     fetchClientNames();
   }, []);
 
-  // This effect is no longer needed since vendedor data is loaded in fetchAllData
-  // Keeping for compatibility but simplified
+  // Update selectedClientCode from cached allClientCodes (avoids redundant API call)
   useEffect(() => {
-    setClientVendedorMap(clientVendedorMapping);
-  }, [clientVendedorMapping]);
+    if (!selectedClient) {
+      setSelectedClientCode(null);
+      return;
+    }
+    const clientCode = allClientCodes.find((c) => c.name === selectedClient)?.code;
+    setSelectedClientCode(clientCode || null);
+  }, [selectedClient, allClientCodes]);
 
-  // Close dropdown on outside click
+  // Close dropdowns on outside click (combined handler for performance)
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (
-        codigoChipRef.current &&
-        !codigoChipRef.current.contains(event.target as Node)
-      ) {
+      const target = event.target as Node;
+      if (codigoChipRef.current && !codigoChipRef.current.contains(target)) {
         setCodigoDropdownOpen(false);
       }
-    }
-    if (codigoDropdownOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-    } else {
-      document.removeEventListener("mousedown", handleClickOutside);
-    }
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [codigoDropdownOpen]);
-
-  // Close Vendedor dropdown on outside click
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (
-        vendedorChipRef.current &&
-        !vendedorChipRef.current.contains(event.target as Node)
-      ) {
+      if (vendedorChipRef.current && !vendedorChipRef.current.contains(target)) {
         setVendedorDropdownOpen(false);
       }
-    }
-    if (vendedorDropdownOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-    } else {
-      document.removeEventListener("mousedown", handleClickOutside);
-    }
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [vendedorDropdownOpen]);
-
-  // Close Date dropdown on outside click
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (
-        dateChipRef.current &&
-        !dateChipRef.current.contains(event.target as Node)
-      ) {
+      if (dateChipRef.current && !dateChipRef.current.contains(target)) {
         setDateDropdownOpen(false);
       }
-    }
-    if (dateDropdownOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-    } else {
-      document.removeEventListener("mousedown", handleClickOutside);
-    }
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [dateDropdownOpen]);
-
-  // Close Email dropdown on outside click
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (
-        emailChipRef.current &&
-        !emailChipRef.current.contains(event.target as Node)
-      ) {
+      if (emailChipRef.current && !emailChipRef.current.contains(target)) {
         setEmailDropdownOpen(false);
       }
     }
-    if (emailDropdownOpen) {
+    const anyOpen = codigoDropdownOpen || vendedorDropdownOpen || dateDropdownOpen || emailDropdownOpen;
+    if (anyOpen) {
       document.addEventListener("mousedown", handleClickOutside);
     } else {
       document.removeEventListener("mousedown", handleClickOutside);
@@ -432,278 +333,106 @@ export default function NavegarPage() {
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [emailDropdownOpen]);
+  }, [codigoDropdownOpen, vendedorDropdownOpen, dateDropdownOpen, emailDropdownOpen]);
 
-  // Helper function to apply all filters except the specified one
-  const getFilteredClientsExcluding = (
-    excludeFilter: "codigo" | "vendedor" | "sinVisitar" | "date" | "email",
-  ) => {
-    let baseClients = clientNames;
-
-    // Apply código filter if active and not excluded
-    if (codigoFilter && excludeFilter !== "codigo") {
-      const codeClients = allClientCodes
-        .filter((c) => c.code === codigoFilter)
-        .map((c) => c.name);
-      baseClients = baseClients.filter((name) => codeClients.includes(name));
-    }
-
-    // Apply vendedor filter if active and not excluded
-    if (vendedorFilter && excludeFilter !== "vendedor") {
-      const vendedorClients = Object.entries(clientVendedorMapping)
-        .filter(([name, vendedor]) => vendedor === vendedorFilter)
-        .map(([name]) => name);
-      baseClients = baseClients.filter((name) =>
-        vendedorClients.includes(name),
-      );
-    }
-
-    // Apply sin visitar filter if active and not excluded
-    if (sinVisitarFilter && excludeFilter !== "sinVisitar") {
-      const sinVisitarClients = Object.entries(clientLastVisitMap)
-        .filter(([name, fecha]) => {
-          if (!fecha || fecha === DEFAULT_VISIT_DATE) return true;
-          const [month, day, year] = fecha.split("/").map(Number);
-          if (!day || !month || !year) return false;
-          const lastDate = new Date(year, month - 1, day);
-          const now = new Date();
-          const diffDays =
-            (now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24);
-
-          return diffDays > DAYS_WITHOUT_VISIT;
-        })
-        .map(([name]) => name);
-      baseClients = baseClients.filter((name) =>
-        sinVisitarClients.includes(name),
-      );
-    }
-
-    // Apply date filter if active and not excluded
-    if (dateFilter && excludeFilter !== "date") {
-      const dateClients = Object.entries(clientLastVisitMap)
-        .filter(([name, fecha]) => {
-          if (!fecha || fecha === DEFAULT_VISIT_DATE) return false;
-          const clientDateISO = sheetDateToISO(fecha);
-          if (!clientDateISO) return false;
-          const clientDate = isoToDate(clientDateISO);
-          if (!clientDate) return false;
-
-          if (dateFilter.type === "single" && dateFilter.date) {
-            const filterDate = isoToDate(dateFilter.date);
-            if (!filterDate) return false;
-            return clientDate.getTime() === filterDate.getTime();
-          } else if (dateFilter.type === "range") {
-            const startDate = dateFilter.startDate ? isoToDate(dateFilter.startDate) : null;
-            const endDate = dateFilter.endDate ? isoToDate(dateFilter.endDate) : null;
-            if (startDate && clientDate < startDate) return false;
-            if (endDate && clientDate > endDate) return false;
-            return true;
-          }
-          return false;
-        })
-        .map(([name]) => name);
-      baseClients = baseClients.filter((name) => dateClients.includes(name));
-    }
-
-    // Apply email filter if active and not excluded
-    if (emailFilter && excludeFilter !== "email") {
-      const emailClients = Object.entries(clientLastEmailMap)
-        .filter(([name, email]) => email === emailFilter)
-        .map(([name]) => name);
-      baseClients = baseClients.filter((name) => emailClients.includes(name));
-    }
-
-    return baseClients;
-  };
-
-  // Count clients that match the código filter (considering other active filters)
-  const codigoClientCount = codigoFilter
-    ? getFilteredClientsExcluding("codigo").filter((name) => {
-        const clientCode = allClientCodes.find((c) => c.name === name)?.code;
-        return clientCode === codigoFilter;
-      }).length
-    : 0;
-
-  // Count clients that match the vendedor filter (considering other active filters)
-  const vendedorClientCount = vendedorFilter
-    ? getFilteredClientsExcluding("vendedor").filter((name) => {
-        return clientVendedorMapping[name] === vendedorFilter;
-      }).length
-    : 0;
-
-  // Count clients that match the sin visitar filter (considering other active filters)
-  const sinVisitarClientCount = sinVisitarFilter
-    ? getFilteredClientsExcluding("sinVisitar").filter((name) => {
-        const fecha = clientLastVisitMap[name];
-        if (!fecha || fecha === DEFAULT_VISIT_DATE) return true;
-        const [month, day, year] = fecha.split("/").map(Number);
-        if (!day || !month || !year) return false;
-        const lastDate = new Date(year, month - 1, day);
-        const now = new Date();
-        const diffDays =
-          (now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24);
-
-        return diffDays > DAYS_WITHOUT_VISIT;
-      }).length
-    : 0;
-
-  // Count clients that match the date filter (considering other active filters)
-  const dateClientCount = dateFilter
-    ? getFilteredClientsExcluding("date").filter((name) => {
-        const fecha = clientLastVisitMap[name];
-        if (!fecha || fecha === DEFAULT_VISIT_DATE) return false;
-        const clientDateISO = sheetDateToISO(fecha);
-        if (!clientDateISO) return false;
-        const clientDate = isoToDate(clientDateISO);
-        if (!clientDate) return false;
-
-        if (dateFilter.type === "single" && dateFilter.date) {
-          const filterDate = isoToDate(dateFilter.date);
-          if (!filterDate) return false;
-          return clientDate.getTime() === filterDate.getTime();
-        } else if (dateFilter.type === "range") {
-          const startDate = dateFilter.startDate ? isoToDate(dateFilter.startDate) : null;
-          const endDate = dateFilter.endDate ? isoToDate(dateFilter.endDate) : null;
-          if (startDate && clientDate < startDate) return false;
-          if (endDate && clientDate > endDate) return false;
-          return true;
-        }
-        return false;
-      }).length
-    : 0;
-
-  // Count clients that match the email filter (considering other active filters)
-  const emailClientCount = emailFilter
-    ? getFilteredClientsExcluding("email").filter((name) => {
-        return clientLastEmailMap[name] === emailFilter;
-      }).length
-    : 0;
-
-  // Memoize individual filter results for stable references
-  const filteredByCode = useMemo(() => {
-    if (!codigoFilter) return null;
-    const result = allClientCodes
-      .filter((c) => c.code === codigoFilter)
-      .map((c) => c.name);
-    // Deduplicate to prevent duplicate keys
-    return Array.from(new Set(result));
-  }, [codigoFilter, allClientCodes]);
-
-  const filteredByVendedor = useMemo(() => {
-    if (!vendedorFilter) return null;
-    const result = Object.entries(clientVendedorMapping)
-      .filter(([name, vendedor]) => vendedor === vendedorFilter)
-      .map(([name]) => name);
-    // Deduplicate to prevent duplicate keys
-    return Array.from(new Set(result));
-  }, [vendedorFilter, clientVendedorMapping]);
-
-  const filteredBySinVisitar = useMemo(() => {
-    if (!sinVisitarFilter) return null;
-
-    const result = Object.entries(clientLastVisitMap)
-      .filter(([name, fecha]) => {
-        if (!fecha || fecha === DEFAULT_VISIT_DATE) return true;
-        const [month, day, year] = fecha.split("/").map(Number);
-        if (!day || !month || !year) return false;
-        const lastDate = new Date(year, month - 1, day);
-        const now = new Date();
-        // Set both dates to midnight to match isSinVisitar logic
-        lastDate.setHours(0, 0, 0, 0);
-        now.setHours(0, 0, 0, 0);
-        const diffDays =
-          (now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24);
-        return diffDays > DAYS_WITHOUT_VISIT;
-      })
-      .map(([name]) => name);
-
-    // Deduplicate to prevent duplicate keys
-    return Array.from(new Set(result));
-  }, [sinVisitarFilter, clientLastVisitMap]);
-
-  const filteredByDate = useMemo(() => {
-    if (!dateFilter) return null;
-
-    const result = Object.entries(clientLastVisitMap)
-      .filter(([name, fecha]) => {
-        if (!fecha || fecha === DEFAULT_VISIT_DATE) return false;
-        const clientDateISO = sheetDateToISO(fecha);
-        if (!clientDateISO) return false;
-        const clientDate = isoToDate(clientDateISO);
-        if (!clientDate) return false;
-
-        if (dateFilter.type === "single" && dateFilter.date) {
-          const filterDate = isoToDate(dateFilter.date);
-          if (!filterDate) return false;
-          return clientDate.getTime() === filterDate.getTime();
-        } else if (dateFilter.type === "range") {
-          const startDate = dateFilter.startDate ? isoToDate(dateFilter.startDate) : null;
-          const endDate = dateFilter.endDate ? isoToDate(dateFilter.endDate) : null;
-          if (startDate && clientDate < startDate) return false;
-          if (endDate && clientDate > endDate) return false;
-          return true;
-        }
-        return false;
-      })
-      .map(([name]) => name);
-
-    // Deduplicate to prevent duplicate keys
-    return Array.from(new Set(result));
-  }, [dateFilter, clientLastVisitMap]);
-
-  const filteredByEmail = useMemo(() => {
-    if (!emailFilter) return null;
-
-    const result = Object.entries(clientLastEmailMap)
-      .filter(([name, email]) => email === emailFilter)
-      .map(([name]) => name);
-
-    // Deduplicate to prevent duplicate keys
-    return Array.from(new Set(result));
-  }, [emailFilter, clientLastEmailMap]);
-
-  // Memoize the final filtered names to prevent infinite loops
+  // Single-pass filtering with Set operations (optimized)
   const filteredNames = useMemo(() => {
     if (!codigoFilter && !vendedorFilter && !sinVisitarFilter && !dateFilter && !emailFilter) {
       return null;
     }
 
-    let sets: string[][] = [];
-    if (codigoFilter && filteredByCode) {
-      sets.push(filteredByCode);
-    }
-    if (vendedorFilter && filteredByVendedor) {
-      sets.push(filteredByVendedor);
-    }
-    if (sinVisitarFilter && filteredBySinVisitar) {
-      sets.push(filteredBySinVisitar);
-    }
-    if (dateFilter && filteredByDate) {
-      sets.push(filteredByDate);
-    }
-    if (emailFilter && filteredByEmail) {
-      sets.push(filteredByEmail);
+    const filteredSet = new Set<string>();
+
+    for (const name of clientNames) {
+      if (name.includes("**ARCHIVADO NO USAR**")) continue;
+
+      let matches = true;
+
+      if (codigoFilter) {
+        const clientCode = allClientCodes.find((c) => c.name === name)?.code;
+        if (clientCode !== codigoFilter) matches = false;
+      }
+
+      if (matches && vendedorFilter) {
+        if (clientVendedorMapping[name] !== vendedorFilter) matches = false;
+      }
+
+      if (matches && sinVisitarFilter) {
+        const fecha = clientLastVisitMap[name];
+        if (fecha && fecha !== DEFAULT_VISIT_DATE) {
+          const [month, day, year] = fecha.split("/").map(Number);
+          if (day && month && year) {
+            const lastDate = new Date(year, month - 1, day);
+            const now = new Date();
+            lastDate.setHours(0, 0, 0, 0);
+            now.setHours(0, 0, 0, 0);
+            const diffDays = (now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24);
+            if (diffDays <= DAYS_WITHOUT_VISIT) matches = false;
+          } else {
+            matches = false;
+          }
+        } else {
+          matches = false;
+        }
+      }
+
+      if (matches && dateFilter) {
+        const fecha = clientLastVisitMap[name];
+        if (!fecha || fecha === DEFAULT_VISIT_DATE) {
+          matches = false;
+        } else {
+          const clientDateISO = sheetDateToISO(fecha);
+          if (!clientDateISO) {
+            matches = false;
+          } else {
+            const clientDate = isoToDate(clientDateISO);
+            if (!clientDate) {
+              matches = false;
+            } else if (dateFilter.type === "single" && dateFilter.date) {
+              const filterDate = isoToDate(dateFilter.date);
+              if (!filterDate || clientDate.getTime() !== filterDate.getTime()) {
+                matches = false;
+              }
+            } else if (dateFilter.type === "range") {
+              const startDate = dateFilter.startDate ? isoToDate(dateFilter.startDate) : null;
+              const endDate = dateFilter.endDate ? isoToDate(dateFilter.endDate) : null;
+              if ((startDate && clientDate < startDate) || (endDate && clientDate > endDate)) {
+                matches = false;
+              }
+            }
+          }
+        }
+      }
+
+      if (matches && emailFilter) {
+        if (clientLastEmailMap[name] !== emailFilter) matches = false;
+      }
+
+      if (matches) {
+        filteredSet.add(name);
+      }
     }
 
-    if (sets.length === 0) return null;
-
-    // Intersect all sets
-    let result = sets.reduce((a, b) => a.filter((x) => b.includes(x)));
-
-    // CRITICAL: Deduplicate the results to prevent React key warnings
-    return Array.from(new Set(result));
+    return filteredSet.size > 0 ? Array.from(filteredSet) : null;
   }, [
     codigoFilter,
     vendedorFilter,
     sinVisitarFilter,
     dateFilter,
     emailFilter,
-    filteredByCode,
-    filteredByVendedor,
-    filteredBySinVisitar,
-    filteredByDate,
-    filteredByEmail,
+    clientNames,
+    allClientCodes,
+    clientVendedorMapping,
+    clientLastVisitMap,
+    clientLastEmailMap,
   ]);
+
+  // Client counts for filter chips (calculated after filteredNames)
+  const codigoClientCount = codigoFilter && filteredNames ? filteredNames.length : 0;
+  const vendedorClientCount = vendedorFilter && filteredNames ? filteredNames.length : 0;
+  const sinVisitarClientCount = sinVisitarFilter && filteredNames ? filteredNames.length : 0;
+  const dateClientCount = dateFilter && filteredNames ? filteredNames.length : 0;
+  const emailClientCount = emailFilter && filteredNames ? filteredNames.length : 0;
 
   // Debounce filtering state to avoid flashing unfiltered results
   useEffect(() => {
@@ -783,21 +512,21 @@ export default function NavegarPage() {
     }
   };
 
-  // Prepare client list for map
-  const clientList: NavegarClient[] = (
-    filteredNames || (searchTerm ? filteredClientsBySearch : clientNames)
-  )
-    .map((name) => {
-      // Find the codigo for this client
-      const clientCode = allClientCodes.find((c) => c.name === name)?.code;
-      return {
-        name,
-        lat: clientLocations[name]?.lat,
-        lng: clientLocations[name]?.lng,
-        codigo: clientCode,
-      };
-    })
-    .filter((c) => c.lat && c.lng);
+  // Prepare client list for map (memoized to avoid remapping on every render)
+  const clientList: NavegarClient[] = useMemo(() => {
+    const names = filteredNames || (searchTerm ? filteredClientsBySearch : clientNames);
+    return names
+      .map((name) => {
+        const clientCode = allClientCodes.find((c) => c.name === name)?.code;
+        return {
+          name,
+          lat: clientLocations[name]?.lat,
+          lng: clientLocations[name]?.lng,
+          codigo: clientCode,
+        };
+      })
+      .filter((c) => c.lat && c.lng);
+  }, [filteredNames, searchTerm, filteredClientsBySearch, clientNames, allClientCodes, clientLocations]);
 
   // Only show selected client if it is in the filtered list
   const selectedClientLocation =
@@ -891,353 +620,264 @@ export default function NavegarPage() {
           onUserLocationChange={handleUserLocationChange}
         />
       </div>
-      {/* Apple Maps style bottom sheet */}
-      <div className="fixed left-0 right-0 bottom-0 z-10 flex flex-col items-center transition-all duration-300">
-        <div className="w-16 h-1.5 bg-gray-300 rounded-full mt-2 mb-2" />
-        {/* Filter chips */}
-        <div className="w-full max-w-md mx-auto flex flex-wrap gap-2 px-4 mb-2 relative">
-          {/* Codigo filter chip */}
-          <button
-            ref={codigoChipRef}
-            className={`px-2 py-1 rounded-full text-xs border flex items-center gap-1 ${codigoFilter ? "bg-blue-600 text-white border-blue-600" : "bg-gray-100 text-gray-700 border-gray-300 hover:bg-blue-100"} transition-colors`}
-            onClick={() => setCodigoDropdownOpen((open) => !open)}
-            type="button"
-          >
-            Código
-            {codigoFilter ? `: ${codigoFilter} (${codigoClientCount})` : ""}
-            {codigoFilter && (
-              <span
-                className="ml-1 cursor-pointer text-white bg-blue-700 rounded-full px-1.5 py-0.5 text-xs hover:bg-blue-800"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setCodigoFilter(null);
-                  setCodigoDropdownOpen(false);
-                }}
-                title="Limpiar filtro"
-              >
-                ×
-              </span>
-            )}
-          </button>
-          {codigoDropdownOpen && (
-            <div className="absolute left-0 bottom-10 z-20 bg-white border border-gray-200 rounded-lg shadow-lg w-48 max-h-64 overflow-y-auto animate-fade-in">
-              {uniqueCodes.map((code) => (
-                <button
-                  key={code}
-                  className={`block w-full text-left px-4 py-2 text-xs hover:bg-blue-100 ${codigoFilter === code ? "bg-blue-600 text-white" : ""}`}
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    setCodigoFilter(code);
-                    setCodigoDropdownOpen(false);
-                  }}
-                >
-                  {code}
-                </button>
-              ))}
-              {uniqueCodes.length === 0 && (
-                <div className="px-4 py-2 text-xs text-gray-400">
-                  Sin códigos
-                </div>
-              )}
-            </div>
-          )}
-          {/* Vendedor filter chip */}
-          <button
-            ref={vendedorChipRef}
-            className={`px-2 py-1 rounded-full text-xs border flex items-center gap-1 ${vendedorFilter ? "bg-green-600 text-white border-green-600" : "bg-gray-100 text-gray-700 border-gray-300 hover:bg-green-100"} transition-colors`}
-            onClick={() => setVendedorDropdownOpen((open) => !open)}
-            type="button"
-          >
-            Vendedor
-            {vendedorFilter
-              ? `: ${vendedorFilter} (${vendedorClientCount})`
-              : ""}
-            {vendedorFilter && (
-              <span
-                className="ml-1 cursor-pointer text-white bg-green-700 rounded-full px-1.5 py-0.5 text-xs hover:bg-green-800"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setVendedorFilter(null);
-                  setVendedorDropdownOpen(false);
-                }}
-                title="Limpiar filtro"
-              >
-                ×
-              </span>
-            )}
-          </button>
-          {vendedorDropdownOpen && (
-            <div className="absolute left-32 bottom-10 z-20 bg-white border border-gray-200 rounded-lg shadow-lg w-56 max-h-64 overflow-y-auto animate-fade-in">
-              {uniqueVendedorNames.map((name) => (
-                <button
-                  key={name}
-                  className={`block w-full text-left px-4 py-2 text-xs hover:bg-green-100 ${vendedorFilter === name ? "bg-green-600 text-white" : ""}`}
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    setVendedorFilter(name);
-                    setVendedorDropdownOpen(false);
-                  }}
-                >
-                  {name}
-                </button>
-              ))}
-              {uniqueVendedorNames.length === 0 && (
-                <div className="px-4 py-2 text-xs text-gray-400">
-                  Sin vendedores
-                </div>
-              )}
-            </div>
-          )}
-          {/* Sin Visitar filter chip */}
-          <button
-            className={`px-2 py-1 rounded-full text-xs border flex items-center gap-1 ${sinVisitarFilter ? "bg-yellow-500 text-white border-yellow-500" : "bg-gray-100 text-gray-700 border-gray-300 hover:bg-yellow-100"} transition-colors`}
-            onClick={() => setSinVisitarFilter((f) => !f)}
-            type="button"
-          >
-            Sin Visitar{sinVisitarFilter ? ` (${sinVisitarClientCount})` : ""}
-            {sinVisitarFilter && (
-              <span
-                className="ml-1 cursor-pointer text-white bg-yellow-700 rounded-full px-1.5 py-0.5 text-xs hover:bg-yellow-800"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setSinVisitarFilter(false);
-                }}
-                title="Limpiar filtro"
-              >
-                ×
-              </span>
-            )}
-          </button>
-          {/* Date filter chip - wrapped in container for outside click detection */}
-          <div ref={dateChipRef} className="relative">
-            <button
-              className={`px-2 py-1 rounded-full text-xs border flex items-center gap-1 ${dateFilter ? "bg-purple-600 text-white border-purple-600" : "bg-gray-100 text-gray-700 border-gray-300 hover:bg-purple-100"} transition-colors`}
-              onClick={() => setDateDropdownOpen((open) => !open)}
-              type="button"
-            >
-              Fecha
-              {dateFilter
-                ? dateFilter.type === "single" && dateFilter.date
-                  ? `: ${formatISODate(dateFilter.date)} (${dateClientCount})`
-                  : dateFilter.type === "range"
-                    ? `: ${dateFilter.startDate ? formatISODate(dateFilter.startDate) : "..."} - ${dateFilter.endDate ? formatISODate(dateFilter.endDate) : "..."} (${dateClientCount})`
-                    : ""
-                : ""}
-              {dateFilter && (
-                <span
-                  className="ml-1 cursor-pointer text-white bg-purple-700 rounded-full px-1.5 py-0.5 text-xs hover:bg-purple-800"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setDateFilter(null);
-                    setDateDropdownOpen(false);
-                  }}
-                  title="Limpiar filtro"
-                >
-                  ×
-                </span>
-              )}
-            </button>
-            {dateDropdownOpen && (
-              <div className="absolute left-0 bottom-full mb-2 z-20 bg-white border border-gray-200 rounded-lg shadow-lg w-72 p-3 animate-fade-in">
-                <div className="mb-3">
-                  <label className="text-xs font-medium text-gray-700 mb-1 block">
-                    Tipo de filtro
-                  </label>
-                  <div className="flex gap-2">
-                    <button
-                      className={`flex-1 px-2 py-1 rounded text-xs border ${dateFilterMode === "single" ? "bg-purple-600 text-white border-purple-600" : "bg-gray-100 text-gray-700 border-gray-300"}`}
-                      onClick={() => setDateFilterMode("single")}
-                      type="button"
-                    >
-                      Fecha única
-                    </button>
-                    <button
-                      className={`flex-1 px-2 py-1 rounded text-xs border ${dateFilterMode === "range" ? "bg-purple-600 text-white border-purple-600" : "bg-gray-100 text-gray-700 border-gray-300"}`}
-                      onClick={() => setDateFilterMode("range")}
-                      type="button"
-                    >
-                      Rango
-                    </button>
-                  </div>
-                </div>
-                {dateFilterMode === "single" ? (
-                  <div>
-                    <label className="text-xs font-medium text-gray-700 mb-1 block">
-                      Seleccionar fecha
-                    </label>
-                    <input
-                      type="date"
-                      className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
-                      value={dateFilter?.type === "single" ? dateFilter.date || "" : ""}
-                      onChange={(e) => {
-                        if (e.target.value) {
-                          setDateFilter({ type: "single", date: e.target.value });
-                        }
-                      }}
-                    />
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <div>
-                      <label className="text-xs font-medium text-gray-700 mb-1 block">
-                        Desde
-                      </label>
-                      <input
-                        type="date"
-                        className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
-                        value={dateFilter?.type === "range" ? dateFilter.startDate || "" : ""}
-                        onChange={(e) => {
-                          setDateFilter((prev) => ({
-                            type: "range",
-                            startDate: e.target.value || undefined,
-                            endDate: prev?.type === "range" ? prev.endDate : undefined,
-                          }));
-                        }}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium text-gray-700 mb-1 block">
-                        Hasta
-                      </label>
-                      <input
-                        type="date"
-                        className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
-                        value={dateFilter?.type === "range" ? dateFilter.endDate || "" : ""}
-                        onChange={(e) => {
-                          setDateFilter((prev) => ({
-                            type: "range",
-                            startDate: prev?.type === "range" ? prev.startDate : undefined,
-                            endDate: e.target.value || undefined,
-                          }));
-                        }}
-                      />
-                    </div>
-                  </div>
-                )}
-                <button
-                  className="mt-3 w-full px-2 py-1.5 bg-gray-100 text-gray-700 rounded text-xs hover:bg-gray-200"
-                  onClick={() => {
-                    setDateFilter(null);
-                    setDateDropdownOpen(false);
-                  }}
-                  type="button"
-                >
-                  Limpiar
-                </button>
-              </div>
-            )}
-          </div>
-          {/* Email filter chip */}
-          <button
-            ref={emailChipRef}
-            className={`px-2 py-1 rounded-full text-xs border flex items-center gap-1 ${emailFilter ? "bg-orange-600 text-white border-orange-600" : "bg-gray-100 text-gray-700 border-gray-300 hover:bg-orange-100"} transition-colors`}
-            onClick={() => setEmailDropdownOpen((open) => !open)}
-            type="button"
-          >
-            Email
-            {emailFilter ? `: ${emailFilter.length > 15 ? emailFilter.substring(0, 15) + "..." : emailFilter} (${emailClientCount})` : ""}
-            {emailFilter && (
-              <span
-                className="ml-1 cursor-pointer text-white bg-orange-700 rounded-full px-1.5 py-0.5 text-xs hover:bg-orange-800"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setEmailFilter(null);
-                  setEmailDropdownOpen(false);
-                }}
-                title="Limpiar filtro"
-              >
-                ×
-              </span>
-            )}
-          </button>
-          {emailDropdownOpen && (
-            <div className="absolute right-0 bottom-10 z-20 bg-white border border-gray-200 rounded-lg shadow-lg w-64 max-h-64 overflow-y-auto animate-fade-in">
-              {uniqueEmails.map((email) => (
-                <button
-                  key={email}
-                  className={`block w-full text-left px-4 py-2 text-xs hover:bg-orange-100 ${emailFilter === email ? "bg-orange-600 text-white" : ""}`}
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    setEmailFilter(email);
-                    setEmailDropdownOpen(false);
-                  }}
-                >
-                  {email}
-                </button>
-              ))}
-              {uniqueEmails.length === 0 && (
-                <div className="px-4 py-2 text-xs text-gray-400">
-                  Sin emails
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-        <div className="w-full max-w-md mx-auto flex justify-end px-4">
-          <button
-            className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border ${isLocating ? "bg-blue-100 text-blue-600" : "bg-gray-100 text-gray-600"} hover:bg-blue-50 transition-colors`}
-            onClick={handleRefreshLocation}
-            disabled={isLocating}
-            title="Actualizar mi ubicación"
-          >
-            <RefreshCw
-              className={`h-4 w-4 ${isLocating ? "animate-spin" : ""}`}
+      {/* Bottom sheet */}
+      <div className="fixed left-0 right-0 bottom-0 z-10 flex flex-col items-center">
+        {/* Handle */}
+        <div className="w-16 h-1.5 bg-gray-300 rounded-full mt-2 mb-3" />
+        {/* Filter bar */}
+        <div className="w-full max-w-md mx-auto px-4 mb-3">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {/* Codigo filter */}
+            <FilterChip
+              ref={codigoChipRef}
+              label="Código"
+              value={codigoFilter}
+              count={codigoClientCount}
+              isOpen={codigoDropdownOpen}
+              onToggle={() => setCodigoDropdownOpen((open) => !open)}
+              onClear={() => { setCodigoFilter(null); setCodigoDropdownOpen(false); }}
+              icon={<Hash className="w-3.5 h-3.5" />}
             />
-            {isLocating ? "Actualizando..." : "Mi ubicación"}
-          </button>
+            {/* Vendedor filter */}
+            <FilterChip
+              ref={vendedorChipRef}
+              label="Vendedor"
+              value={vendedorFilter}
+              count={vendedorClientCount}
+              isOpen={vendedorDropdownOpen}
+              onToggle={() => setVendedorDropdownOpen((open) => !open)}
+              onClear={() => { setVendedorFilter(null); setVendedorDropdownOpen(false); }}
+              icon={<User className="w-3.5 h-3.5" />}
+            />
+            {/* Sin Visitar filter */}
+            <FilterChip
+              label="Sin visitar"
+              value={sinVisitarFilter ? `${sinVisitarClientCount} clientes` : null}
+              count={sinVisitarClientCount}
+              isOpen={false}
+              onToggle={() => setSinVisitarFilter((f) => !f)}
+              onClear={() => setSinVisitarFilter(false)}
+              icon={<Clock className="w-3.5 h-3.5" />}
+            />
+            {/* Date filter */}
+            <FilterChip
+              ref={dateChipRef}
+              label="Fecha"
+              value={dateFilter ? formatDateFilterValue(dateFilter) : null}
+              count={dateClientCount}
+              isOpen={dateDropdownOpen}
+              onToggle={() => setDateDropdownOpen((open) => !open)}
+              onClear={() => { setDateFilter(null); setDateDropdownOpen(false); }}
+              icon={<Calendar className="w-3.5 h-3.5" />}
+            />
+            {/* Email filter */}
+            <FilterChip
+              ref={emailChipRef}
+              label="Email"
+              value={emailFilter}
+              count={emailClientCount}
+              isOpen={emailDropdownOpen}
+              onToggle={() => setEmailDropdownOpen((open) => !open)}
+              onClear={() => { setEmailFilter(null); setEmailDropdownOpen(false); }}
+              icon={<Mail className="w-3.5 h-3.5" />}
+            />
+          </div>
         </div>
-        <div
-          className="bg-white rounded-t-2xl shadow-xl w-full max-w-md mx-auto p-4 border-t border-gray-200"
-          style={{ minHeight: 120 }}
-        >
-          {/* Route Mode UI */}
-          {routeMode &&
-          selectedClient &&
-          selectedClientLocation &&
-          routeInfo ? (
-            <div className="flex flex-col items-center animate-fade-in">
-              <div className="flex items-center gap-2 mb-2">
-                <Navigation className="h-5 w-5 text-blue-600" />
-                <span className="font-semibold text-blue-700 text-lg">
-                  En ruta a {selectedClient}
-                </span>
-              </div>
-              <div className="mb-2 text-xs text-blue-700 bg-blue-50 px-3 py-1 rounded-full">
-                Distancia: {(routeInfo.distance / 1000).toFixed(2)} km
-                &nbsp;•&nbsp; ETA: {Math.round(routeInfo.duration / 60)} min
+        {/* Dropdowns */}
+        {codigoDropdownOpen && (
+          <Dropdown
+            anchorRef={codigoChipRef}
+            onClose={() => setCodigoDropdownOpen(false)}
+            align="left"
+          >
+            <div className="py-1">
+              {uniqueCodes.length > 0 ? (
+                uniqueCodes.map((code) => (
+                  <button
+                    key={code}
+                    onClick={() => { setCodigoFilter(code); setCodigoDropdownOpen(false); }}
+                    className={`w-full px-3 py-2 text-left text-sm flex items-center justify-between transition-colors ${
+                      codigoFilter === code
+                        ? "bg-blue-50 text-blue-700"
+                        : "hover:bg-gray-50 text-gray-700"
+                    }`}
+                  >
+                    <span>{code}</span>
+                    {codigoFilter === code && <Check className="w-4 h-4" />}
+                  </button>
+                ))
+              ) : (
+                <div className="px-3 py-4 text-sm text-gray-400 text-center">
+                  No hay códigos disponibles
+                </div>
+              )}
+            </div>
+          </Dropdown>
+        )}
+        {vendedorDropdownOpen && (
+          <Dropdown
+            anchorRef={vendedorChipRef}
+            onClose={() => setVendedorDropdownOpen(false)}
+            align="left"
+          >
+            <div className="py-1">
+              {uniqueVendedorNames.length > 0 ? (
+                uniqueVendedorNames.map((name) => (
+                  <button
+                    key={name}
+                    onClick={() => { setVendedorFilter(name); setVendedorDropdownOpen(false); }}
+                    className={`w-full px-3 py-2 text-left text-sm flex items-center justify-between transition-colors ${
+                      vendedorFilter === name
+                        ? "bg-blue-50 text-blue-700"
+                        : "hover:bg-gray-50 text-gray-700"
+                    }`}
+                  >
+                    <span className="truncate">{name}</span>
+                    {vendedorFilter === name && <Check className="w-4 h-4 flex-shrink-0" />}
+                  </button>
+                ))
+              ) : (
+                <div className="px-3 py-4 text-sm text-gray-400 text-center">
+                  No hay vendedores disponibles
+                </div>
+              )}
+            </div>
+          </Dropdown>
+        )}
+        {dateDropdownOpen && (
+          <Dropdown
+            anchorRef={dateChipRef}
+            onClose={() => setDateDropdownOpen(false)}
+            align="left"
+          >
+            <div className="p-3 space-y-3">
+              <div>
+                <label className="text-xs font-medium text-gray-500 mb-2 block">
+                  Rango de fecha
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="date"
+                    className="flex-1 px-2 py-1.5 text-sm border border-gray-200 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                    value={dateFilter?.startDate || ""}
+                    onChange={(e) => {
+                      setDateFilter((prev) => ({
+                        type: "range",
+                        startDate: e.target.value || undefined,
+                        endDate: prev?.endDate,
+                      }));
+                    }}
+                  />
+                  <span className="text-gray-400 self-center">→</span>
+                  <input
+                    type="date"
+                    className="flex-1 px-2 py-1.5 text-sm border border-gray-200 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                    value={dateFilter?.endDate || ""}
+                    onChange={(e) => {
+                      setDateFilter((prev) => ({
+                        type: "range",
+                        startDate: prev?.startDate,
+                        endDate: e.target.value || undefined,
+                      }));
+                    }}
+                  />
+                </div>
               </div>
               <button
-                className="flex items-center gap-2 mt-2 px-4 py-2 bg-red-100 text-red-700 rounded-lg font-medium hover:bg-red-200 transition-colors"
-                onClick={handleCloseRoute}
+                onClick={() => { setDateFilter(null); setDateDropdownOpen(false); }}
+                className="w-full px-2 py-1.5 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded-md transition-colors"
               >
-                <XCircle className="h-4 w-4" />
+                Limpiar filtro
+              </button>
+            </div>
+          </Dropdown>
+        )}
+        {emailDropdownOpen && (
+          <Dropdown
+            anchorRef={emailChipRef}
+            onClose={() => setEmailDropdownOpen(false)}
+            align="right"
+          >
+            <div className="py-1">
+              {uniqueEmails.length > 0 ? (
+                uniqueEmails.map((email) => (
+                  <button
+                    key={email}
+                    onClick={() => { setEmailFilter(email); setEmailDropdownOpen(false); }}
+                    className={`w-full px-3 py-2 text-left text-sm flex items-center justify-between transition-colors ${
+                      emailFilter === email
+                        ? "bg-blue-50 text-blue-700"
+                        : "hover:bg-gray-50 text-gray-700"
+                    }`}
+                  >
+                    <span className="truncate">{email}</span>
+                    {emailFilter === email && <Check className="w-4 h-4 flex-shrink-0" />}
+                  </button>
+                ))
+              ) : (
+                <div className="px-3 py-4 text-sm text-gray-400 text-center">
+                  No hay emails disponibles
+                </div>
+              )}
+            </div>
+          </Dropdown>
+        )}
+        {/* Main content card */}
+        <div className="bg-white rounded-t-2xl shadow-[0_-4px_20px_rgba(0,0,0,0.08)] w-full max-w-md mx-auto p-4 border-t border-gray-100">
+          {/* Route Mode UI */}
+          {routeMode && selectedClient && selectedClientLocation && routeInfo ? (
+            <div className="flex flex-col items-center py-2">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="p-2 bg-blue-100 rounded-full">
+                  <Navigation className="h-5 w-5 text-blue-600" />
+                </div>
+                <div>
+                  <div className="font-semibold text-gray-900">En ruta</div>
+                  <div className="text-sm text-gray-500">{selectedClient}</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-4 text-sm">
+                <div className="flex items-center gap-1 text-gray-600">
+                  <MapPin className="w-4 h-4" />
+                  <span>{(routeInfo.distance / 1000).toFixed(1)} km</span>
+                </div>
+                <div className="flex items-center gap-1 text-gray-600">
+                  <Clock className="w-4 h-4" />
+                  <span>{Math.round(routeInfo.duration / 60)} min</span>
+                </div>
+              </div>
+              <button
+                onClick={handleCloseRoute}
+                className="mt-4 px-4 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+              >
                 Cerrar ruta
               </button>
             </div>
           ) : showConfirm && userLocation && pendingRouteClient ? (
-            <div className="flex flex-col items-center animate-fade-in">
-              <div className="flex items-center gap-2 mb-2">
-                <MapPin className="h-5 w-5 text-green-600" />
-                <span className="font-semibold text-green-700 text-lg">
-                  ¿Usar esta ubicación para iniciar la ruta?
-                </span>
+            <div className="flex flex-col items-center py-2">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="p-2 bg-green-100 rounded-full">
+                  <MapPin className="h-5 w-5 text-green-600" />
+                </div>
+                <div className="text-sm">
+                  <div className="font-medium text-gray-900">Confirmar ubicación</div>
+                  <div className="text-gray-500">
+                    {userLocation.lat.toFixed(5)}, {userLocation.lng.toFixed(5)}
+                  </div>
+                </div>
               </div>
-              <div className="mb-2 text-xs text-gray-700 bg-gray-50 px-3 py-1 rounded-full">
-                Lat: {userLocation.lat.toFixed(5)}, Lng:{" "}
-                {userLocation.lng.toFixed(5)}
-              </div>
-              <div className="flex gap-2 mt-2">
+              <div className="flex gap-2 w-full">
                 <button
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
-                  onClick={handleConfirmRoute}
-                >
-                  Confirmar
-                </button>
-                <button
-                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-300 transition-colors"
                   onClick={handleCancelConfirm}
+                  className="flex-1 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors"
                 >
                   Cancelar
+                </button>
+                <button
+                  onClick={handleConfirmRoute}
+                  className="flex-1 py-2.5 text-sm font-medium text-white bg-gray-900 rounded-xl hover:bg-gray-800 transition-colors"
+                >
+                  Confirmar
                 </button>
               </div>
             </div>
@@ -1254,185 +894,205 @@ export default function NavegarPage() {
                   setRouteMode(false);
                 }}
                 placeholder="Buscar cliente..."
+                showSparkles={!searchTerm}
               />
-
-              {/* Filtered Clients List */}
+              {/* Active filters summary */}
               {hasActiveFilters && (
-                <div className="mt-3 border-t pt-3">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-sm font-medium text-gray-700">
-                      Clientes Filtrados ({filteredClientsWithDates.length})
-                    </h3>
-                    <button
-                      className="text-xs text-blue-600 hover:text-blue-800"
-                      onClick={() => {
-                        setCodigoFilter(null);
-                        setVendedorFilter(null);
-                        setSinVisitarFilter(false);
-                        setDateFilter(null);
-                        setEmailFilter(null);
-                      }}
-                    >
-                      Limpiar filtros
-                    </button>
+                <div className="mt-3 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Filter className="w-4 h-4 text-gray-400" />
+                    <span className="text-xs text-gray-500">
+                      {filteredClientsWithDates.length} resultado{filteredClientsWithDates.length !== 1 ? "s" : ""}
+                    </span>
                   </div>
-                  <div className="max-h-40 overflow-y-auto space-y-1">
-                    {filteredClientsWithDates.map((client) => (
-                      <div
-                        key={client.name}
-                        className={`px-3 py-2 text-sm cursor-pointer rounded border-l-2 transition-colors ${
-                          selectedClient === client.name
-                            ? "bg-blue-50 text-blue-700 border-blue-500"
-                            : client.isSinVisitar
-                              ? "bg-yellow-50 hover:bg-yellow-100 border-yellow-400"
-                              : "bg-gray-50 hover:bg-gray-100 border-gray-300"
-                        }`}
-                        onClick={() => {
-                          setSelectedClient(client.name);
-                          setRouteInfo(null);
-                          setRouteMode(false);
-                        }}
-                      >
-                        <div className="flex justify-between items-center">
-                          <span className="font-medium">{client.name}</span>
-                          <span
-                            className={`text-xs ${
-                              client.isSinVisitar
-                                ? "text-yellow-600"
-                                : "text-gray-500"
-                            }`}
-                          >
-                            {formatVisitDate(client.lastVisitDate)}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                    {filteredClientsWithDates.length === 0 && (
-                      <div className="px-3 py-4 text-center text-sm text-gray-500">
-                        No hay clientes que coincidan con los filtros
-                        seleccionados
+                  <button
+                    onClick={() => {
+                      setCodigoFilter(null);
+                      setVendedorFilter(null);
+                      setSinVisitarFilter(false);
+                      setDateFilter(null);
+                      setEmailFilter(null);
+                    }}
+                    className="text-xs text-gray-500 hover:text-gray-700 transition-colors"
+                  >
+                    Limpiar todo
+                  </button>
+                </div>
+              )}
+              {/* Filtered clients */}
+              {hasActiveFilters && (
+                <div className="mt-2 border-t border-gray-100 pt-2">
+                  <div className="max-h-48 overflow-y-auto -mx-2 px-2">
+                    {filteredClientsWithDates.length > 0 ? (
+                      filteredClientsWithDates.map((client) => (
+                        <button
+                          key={client.name}
+                          onClick={() => {
+                            setSelectedClient(client.name);
+                            setRouteInfo(null);
+                            setRouteMode(false);
+                          }}
+                          className={`w-full px-3 py-2.5 text-left rounded-lg transition-all ${
+                            selectedClient === client.name
+                              ? "bg-gray-900 text-white"
+                              : "hover:bg-gray-50 text-gray-900"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium truncate pr-2">{client.name}</span>
+                            <span className={`text-xs flex-shrink-0 ${
+                              selectedClient === client.name
+                                ? "text-gray-400"
+                                : client.isSinVisitar
+                                  ? "text-amber-500"
+                                  : "text-gray-400"
+                            }`}>
+                              {formatVisitDate(client.lastVisitDate)}
+                            </span>
+                          </div>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="py-8 text-center">
+                        <SearchX className="w-8 h-8 mx-auto text-gray-300 mb-2" />
+                        <p className="text-sm text-gray-500">No se encontraron clientes</p>
+                        <p className="text-xs text-gray-400 mt-1">Intenta ajustar los filtros</p>
                       </div>
                     )}
                   </div>
                 </div>
               )}
-
-              {isFiltering ? (
-                <div className="flex justify-center items-center py-8">
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
-                  <span className="ml-3 text-gray-500 text-sm">
-                    Filtrando clientes…
-                  </span>
-                </div>
-              ) : (
-                <div className="max-h-60 overflow-y-auto mt-2">
-                  {filteredClientsBySearch.map((name) => (
-                    <div
-                      key={name}
-                      className={`px-4 py-2 text-sm cursor-pointer rounded hover:bg-gray-100 ${selectedClient === name ? "bg-blue-50 text-blue-700" : ""}`}
-                      onClick={() => {
-                        setSelectedClient(name);
-                        setRouteInfo(null);
-                        setRouteMode(false);
-                      }}
-                    >
-                      <div className="flex justify-between items-center">
-                        <span className="font-medium">{name}</span>
-                        <span
-                          className={`text-xs ${
-                            isSinVisitar(name)
-                              ? "text-yellow-600"
-                              : "text-gray-500"
+              {/* Search results */}
+              {!hasActiveFilters && (
+                <div className="mt-2">
+                  {isFiltering ? (
+                    <div className="flex items-center justify-center py-8 gap-2">
+                      <div className="w-4 h-4 border-2 border-gray-200 border-t-gray-900 rounded-full animate-spin" />
+                      <span className="text-sm text-gray-500">Buscando...</span>
+                    </div>
+                  ) : filteredClientsBySearch.length > 0 ? (
+                    <div className="max-h-56 overflow-y-auto -mx-2 px-2">
+                      {filteredClientsBySearch.map((name) => (
+                        <button
+                          key={name}
+                          onClick={() => {
+                            setSelectedClient(name);
+                            setRouteInfo(null);
+                            setRouteMode(false);
+                          }}
+                          className={`w-full px-3 py-2.5 text-left rounded-lg transition-all ${
+                            selectedClient === name
+                              ? "bg-gray-900 text-white"
+                              : "hover:bg-gray-50 text-gray-900"
                           }`}
                         >
-                          {formatVisitDate(getLastVisitDate(name))}
-                        </span>
-                      </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium truncate pr-2">{name}</span>
+                            <span className={`text-xs flex-shrink-0 ${
+                              selectedClient === name
+                                ? "text-gray-400"
+                                : isSinVisitar(name)
+                                  ? "text-amber-500"
+                                  : "text-gray-400"
+                            }`}>
+                              {formatVisitDate(getLastVisitDate(name))}
+                            </span>
+                          </div>
+                        </button>
+                      ))}
+                      {searchTerm && filteredClientsBySearch.length >= 20 && (
+                        <div className="px-3 py-2 text-xs text-gray-400 text-center">
+                          Continúa escribiendo para refinar
+                        </div>
+                      )}
                     </div>
-                  ))}
-                  {searchTerm && filteredClientsBySearch.length === 20 && (
-                    <div className="px-4 py-2 text-xs text-gray-500 italic">
-                      Mostrando primeros 20 resultados. Continúa escribiendo
-                      para refinar la búsqueda.
+                  ) : searchTerm ? (
+                    <div className="py-8 text-center">
+                      <SearchX className="w-8 h-8 mx-auto text-gray-300 mb-2" />
+                      <p className="text-sm text-gray-500">Sin resultados</p>
+                      <p className="text-xs text-gray-400 mt-1">Verifica la ortografía</p>
                     </div>
-                  )}
-                  {!searchTerm && !hasActiveFilters && (
-                    <div className="px-4 py-2 text-xs text-gray-400">
-                      Busca un cliente para navegar
+                  ) : (
+                    <div className="py-8 text-center">
+                      <MapPin className="w-8 h-8 mx-auto text-gray-300 mb-2" />
+                      <p className="text-sm text-gray-500">Busca un cliente</p>
+                      <p className="text-xs text-gray-400 mt-1">Selecciona uno para ver opciones</p>
                     </div>
                   )}
                 </div>
               )}
-              {/* Show selected client info */}
+              {/* Selected client card */}
               {selectedClient && selectedClientLocation && (
-                <div className="mt-4 p-3 rounded-lg bg-gray-50 border border-gray-200 relative">
-                  {/* Close button */}
-                  <button
-                    className="absolute top-2 right-2 p-1 rounded-full hover:bg-gray-200 text-gray-500"
-                    onClick={() => {
-                      setSelectedClient("");
-                      setRouteInfo(null);
-                      setRouteMode(false);
-                    }}
-                    title="Quitar selección"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                  <div className="font-semibold text-gray-800 text-base mb-1">
-                    {selectedClient}
-                  </div>
-                  <div className="text-xs text-gray-500 mb-2">
-                    Lat: {selectedClientLocation.lat}, Lng:{" "}
-                    {selectedClientLocation.lng}
-                  </div>
-                  {selectedClientCode && (
-                    <div className="mb-2 text-xs text-gray-700">
-                      <span className="font-semibold">Código:</span>{" "}
-                      {selectedClientCode}
-                    </div>
-                  )}
-                  {routeInfo && (
-                    <div className="mb-2 text-xs text-blue-700">
-                      Distancia: {(routeInfo.distance / 1000).toFixed(2)} km
-                      &nbsp;•&nbsp; ETA: {Math.round(routeInfo.duration / 60)}{" "}
-                      min
-                    </div>
-                  )}
-                  <div className="flex gap-2">
+                <div className="mt-4 pt-3 border-t border-gray-100">
+                  <div className="bg-gray-50 rounded-xl p-3 relative">
                     <button
-                      className="flex-1 bg-blue-600 text-white py-2 rounded-lg font-medium hover:bg-blue-700 transition-colors duration-200"
-                      onClick={handleNavigate}
-                      disabled={!selectedClientLocation || isLocating}
-                    >
-                      {isLocating ? (
-                        <span className="flex items-center justify-center">
-                          <RefreshCw className="h-4 w-4 animate-spin mr-2" />
-                          Obteniendo ubicación…
-                        </span>
-                      ) : (
-                        "Navegar"
-                      )}
-                    </button>
-                    <button
-                      className="px-4 bg-green-600 text-white py-2 rounded-lg font-medium hover:bg-green-700 transition-colors duration-200 flex items-center gap-1"
                       onClick={() => {
-                        if (selectedClientLocation) {
-                          const url = `https://www.google.com/maps/dir/?api=1&destination=${selectedClientLocation.lat},${selectedClientLocation.lng}`;
-                          window.open(url, "_blank");
-                        }
+                        setSelectedClient("");
+                        setRouteInfo(null);
+                        setRouteMode(false);
                       }}
-                      disabled={!selectedClientLocation}
-                      title="Abrir en Google Maps"
+                      className="absolute top-2 right-2 p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-200 rounded-lg transition-colors"
                     >
-                      <svg
-                        className="w-4 h-4"
-                        viewBox="0 0 24 24"
-                        fill="currentColor"
-                      >
-                        <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
-                      </svg>
-                      Maps
+                      <X className="w-4 h-4" />
                     </button>
+                    <div className="flex items-start gap-3 pr-8">
+                      <div className="p-2 bg-white rounded-lg shadow-sm">
+                        <MapPin className="w-5 h-5 text-gray-700" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-gray-900 truncate">
+                          {selectedClient}
+                        </div>
+                        {selectedClientCode && (
+                          <div className="text-xs text-gray-500 mt-0.5">
+                            Código: {selectedClientCode}
+                          </div>
+                        )}
+                        <div className="text-xs text-gray-400 mt-0.5">
+                          {selectedClientLocation.lat.toFixed(5)}, {selectedClientLocation.lng.toFixed(5)}
+                        </div>
+                      </div>
+                    </div>
+                    {routeInfo && (
+                      <div className="mt-3 flex items-center gap-3 text-sm">
+                        <div className="flex items-center gap-1 text-gray-600">
+                          <ArrowRight className="w-4 h-4" />
+                          <span>{(routeInfo.distance / 1000).toFixed(1)} km</span>
+                        </div>
+                        <div className="flex items-center gap-1 text-gray-600">
+                          <Clock className="w-4 h-4" />
+                          <span>{Math.round(routeInfo.duration / 60)} min</span>
+                        </div>
+                      </div>
+                    )}
+                    <div className="mt-3 flex gap-2">
+                      <button
+                        onClick={handleNavigate}
+                        disabled={!selectedClientLocation || isLocating}
+                        className="flex-1 py-2.5 px-3 text-sm font-medium text-white bg-gray-900 rounded-xl hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+                      >
+                        {isLocating ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            <span>Obteniendo...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Navigation className="w-4 h-4" />
+                            <span>Navegar</span>
+                          </>
+                        )}
+                      </button>
+                      <a
+                        href={`https://www.google.com/maps/dir/?api=1&destination=${selectedClientLocation.lat},${selectedClientLocation.lng}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-2 px-3 py-2.5 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                        <span className="hidden sm:inline">Maps</span>
+                      </a>
+                    </div>
                   </div>
                 </div>
               )}
@@ -1443,3 +1103,122 @@ export default function NavegarPage() {
     </div>
   );
 }
+
+// Helper components for cleaner code
+function FilterChip({
+  label,
+  value,
+  count,
+  isOpen,
+  onToggle,
+  onClear,
+  icon,
+  ref,
+}: {
+  label: string;
+  value: string | null;
+  count: number;
+  isOpen: boolean;
+  onToggle: () => void;
+  onClear: () => void;
+  icon: React.ReactNode;
+  ref?: React.RefObject<HTMLButtonElement>;
+}) {
+  const hasValue = Boolean(value || count > 0);
+
+  return (
+    <button
+      ref={ref}
+      onClick={onToggle}
+      type="button"
+      className={`
+        flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium
+        transition-all duration-200 whitespace-nowrap flex-shrink-0
+        ${hasValue
+          ? "bg-gray-900 text-white"
+          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+        }
+        ${isOpen ? "ring-2 ring-offset-1 ring-gray-300" : ""}
+      `}
+    >
+      <span className={hasValue ? "text-white/80" : "text-gray-500"}>
+        {icon}
+      </span>
+      <span className="truncate max-w-[80px]">{label}</span>
+      {count > 0 && (
+        <span className={`text-xs ${hasValue ? "text-white/70" : "text-gray-400"}`}>
+          ({count})
+        </span>
+      )}
+      {hasValue && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onClear(); }}
+          className="ml-0.5 p-0.5 rounded-full hover:bg-white/20 transition-colors"
+        >
+          <X className="w-3 h-3" />
+        </button>
+      )}
+    </button>
+  );
+}
+
+// Helper: format ISO date for display
+function formatISODate(isoDate: string): string {
+  if (!isoDate) return "";
+  const [year, month, day] = isoDate.split("-").map(Number);
+  const monthNames = [
+    "Ene", "Feb", "Mar", "Abr", "May", "Jun",
+    "Jul", "Ago", "Sep", "Oct", "Nov", "Dic",
+  ];
+  return `${day} ${monthNames[month - 1]} ${year}`;
+}
+
+function Dropdown({
+  children,
+  anchorRef,
+  onClose,
+  align = "left",
+}: {
+  children: React.ReactNode;
+  anchorRef: React.RefObject<HTMLElement>;
+  onClose: () => void;
+  align?: "left" | "right";
+}) {
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (anchorRef.current && !anchorRef.current.contains(event.target as Node)) {
+        onClose();
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [anchorRef, onClose]);
+
+  return (
+    <div className="absolute bottom-full mb-2 z-30">
+      <div className={`
+        bg-white rounded-xl shadow-lg border border-gray-100
+        min-w-[200px] max-h-[280px] overflow-y-auto
+        animate-in slide-in-from-bottom-2 fade-in duration-200
+        ${align === "right" ? "right-0" : "left-0"}
+      `}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function formatDateFilterValue(dateFilter: NonNullable<typeof dateFilter>): string {
+  if (dateFilter.type === "single" && dateFilter.date) {
+    return formatISODate(dateFilter.date);
+  }
+  if (dateFilter.type === "range") {
+    const start = dateFilter.startDate ? formatISODate(dateFilter.startDate) : "...";
+    const end = dateFilter.endDate ? formatISODate(dateFilter.endDate) : "...";
+    return `${start} → ${end}`;
+  }
+  return "";
+}
+
+// Icon imports
+import { Hash, User, Clock, Calendar, Mail, Check, Filter, SearchX, ArrowRight, ExternalLink } from "lucide-react";
