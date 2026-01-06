@@ -379,6 +379,7 @@ function ClientesDesatendidos({
     const [isCodesOpen, setIsCodesOpen] = useState(false);
     const [selectedVendedores, setSelectedVendedores] = useState<string[]>([]);
     const [isVendedoresOpen, setIsVendedoresOpen] = useState(false);
+    const [thresholdOnly, setThresholdOnly] = useState(false);
     const [printContainer, setPrintContainer] = useState<HTMLDivElement | null>(
         null,
     );
@@ -491,7 +492,11 @@ function ClientesDesatendidos({
                   })
                 : codeFiltered;
 
-        const sorted = [...vendedorFiltered].sort((a, b) => {
+        const thresholdFiltered = thresholdOnly
+            ? vendedorFiltered.filter((r) => r.lastDays >= 60)
+            : vendedorFiltered;
+
+        const sorted = [...thresholdFiltered].sort((a, b) => {
             if (sortBy === "ventas") {
                 return a.totalSales - b.totalSales;
             }
@@ -509,7 +514,14 @@ function ClientesDesatendidos({
         });
 
         return sorted;
-    }, [analyticsData, query, sortBy, selectedCodes, selectedVendedores]);
+    }, [
+        analyticsData,
+        query,
+        sortBy,
+        selectedCodes,
+        selectedVendedores,
+        thresholdOnly,
+    ]);
 
     const dateRangeLabel = useMemo(() => {
         const now = new Date();
@@ -599,6 +611,10 @@ function ClientesDesatendidos({
                     selectedVendedores.length > 0
                         ? selectedVendedores.join(", ")
                         : "Todos",
+            },
+            {
+                label: "Umbral",
+                value: thresholdOnly ? ">= 60d" : "Todos",
             },
         ];
 
@@ -1033,6 +1049,21 @@ function ClientesDesatendidos({
                             </option>
                         </select>
                     </div>
+                    <label className="flex items-center gap-2 ml-auto text-xs text-gray-600">
+                        <span>Umbral (Threshold)</span>
+                        <span className="relative inline-flex h-4 w-8 items-center">
+                            <input
+                                type="checkbox"
+                                className="sr-only peer"
+                                checked={thresholdOnly}
+                                onChange={(e) =>
+                                    setThresholdOnly(e.target.checked)
+                                }
+                            />
+                            <span className="h-4 w-8 rounded-full bg-gray-200 transition-colors peer-checked:bg-blue-600"></span>
+                            <span className="absolute left-0.5 top-0.5 h-3 w-3 rounded-full bg-white shadow transition-transform peer-checked:translate-x-4"></span>
+                        </span>
+                    </label>
                 </div>
             </div>
 
