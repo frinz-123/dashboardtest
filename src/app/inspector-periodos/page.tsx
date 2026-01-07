@@ -60,7 +60,7 @@ import {
     GoalPeriod,
 } from "@/utils/sellerGoals";
 import FeedTab from "@/components/inspector/FeedTab";
-import { Camera, BarChart3 } from "lucide-react";
+import { Camera, BarChart3, MessageSquare, Send, Check } from "lucide-react";
 
 const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY;
 const spreadsheetId = process.env.NEXT_PUBLIC_SPREADSHEET_ID;
@@ -91,6 +91,18 @@ type SellerStats = {
 
 type ViewMode = "overview" | "seller-detail";
 type TabMode = "inspector" | "feed";
+
+type FeedReview = {
+    saleId: string;
+    reviewedAt: string;
+    reviewedBy: string;
+    note: string;
+};
+
+// Generate a unique ID for a sale (must match FeedTab's getSaleId)
+const getSaleId = (sale: Sale): string => {
+    return `${sale.email}|${sale.fechaSinHora}|${sale.clientName}`;
+};
 
 const COLORS = [
     "#3b82f6",
@@ -244,6 +256,12 @@ export default function InspectorPeriodosPage() {
     );
     const [activeTab, setActiveTab] = useState<TabMode>("inspector");
 
+    // Reviews state
+    const [reviews, setReviews] = useState<Map<string, FeedReview>>(new Map());
+    const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+    const [showNoteInput, setShowNoteInput] = useState(false);
+    const [noteText, setNoteText] = useState("");
+
     const availablePeriods = useMemo(() => getAllPeriods().reverse(), []);
     const isAdmin = useMemo(
         () => isMasterAccount(session?.user?.email),
@@ -343,7 +361,29 @@ export default function InspectorPeriodosPage() {
 
     useEffect(() => {
         setExpandedPhotoUrl(null);
+        setShowNoteInput(false);
+        setNoteText("");
     }, [selectedSale]);
+
+    // Fetch reviews on mount
+    useEffect(() => {
+        const fetchReviews = async () => {
+            try {
+                const response = await fetch("/api/feed-reviews");
+                if (response.ok) {
+                    const data = await response.json();
+                    const reviewMap = new Map<string, FeedReview>();
+                    data.reviews.forEach((review: FeedReview) => {
+                        reviewMap.set(review.saleId, review);
+                    });
+                    setReviews(reviewMap);
+                }
+            } catch (error) {
+                console.error("Error fetching reviews:", error);
+            }
+        };
+        fetchReviews();
+    }, []);
 
     const fetchData = async () => {
         setIsLoading(true);
@@ -719,6 +759,45 @@ export default function InspectorPeriodosPage() {
             return newSet;
         });
     };
+
+    // Mark sale as reviewed
+    const handleMarkReviewed = async (note?: string) => {
+        if (!selectedSale || !session?.user?.email) return;
+
+        setIsSubmittingReview(true);
+        try {
+            const saleId = getSaleId(selectedSale);
+            const response = await fetch("/api/feed-reviews", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    saleId,
+                    reviewedBy: session.user.email,
+                    note: note || "",
+                }),
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                setReviews((prev) => {
+                    const newMap = new Map(prev);
+                    newMap.set(saleId, data.review);
+                    return newMap;
+                });
+                setShowNoteInput(false);
+                setNoteText("");
+            }
+        } catch (error) {
+            console.error("Error saving review:", error);
+        } finally {
+            setIsSubmittingReview(false);
+        }
+    };
+
+    // Get current sale's review
+    const currentSaleReview = selectedSale
+        ? reviews.get(getSaleId(selectedSale))
+        : null;
 
     // Loading state
     if (status === "loading") {
@@ -2805,6 +2884,122 @@ export default function InspectorPeriodosPage() {
                                     </div>
                                 </div>
                             )}
+
+                            {/* Review Section */}
+                            <div className="mt-6 pt-4 border-t border-gray-100">
+                                <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                                    <CheckCircle2 className="w-4 h-4" />
+                                    Revision
+                                </h4>
+
+                                {currentSaleReview ? (
+                                    <div className="space-y-2">
+                                        <div className="flex items-center gap-2 text-green-600">
+                                            <CheckCircle2 className="w-4 h-4" />
+                                            <span className="text-sm font-medium">
+                                                Revisado
+                                            </span>
+                                        </div>
+                                        <p className="text-xs text-gray-500">
+                                            {new Date(
+                                                currentSaleReview.reviewedAt,
+                                            ).toLocaleDateString("es-ES", {
+                                                day: "numeric",
+                                                month: "short",
+                                                hour: "2-digit",
+                                                minute: "2-digit",
+                                            })}
+                                        </p>
+                                        {currentSaleReview.note && (
+                                            <div className="bg-gray-50 rounded-lg p-3 text-sm text-gray-700">
+                                                {currentSaleReview.note}
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {showNoteInput ? (
+                                            <div className="space-y-2">
+                                                <textarea
+                                                    value={noteText}
+                                                    onChange={(e) =>
+                                                        setNoteText(
+                                                            e.target.value,
+                                                        )
+                                                    }
+                                                    placeholder="Agregar nota (opcional)..."
+                                                    className="w-full p-3 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                    rows={3}
+                                                    autoFocus
+                                                />
+                                                <div className="flex gap-2">
+                                                    <button
+                                                        onClick={() => {
+                                                            setShowNoteInput(
+                                                                false,
+                                                            );
+                                                            setNoteText("");
+                                                        }}
+                                                        className="flex-1 px-3 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                                                    >
+                                                        Cancelar
+                                                    </button>
+                                                    <button
+                                                        onClick={() =>
+                                                            handleMarkReviewed(
+                                                                noteText,
+                                                            )
+                                                        }
+                                                        disabled={
+                                                            isSubmittingReview
+                                                        }
+                                                        className="flex-1 px-3 py-2 text-sm bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                                                    >
+                                                        {isSubmittingReview ? (
+                                                            "Guardando..."
+                                                        ) : (
+                                                            <>
+                                                                <Send className="w-4 h-4" />
+                                                                Guardar
+                                                            </>
+                                                        )}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={() =>
+                                                        handleMarkReviewed()
+                                                    }
+                                                    disabled={
+                                                        isSubmittingReview
+                                                    }
+                                                    className="flex-1 px-3 py-2.5 text-sm bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                                                >
+                                                    {isSubmittingReview ? (
+                                                        "Guardando..."
+                                                    ) : (
+                                                        <>
+                                                            <Check className="w-4 h-4" />
+                                                            Marcar revisado
+                                                        </>
+                                                    )}
+                                                </button>
+                                                <button
+                                                    onClick={() =>
+                                                        setShowNoteInput(true)
+                                                    }
+                                                    className="px-3 py-2.5 text-sm border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors"
+                                                    title="Agregar nota"
+                                                >
+                                                    <MessageSquare className="w-4 h-4" />
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     )}
                 </DrawerContent>
