@@ -290,13 +290,31 @@ export default function InspectorPeriodosPage() {
         return periodDays.filter((day) => day.weekNumber === selectedWeek);
     }, [selectedWeek, periodDays]);
 
-    // Set default period to most recent completed or current
+    // Get today's date string and current week number for visual cues
+    const { todayDateStr, currentWeekNumber } = useMemo(() => {
+        const today = new Date();
+        const todayStr = today.toISOString().split("T")[0];
+
+        // Find which week today falls into
+        let weekNum: number | null = null;
+        for (const week of periodWeeks) {
+            const startStr = week.weekStart.toISOString().split("T")[0];
+            const endStr = week.weekEnd.toISOString().split("T")[0];
+            if (todayStr >= startStr && todayStr <= endStr) {
+                weekNum = week.weekNumber;
+                break;
+            }
+        }
+
+        return { todayDateStr: todayStr, currentWeekNumber: weekNum };
+    }, [periodWeeks]);
+
+    // Set default period to the current one (not completed)
     useEffect(() => {
         if (availablePeriods.length > 0 && selectedPeriod === null) {
-            const completedPeriod = availablePeriods.find((p) => p.isCompleted);
+            const currentPeriod = availablePeriods.find((p) => !p.isCompleted);
             setSelectedPeriod(
-                completedPeriod?.periodNumber ||
-                    availablePeriods[0].periodNumber,
+                currentPeriod?.periodNumber || availablePeriods[0].periodNumber,
             );
         }
     }, [availablePeriods, selectedPeriod]);
@@ -986,45 +1004,59 @@ export default function InspectorPeriodosPage() {
                                         >
                                             Todo el periodo
                                         </button>
-                                        {periodWeeks.map((week) => (
-                                            <button
-                                                key={week.weekNumber}
-                                                onClick={() =>
-                                                    setSelectedWeek(
-                                                        week.weekNumber,
-                                                    )
-                                                }
-                                                className={`px-4 py-2 text-xs font-medium rounded-lg transition-colors ${
-                                                    selectedWeek ===
-                                                    week.weekNumber
-                                                        ? "bg-indigo-500 text-white"
-                                                        : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                                                }`}
-                                            >
-                                                <span className="font-semibold">
-                                                    S{week.weekNumber}
-                                                </span>
-                                                <span className="hidden sm:inline text-[10px] ml-1 opacity-80">
-                                                    (
-                                                    {week.weekStart.toLocaleDateString(
-                                                        "es-ES",
-                                                        {
-                                                            day: "numeric",
-                                                            month: "short",
-                                                        },
-                                                    )}{" "}
-                                                    -{" "}
-                                                    {week.weekEnd.toLocaleDateString(
-                                                        "es-ES",
-                                                        {
-                                                            day: "numeric",
-                                                            month: "short",
-                                                        },
-                                                    )}
-                                                    )
-                                                </span>
-                                            </button>
-                                        ))}
+                                        {periodWeeks.map((week) => {
+                                            const isCurrentWeek =
+                                                currentWeekNumber ===
+                                                week.weekNumber;
+                                            return (
+                                                <button
+                                                    key={week.weekNumber}
+                                                    onClick={() =>
+                                                        setSelectedWeek(
+                                                            week.weekNumber,
+                                                        )
+                                                    }
+                                                    className={`px-4 py-2 text-xs font-medium rounded-lg transition-colors relative ${
+                                                        selectedWeek ===
+                                                        week.weekNumber
+                                                            ? "bg-indigo-500 text-white"
+                                                            : isCurrentWeek
+                                                              ? "bg-indigo-100 text-indigo-700 ring-2 ring-indigo-300 hover:bg-indigo-200"
+                                                              : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                                                    }`}
+                                                >
+                                                    <span className="font-semibold">
+                                                        S{week.weekNumber}
+                                                    </span>
+                                                    {isCurrentWeek &&
+                                                        selectedWeek !==
+                                                            week.weekNumber && (
+                                                            <span className="ml-1 text-[9px] font-normal">
+                                                                (hoy)
+                                                            </span>
+                                                        )}
+                                                    <span className="hidden sm:inline text-[10px] ml-1 opacity-80">
+                                                        (
+                                                        {week.weekStart.toLocaleDateString(
+                                                            "es-ES",
+                                                            {
+                                                                day: "numeric",
+                                                                month: "short",
+                                                            },
+                                                        )}{" "}
+                                                        -{" "}
+                                                        {week.weekEnd.toLocaleDateString(
+                                                            "es-ES",
+                                                            {
+                                                                day: "numeric",
+                                                                month: "short",
+                                                            },
+                                                        )}
+                                                        )
+                                                    </span>
+                                                </button>
+                                            );
+                                        })}
                                     </div>
                                 </div>
 
@@ -1048,24 +1080,38 @@ export default function InspectorPeriodosPage() {
                                             >
                                                 Toda la semana
                                             </button>
-                                            {daysInSelectedWeek.map((day) => (
-                                                <button
-                                                    key={day.dateStr}
-                                                    onClick={() =>
-                                                        setSelectedDay(
-                                                            day.dateStr,
-                                                        )
-                                                    }
-                                                    className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${
-                                                        selectedDay ===
-                                                        day.dateStr
-                                                            ? "bg-blue-500 text-white"
-                                                            : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                                                    }`}
-                                                >
-                                                    {day.label}
-                                                </button>
-                                            ))}
+                                            {daysInSelectedWeek.map((day) => {
+                                                const isToday =
+                                                    day.dateStr ===
+                                                    todayDateStr;
+                                                return (
+                                                    <button
+                                                        key={day.dateStr}
+                                                        onClick={() =>
+                                                            setSelectedDay(
+                                                                day.dateStr,
+                                                            )
+                                                        }
+                                                        className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${
+                                                            selectedDay ===
+                                                            day.dateStr
+                                                                ? "bg-blue-500 text-white"
+                                                                : isToday
+                                                                  ? "bg-blue-100 text-blue-700 ring-2 ring-blue-300 hover:bg-blue-200"
+                                                                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                                                        }`}
+                                                    >
+                                                        {day.label}
+                                                        {isToday &&
+                                                            selectedDay !==
+                                                                day.dateStr && (
+                                                                <span className="ml-1 text-[9px] font-medium">
+                                                                    (hoy)
+                                                                </span>
+                                                            )}
+                                                    </button>
+                                                );
+                                            })}
                                         </div>
                                     </div>
                                 )}
@@ -2439,7 +2485,7 @@ export default function InspectorPeriodosPage() {
                     }
                 }}
             >
-                <DrawerContent className="max-h-[85vh]">
+                <DrawerContent className="max-h-[85vh] mx-auto max-w-5xl">
                     <DrawerHeader className="border-b border-gray-100 pb-4">
                         <DrawerTitle className="text-left">
                             {selectedSale?.clientName}
@@ -2563,14 +2609,16 @@ export default function InspectorPeriodosPage() {
                                                     className="group relative overflow-hidden rounded-lg border border-gray-200 bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
                                                     aria-label={`Ver foto ${index + 1}`}
                                                 >
-                                                    <img
-                                                        src={getDisplayableImageUrl(
-                                                            url,
-                                                        )}
-                                                        alt={`Foto ${index + 1}`}
-                                                        className="h-20 w-full object-cover transition-transform duration-200 group-hover:scale-105"
-                                                        loading="lazy"
-                                                    />
+                                                    <div className="aspect-[4/3] w-full">
+                                                        <img
+                                                            src={getDisplayableImageUrl(
+                                                                url,
+                                                            )}
+                                                            alt={`Foto ${index + 1}`}
+                                                            className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
+                                                            loading="lazy"
+                                                        />
+                                                    </div>
                                                 </button>
                                             ),
                                         )}
