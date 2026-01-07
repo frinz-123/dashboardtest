@@ -41,6 +41,12 @@ import {
   DrawerTitle,
   DrawerDescription,
 } from "@/components/ui/drawer";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { isMasterAccount, EMAIL_TO_VENDOR_LABELS } from "@/utils/auth";
 import {
   getAllPeriods,
@@ -66,6 +72,7 @@ type Sale = {
   email: string;
   submissionTime?: string;
   products: Record<string, number>;
+  photoUrls?: string[];
 };
 
 type SellerStats = {
@@ -126,6 +133,7 @@ export default function InspectorPeriodosPage() {
   const [isHideModeEnabled, setIsHideModeEnabled] = useState(false);
   const [hiddenSellers, setHiddenSellers] = useState<Set<string>>(new Set());
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
+  const [selectedPhotoUrl, setSelectedPhotoUrl] = useState<string | null>(null);
 
   const availablePeriods = useMemo(() => getAllPeriods().reverse(), []);
   const isAdmin = useMemo(
@@ -205,6 +213,37 @@ export default function InspectorPeriodosPage() {
     }
   }, [isAdmin]);
 
+  useEffect(() => {
+    if (!selectedSale) {
+      setSelectedPhotoUrl(null);
+    }
+  }, [selectedSale]);
+
+  const parsePhotoUrls = (value: unknown): string[] => {
+    if (Array.isArray(value)) {
+      return value.filter((url) => typeof url === "string" && url.trim());
+    }
+    if (typeof value !== "string") return [];
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+    if (trimmed.startsWith("[")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) {
+          return parsed.filter(
+            (url) => typeof url === "string" && url.trim(),
+          );
+        }
+      } catch (error) {
+        console.warn("No se pudieron leer las fotos:", error);
+      }
+    }
+    return trimmed
+      .split(",")
+      .map((url) => url.trim())
+      .filter(Boolean);
+  };
+
   const fetchData = async () => {
     setIsLoading(true);
     try {
@@ -226,6 +265,7 @@ export default function InspectorPeriodosPage() {
             products[headers[i]] = parseInt(row[i], 10);
           }
         }
+        const photoUrls = parsePhotoUrls(row[41]);
         return {
           clientName: row[0] || "Unknown",
           venta: parseFloat(row[33]) || 0,
@@ -234,6 +274,7 @@ export default function InspectorPeriodosPage() {
           email: row[7] || "",
           submissionTime: row[4] || "",
           products,
+          photoUrls,
         };
       });
       setSalesData(sales);
@@ -2024,10 +2065,53 @@ export default function InspectorPeriodosPage() {
                   </p>
                 )}
               </div>
+
+              {!!selectedSale.photoUrls?.length && (
+                <div className="mt-6">
+                  <h4 className="text-sm font-semibold text-gray-700 mb-3">
+                    Fotos ({selectedSale.photoUrls.length})
+                  </h4>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedSale.photoUrls.map((url) => (
+                      <button
+                        key={url}
+                        type="button"
+                        className="h-12 w-12 overflow-hidden rounded-md border border-gray-200 bg-gray-50"
+                        onClick={() => setSelectedPhotoUrl(url)}
+                      >
+                        <img
+                          src={url}
+                          alt={`Foto de ${selectedSale.clientName}`}
+                          className="h-full w-full object-cover"
+                          loading="lazy"
+                        />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </DrawerContent>
       </Drawer>
+
+      <Dialog
+        open={!!selectedPhotoUrl}
+        onOpenChange={(open) => !open && setSelectedPhotoUrl(null)}
+      >
+        <DialogContent className="sm:max-w-[90vw]">
+          <DialogHeader>
+            <DialogTitle>Foto de la venta</DialogTitle>
+          </DialogHeader>
+          {selectedPhotoUrl && (
+            <img
+              src={selectedPhotoUrl}
+              alt="Foto de la venta"
+              className="w-full max-h-[70vh] object-contain rounded-md"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
