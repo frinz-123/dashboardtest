@@ -846,7 +846,6 @@ export default function InspectorPeriodosPage() {
                 {activeTab === "feed" ? (
                     <FeedTab
                         salesData={salesData}
-                        onPostClick={(sale) => setSelectedSale(sale)}
                         getDisplayableImageUrl={getDisplayableImageUrl}
                         formatCurrency={formatCurrency}
                         isLoading={isLoading}
@@ -1646,6 +1645,7 @@ export default function InspectorPeriodosPage() {
                                                                                 {
                                                                                     name
                                                                                 }
+
                                                                                 :{" "}
                                                                                 {
                                                                                     qty
