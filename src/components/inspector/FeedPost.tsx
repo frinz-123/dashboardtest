@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Clock, MapPin, ShoppingBag, Image as ImageIcon } from "lucide-react";
+import { Clock, MapPin, ShoppingBag, Image as ImageIcon, MessageSquare, CheckCircle2 } from "lucide-react";
 import { EMAIL_TO_VENDOR_LABELS } from "@/utils/auth";
 
 export type FeedSale = {
@@ -20,6 +20,8 @@ type FeedPostProps = {
     onPostClick: (sale: FeedSale) => void;
     getDisplayableImageUrl: (url: string) => string;
     formatCurrency: (value: number) => string;
+    reviewNote?: string;
+    isReviewed?: boolean;
 };
 
 const CODE_COLORS: Record<string, string> = {
@@ -64,6 +66,8 @@ export default function FeedPost({
     onPostClick,
     getDisplayableImageUrl,
     formatCurrency,
+    reviewNote,
+    isReviewed,
 }: FeedPostProps) {
     const sellerName = EMAIL_TO_VENDOR_LABELS[sale.email] || sale.email.split("@")[0];
     const avatarColor = getAvatarColor(sale.email);
@@ -103,16 +107,25 @@ export default function FeedPost({
                     </div>
                 </div>
 
-                {/* Sale code badge */}
-                <span
-                    className="text-xs px-2 py-1 rounded-full font-medium shrink-0"
-                    style={{
-                        backgroundColor: `${CODE_COLORS[sale.codigo] || "#6b7280"}20`,
-                        color: CODE_COLORS[sale.codigo] || "#6b7280",
-                    }}
-                >
-                    {sale.codigo || "N/A"}
-                </span>
+                {/* Badges container */}
+                <div className="flex items-center gap-1.5 shrink-0">
+                    {isReviewed && (
+                        <span className="flex items-center gap-1 text-xs px-2 py-1 rounded-full font-medium bg-green-500 text-white">
+                            <CheckCircle2 className="w-3 h-3" />
+                            Revisado
+                        </span>
+                    )}
+                    {/* Sale code badge */}
+                    <span
+                        className="text-xs px-2 py-1 rounded-full font-medium"
+                        style={{
+                            backgroundColor: `${CODE_COLORS[sale.codigo] || "#6b7280"}20`,
+                            color: CODE_COLORS[sale.codigo] || "#6b7280",
+                        }}
+                    >
+                        {sale.codigo || "N/A"}
+                    </span>
+                </div>
             </div>
 
             {/* Client info */}
@@ -209,6 +222,16 @@ export default function FeedPost({
                     {formatCurrency(sale.venta)}
                 </span>
             </div>
+
+            {/* Review Comment */}
+            {reviewNote && (
+                <div className="px-4 py-3 border-t border-gray-100 bg-green-50/50">
+                    <div className="flex items-start gap-2">
+                        <MessageSquare className="w-4 h-4 text-green-600 mt-0.5 shrink-0" />
+                        <p className="text-sm text-green-800">{reviewNote}</p>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

@@ -715,14 +715,7 @@ export default function FeedTab({
                             return (
                                 <div
                                     key={`${saleId}-${index}`}
-                                    className="relative"
                                 >
-                                    {isReviewed && (
-                                        <div className="absolute top-3 right-3 z-10 flex items-center gap-1 px-2 py-1 bg-green-500 text-white text-xs font-medium rounded-full">
-                                            <CheckCircle2 className="w-3 h-3" />
-                                            <span>Revisado</span>
-                                        </div>
-                                    )}
                                     <FeedPost
                                         sale={sale}
                                         onPostClick={handlePostClick}
@@ -730,6 +723,8 @@ export default function FeedTab({
                                             getDisplayableImageUrl
                                         }
                                         formatCurrency={formatCurrency}
+                                        reviewNote={reviews.get(saleId)?.note}
+                                        isReviewed={isReviewed}
                                     />
                                 </div>
                             );

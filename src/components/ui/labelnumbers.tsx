@@ -33,7 +33,10 @@ export default function LabelNumbers({
           >
             <Minus size={16} strokeWidth={2} aria-hidden="true" />
           </Button>
-          <Input className="w-full grow bg-background px-3 py-2 text-center tabular-nums text-foreground text-lg focus:outline-none" />
+          <Input
+            className="w-full grow bg-background px-3 py-2 text-center tabular-nums text-foreground text-lg focus:outline-none"
+            onFocus={(e) => e.target.select()}
+          />
           <Button
             slot="increment"
             className="-me-px flex aspect-square h-[inherit] items-center justify-center rounded-e-lg border border-input bg-background text-sm text-muted-foreground/80 ring-offset-background transition-shadow hover:bg-accent hover:text-foreground disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50"

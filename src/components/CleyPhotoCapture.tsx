@@ -46,6 +46,9 @@ export default function CleyPhotoCapture({
             <legend className="text-gray-700 font-semibold text-xs">
                 Fotos (obligatorio)
             </legend>
+            <p className="text-xs text-gray-600">
+                Obligatorio subir foto de mercancia en bodega en caso de aplicar
+            </p>
             <div className="flex items-center justify-between text-xs text-gray-500">
                 <span>
                     {photos.length}/{maxPhotos} fotos
