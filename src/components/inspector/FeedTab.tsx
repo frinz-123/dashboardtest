@@ -1,11 +1,21 @@
 "use client";
 
 import React, { useState, useMemo, useEffect, useCallback } from "react";
-import { ChevronDown, Camera, Filter, X, CheckCircle2 } from "lucide-react";
+import {
+    ChevronDown,
+    Camera,
+    X,
+    CheckCircle2,
+    Search,
+    Calendar,
+    User,
+    SlidersHorizontal,
+} from "lucide-react";
 import FeedPost, { FeedSale } from "./FeedPost";
 import FeedLightbox from "./FeedLightbox";
 import { EMAIL_TO_VENDOR_LABELS } from "@/utils/auth";
 import { useSession } from "next-auth/react";
+import { getAllPeriods, getPeriodDateRange } from "@/utils/dateUtils";
 
 type FeedReview = {
     saleId: string;
@@ -26,6 +36,8 @@ type GroupedSales = {
     sales: FeedSale[];
 };
 
+type ActiveFilter = "none" | "seller" | "client" | "date" | "period";
+
 const ITEMS_PER_PAGE = 20;
 
 // Generate a unique ID for a sale
@@ -40,7 +52,6 @@ const getTimeLabel = (dateStr: string): string => {
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
 
-    // Reset time for comparison
     const saleDateOnly = new Date(
         saleDate.getFullYear(),
         saleDate.getMonth(),
@@ -51,13 +62,7 @@ const getTimeLabel = (dateStr: string): string => {
         today.getMonth(),
         today.getDate(),
     );
-    const yesterdayOnly = new Date(
-        yesterday.getFullYear(),
-        yesterday.getMonth(),
-        yesterday.getDate(),
-    );
 
-    // Calculate days difference
     const diffTime = todayOnly.getTime() - saleDateOnly.getTime();
     const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
 
@@ -67,7 +72,6 @@ const getTimeLabel = (dateStr: string): string => {
     if (diffDays <= 14) return "Semana pasada";
     if (diffDays <= 30) return "Este mes";
 
-    // For older dates, show the month name
     return saleDate.toLocaleDateString("es-ES", {
         month: "long",
         year: "numeric",
@@ -81,10 +85,16 @@ export default function FeedTab({
     isLoading,
 }: FeedTabProps) {
     const { data: session } = useSession();
+
+    // Filter states
     const [selectedSeller, setSelectedSeller] = useState<string | null>(null);
-    const [isSellerFilterOpen, setIsSellerFilterOpen] = useState(false);
-    const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE);
+    const [clientSearch, setClientSearch] = useState("");
+    const [selectedDate, setSelectedDate] = useState<string | null>(null);
+    const [selectedPeriod, setSelectedPeriod] = useState<number | null>(null);
     const [showOnlyUnreviewed, setShowOnlyUnreviewed] = useState(false);
+    const [activeFilter, setActiveFilter] = useState<ActiveFilter>("none");
+
+    const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE);
 
     // Lightbox state
     const [lightboxSale, setLightboxSale] = useState<FeedSale | null>(null);
@@ -94,6 +104,9 @@ export default function FeedTab({
     const [reviews, setReviews] = useState<Map<string, FeedReview>>(new Map());
     const [isLoadingReviews, setIsLoadingReviews] = useState(true);
     const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+
+    // Get available periods
+    const availablePeriods = useMemo(() => getAllPeriods().reverse(), []);
 
     // Fetch reviews on mount
     useEffect(() => {
@@ -114,7 +127,6 @@ export default function FeedTab({
                 setIsLoadingReviews(false);
             }
         };
-
         fetchReviews();
     }, []);
 
@@ -123,7 +135,6 @@ export default function FeedTab({
         return salesData
             .filter((sale) => sale.photoUrls && sale.photoUrls.length > 0)
             .sort((a, b) => {
-                // Sort by date first, then by submission time
                 const dateA = new Date(
                     a.fechaSinHora +
                         " " +
@@ -138,7 +149,7 @@ export default function FeedTab({
             });
     }, [salesData]);
 
-    // Get unique sellers from sales with photos
+    // Get unique sellers
     const sellers = useMemo(() => {
         const sellerMap = new Map<
             string,
@@ -161,7 +172,34 @@ export default function FeedTab({
         return Array.from(sellerMap.values()).sort((a, b) => b.count - a.count);
     }, [salesWithPhotos]);
 
-    // Apply seller filter and review filter
+    // Get unique clients for search suggestions
+    const clientSuggestions = useMemo(() => {
+        if (clientSearch.length < 2) return [];
+        const search = clientSearch.toLowerCase();
+        const seen = new Set<string>();
+        return salesWithPhotos
+            .filter((sale) => {
+                const name = sale.clientName.toLowerCase();
+                if (seen.has(name) || !name.includes(search)) return false;
+                seen.add(name);
+                return true;
+            })
+            .slice(0, 5)
+            .map((s) => s.clientName);
+    }, [salesWithPhotos, clientSearch]);
+
+    // Get unique dates available
+    const availableDates = useMemo(() => {
+        const dates = new Set<string>();
+        salesWithPhotos.forEach((sale) => {
+            dates.add(sale.fechaSinHora);
+        });
+        return Array.from(dates)
+            .sort((a, b) => b.localeCompare(a))
+            .slice(0, 14);
+    }, [salesWithPhotos]);
+
+    // Apply all filters
     const filteredSales = useMemo(() => {
         let result = salesWithPhotos;
 
@@ -169,14 +207,44 @@ export default function FeedTab({
             result = result.filter((sale) => sale.email === selectedSeller);
         }
 
+        if (clientSearch.trim()) {
+            const search = clientSearch.toLowerCase().trim();
+            result = result.filter((sale) =>
+                sale.clientName.toLowerCase().includes(search),
+            );
+        }
+
+        if (selectedDate) {
+            result = result.filter(
+                (sale) => sale.fechaSinHora === selectedDate,
+            );
+        }
+
+        if (selectedPeriod) {
+            const { periodStartDate, periodEndDate } =
+                getPeriodDateRange(selectedPeriod);
+            result = result.filter((sale) => {
+                const saleDate = new Date(sale.fechaSinHora);
+                return saleDate >= periodStartDate && saleDate <= periodEndDate;
+            });
+        }
+
         if (showOnlyUnreviewed) {
             result = result.filter((sale) => !reviews.has(getSaleId(sale)));
         }
 
         return result;
-    }, [salesWithPhotos, selectedSeller, showOnlyUnreviewed, reviews]);
+    }, [
+        salesWithPhotos,
+        selectedSeller,
+        clientSearch,
+        selectedDate,
+        selectedPeriod,
+        showOnlyUnreviewed,
+        reviews,
+    ]);
 
-    // Get visible sales based on pagination
+    // Get visible sales
     const visibleSales = useMemo(() => {
         return filteredSales.slice(0, visibleCount);
     }, [filteredSales, visibleCount]);
@@ -184,7 +252,6 @@ export default function FeedTab({
     // Group sales by time period
     const groupedSales = useMemo((): GroupedSales[] => {
         const groups: Map<string, FeedSale[]> = new Map();
-
         visibleSales.forEach((sale) => {
             const label = getTimeLabel(sale.fechaSinHora);
             const existing = groups.get(label) || [];
@@ -192,25 +259,29 @@ export default function FeedTab({
             groups.set(label, existing);
         });
 
-        // Convert to array maintaining order
         const result: GroupedSales[] = [];
         const seenLabels = new Set<string>();
-
         visibleSales.forEach((sale) => {
             const label = getTimeLabel(sale.fechaSinHora);
             if (!seenLabels.has(label)) {
                 seenLabels.add(label);
-                result.push({
-                    label,
-                    sales: groups.get(label) || [],
-                });
+                result.push({ label, sales: groups.get(label) || [] });
             }
         });
-
         return result;
     }, [visibleSales]);
 
-    // Count unreviewed sales
+    // Count active filters
+    const activeFilterCount = useMemo(() => {
+        let count = 0;
+        if (selectedSeller) count++;
+        if (clientSearch.trim()) count++;
+        if (selectedDate) count++;
+        if (selectedPeriod) count++;
+        return count;
+    }, [selectedSeller, clientSearch, selectedDate, selectedPeriod]);
+
+    // Count unreviewed
     const unreviewedCount = useMemo(() => {
         return salesWithPhotos.filter((sale) => !reviews.has(getSaleId(sale)))
             .length;
@@ -222,27 +293,38 @@ export default function FeedTab({
         setVisibleCount((prev) => prev + ITEMS_PER_PAGE);
     };
 
-    // Reset pagination when filter changes
-    const handleSelectSeller = (email: string | null) => {
-        setSelectedSeller(email);
+    const clearAllFilters = () => {
+        setSelectedSeller(null);
+        setClientSearch("");
+        setSelectedDate(null);
+        setSelectedPeriod(null);
+        setActiveFilter("none");
         setVisibleCount(ITEMS_PER_PAGE);
-        setIsSellerFilterOpen(false);
     };
 
-    // Open lightbox
-    const handlePostClick = useCallback(
-        (sale: FeedSale, photoIndex: number = 0) => {
-            setLightboxSale(sale);
-            setLightboxPhotoIndex(photoIndex);
-        },
-        [],
-    );
+    const handleFilterSelect = (filter: ActiveFilter) => {
+        setActiveFilter(activeFilter === filter ? "none" : filter);
+    };
 
-    // Mark as reviewed
+    // Reset pagination when filters change
+    useEffect(() => {
+        setVisibleCount(ITEMS_PER_PAGE);
+    }, [
+        selectedSeller,
+        clientSearch,
+        selectedDate,
+        selectedPeriod,
+        showOnlyUnreviewed,
+    ]);
+
+    const handlePostClick = useCallback((sale: FeedSale) => {
+        setLightboxSale(sale);
+        setLightboxPhotoIndex(0);
+    }, []);
+
     const handleMarkReviewed = useCallback(
         async (note?: string) => {
             if (!lightboxSale || !session?.user?.email) return;
-
             setIsSubmittingReview(true);
             try {
                 const saleId = getSaleId(lightboxSale);
@@ -255,7 +337,6 @@ export default function FeedTab({
                         note: note || "",
                     }),
                 });
-
                 if (response.ok) {
                     const data = await response.json();
                     setReviews((prev) => {
@@ -302,119 +383,314 @@ export default function FeedTab({
         <>
             <div className="space-y-4 max-w-2xl mx-auto">
                 {/* Filter Bar */}
-                <div className="bg-white rounded-xl p-4 border border-gray-200">
-                    <div className="flex items-center gap-3">
-                        <div className="relative flex-1">
-                            <button
-                                onClick={() =>
-                                    setIsSellerFilterOpen(!isSellerFilterOpen)
-                                }
-                                className={`flex items-center justify-between gap-2 px-4 py-2.5 rounded-lg w-full text-sm font-medium border transition-colors ${
-                                    selectedSeller
-                                        ? "bg-indigo-50 border-indigo-200 text-indigo-700"
-                                        : "bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100"
-                                }`}
-                            >
-                                <div className="flex items-center gap-2">
-                                    <Filter className="w-4 h-4" />
-                                    <span>
-                                        {selectedSellerName ||
-                                            "Todos los vendedores"}
-                                    </span>
-                                </div>
-                                <ChevronDown
-                                    className={`w-4 h-4 transition-transform ${
-                                        isSellerFilterOpen ? "rotate-180" : ""
-                                    }`}
+                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                    {/* Filter Chips Row */}
+                    <div className="p-3 flex items-center gap-2 overflow-x-auto">
+                        {/* Seller Filter */}
+                        <button
+                            onClick={() => handleFilterSelect("seller")}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
+                                selectedSeller
+                                    ? "bg-blue-100 text-blue-700"
+                                    : activeFilter === "seller"
+                                      ? "bg-gray-200 text-gray-800"
+                                      : "bg-gray-100 text-gray-600"
+                            }`}
+                        >
+                            <User className="w-3.5 h-3.5" />
+                            <span>{selectedSellerName || "Vendedor"}</span>
+                            {selectedSeller && (
+                                <X
+                                    className="w-3.5 h-3.5 ml-0.5"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedSeller(null);
+                                    }}
                                 />
-                            </button>
+                            )}
+                        </button>
 
-                            {isSellerFilterOpen && (
-                                <div className="absolute left-0 top-full mt-2 w-full bg-white rounded-lg shadow-lg border border-gray-200 z-20 max-h-80 overflow-y-auto">
+                        {/* Client Search */}
+                        <button
+                            onClick={() => handleFilterSelect("client")}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
+                                clientSearch.trim()
+                                    ? "bg-blue-100 text-blue-700"
+                                    : activeFilter === "client"
+                                      ? "bg-gray-200 text-gray-800"
+                                      : "bg-gray-100 text-gray-600"
+                            }`}
+                        >
+                            <Search className="w-3.5 h-3.5" />
+                            <span>{clientSearch.trim() || "Cliente"}</span>
+                            {clientSearch.trim() && (
+                                <X
+                                    className="w-3.5 h-3.5 ml-0.5"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setClientSearch("");
+                                    }}
+                                />
+                            )}
+                        </button>
+
+                        {/* Date Filter */}
+                        <button
+                            onClick={() => handleFilterSelect("date")}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
+                                selectedDate
+                                    ? "bg-blue-100 text-blue-700"
+                                    : activeFilter === "date"
+                                      ? "bg-gray-200 text-gray-800"
+                                      : "bg-gray-100 text-gray-600"
+                            }`}
+                        >
+                            <Calendar className="w-3.5 h-3.5" />
+                            <span>
+                                {selectedDate
+                                    ? new Date(selectedDate).toLocaleDateString(
+                                          "es-ES",
+                                          {
+                                              day: "numeric",
+                                              month: "short",
+                                          },
+                                      )
+                                    : "Fecha"}
+                            </span>
+                            {selectedDate && (
+                                <X
+                                    className="w-3.5 h-3.5 ml-0.5"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedDate(null);
+                                    }}
+                                />
+                            )}
+                        </button>
+
+                        {/* Period Filter */}
+                        <button
+                            onClick={() => handleFilterSelect("period")}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
+                                selectedPeriod
+                                    ? "bg-blue-100 text-blue-700"
+                                    : activeFilter === "period"
+                                      ? "bg-gray-200 text-gray-800"
+                                      : "bg-gray-100 text-gray-600"
+                            }`}
+                        >
+                            <SlidersHorizontal className="w-3.5 h-3.5" />
+                            <span>
+                                {selectedPeriod
+                                    ? `P${selectedPeriod}`
+                                    : "Periodo"}
+                            </span>
+                            {selectedPeriod && (
+                                <X
+                                    className="w-3.5 h-3.5 ml-0.5"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setSelectedPeriod(null);
+                                    }}
+                                />
+                            )}
+                        </button>
+
+                        {/* Clear all */}
+                        {activeFilterCount > 0 && (
+                            <button
+                                onClick={clearAllFilters}
+                                className="flex items-center gap-1 px-2 py-1.5 text-xs text-red-600 hover:text-red-700 whitespace-nowrap"
+                            >
+                                <X className="w-3 h-3" />
+                                Limpiar
+                            </button>
+                        )}
+                    </div>
+
+                    {/* Expandable Filter Panels */}
+                    {activeFilter === "seller" && (
+                        <div className="border-t border-gray-100 p-3 max-h-48 overflow-y-auto">
+                            <div className="space-y-1">
+                                <button
+                                    onClick={() => {
+                                        setSelectedSeller(null);
+                                        setActiveFilter("none");
+                                    }}
+                                    className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                                        !selectedSeller
+                                            ? "bg-blue-50 text-blue-700"
+                                            : "hover:bg-gray-50"
+                                    }`}
+                                >
+                                    Todos los vendedores
+                                </button>
+                                {sellers.map((seller) => (
                                     <button
-                                        onClick={() => handleSelectSeller(null)}
-                                        className={`w-full px-4 py-3 text-left hover:bg-gray-50 border-b border-gray-100 ${
-                                            !selectedSeller ? "bg-blue-50" : ""
+                                        key={seller.email}
+                                        onClick={() => {
+                                            setSelectedSeller(seller.email);
+                                            setActiveFilter("none");
+                                        }}
+                                        className={`w-full text-left px-3 py-2 rounded-lg text-sm flex justify-between items-center transition-colors ${
+                                            selectedSeller === seller.email
+                                                ? "bg-blue-50 text-blue-700"
+                                                : "hover:bg-gray-50"
                                         }`}
                                     >
-                                        <span className="font-medium text-gray-800">
-                                            Todos los vendedores
-                                        </span>
-                                        <span className="text-xs text-gray-500 ml-2">
-                                            ({salesWithPhotos.length} posts)
+                                        <span>{seller.name}</span>
+                                        <span className="text-xs text-gray-400">
+                                            {seller.count}
                                         </span>
                                     </button>
-                                    {sellers.map((seller) => (
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {activeFilter === "client" && (
+                        <div className="border-t border-gray-100 p-3">
+                            <div className="relative">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                                <input
+                                    type="text"
+                                    value={clientSearch}
+                                    onChange={(e) =>
+                                        setClientSearch(e.target.value)
+                                    }
+                                    placeholder="Buscar cliente..."
+                                    className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                    autoFocus
+                                />
+                            </div>
+                            {clientSuggestions.length > 0 && (
+                                <div className="mt-2 space-y-1">
+                                    {clientSuggestions.map((name) => (
                                         <button
-                                            key={seller.email}
-                                            onClick={() =>
-                                                handleSelectSeller(seller.email)
-                                            }
-                                            className={`w-full px-4 py-3 text-left hover:bg-gray-50 border-b border-gray-100 last:border-b-0 ${
-                                                selectedSeller === seller.email
-                                                    ? "bg-blue-50"
-                                                    : ""
-                                            }`}
+                                            key={name}
+                                            onClick={() => {
+                                                setClientSearch(name);
+                                                setActiveFilter("none");
+                                            }}
+                                            className="w-full text-left px-3 py-2 rounded-lg text-sm hover:bg-gray-50 transition-colors"
                                         >
-                                            <div className="flex items-center justify-between">
-                                                <span className="font-medium text-gray-800">
-                                                    {seller.name}
-                                                </span>
-                                                <span className="text-xs text-gray-500">
-                                                    {seller.count} posts
-                                                </span>
-                                            </div>
+                                            {name}
                                         </button>
                                     ))}
                                 </div>
                             )}
                         </div>
+                    )}
 
-                        {selectedSeller && (
-                            <button
-                                onClick={() => handleSelectSeller(null)}
-                                className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
-                                title="Limpiar filtro"
-                            >
-                                <X className="w-5 h-5" />
-                            </button>
-                        )}
-                    </div>
+                    {activeFilter === "date" && (
+                        <div className="border-t border-gray-100 p-3 max-h-48 overflow-y-auto">
+                            <div className="space-y-1">
+                                <button
+                                    onClick={() => {
+                                        setSelectedDate(null);
+                                        setActiveFilter("none");
+                                    }}
+                                    className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                                        !selectedDate
+                                            ? "bg-blue-50 text-blue-700"
+                                            : "hover:bg-gray-50"
+                                    }`}
+                                >
+                                    Todas las fechas
+                                </button>
+                                {availableDates.map((date) => (
+                                    <button
+                                        key={date}
+                                        onClick={() => {
+                                            setSelectedDate(date);
+                                            setActiveFilter("none");
+                                        }}
+                                        className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                                            selectedDate === date
+                                                ? "bg-blue-50 text-blue-700"
+                                                : "hover:bg-gray-50"
+                                        }`}
+                                    >
+                                        {new Date(date).toLocaleDateString(
+                                            "es-ES",
+                                            {
+                                                weekday: "short",
+                                                day: "numeric",
+                                                month: "short",
+                                            },
+                                        )}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
-                    {/* Stats summary and review filter */}
-                    <div className="mt-3 pt-3 border-t border-gray-100 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-gray-500">
+                    {activeFilter === "period" && (
+                        <div className="border-t border-gray-100 p-3 max-h-48 overflow-y-auto">
+                            <div className="space-y-1">
+                                <button
+                                    onClick={() => {
+                                        setSelectedPeriod(null);
+                                        setActiveFilter("none");
+                                    }}
+                                    className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                                        !selectedPeriod
+                                            ? "bg-blue-50 text-blue-700"
+                                            : "hover:bg-gray-50"
+                                    }`}
+                                >
+                                    Todos los periodos
+                                </button>
+                                {availablePeriods.map((period) => (
+                                    <button
+                                        key={period.periodNumber}
+                                        onClick={() => {
+                                            setSelectedPeriod(
+                                                period.periodNumber,
+                                            );
+                                            setActiveFilter("none");
+                                        }}
+                                        className={`w-full text-left px-3 py-2 rounded-lg text-sm flex justify-between items-center transition-colors ${
+                                            selectedPeriod ===
+                                            period.periodNumber
+                                                ? "bg-blue-50 text-blue-700"
+                                                : "hover:bg-gray-50"
+                                        }`}
+                                    >
+                                        <span>
+                                            Periodo {period.periodNumber}
+                                        </span>
+                                        <span className="text-xs text-gray-400">
+                                            {period.label}
+                                        </span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Stats Row */}
+                    <div className="px-3 py-2 bg-gray-50 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500">
                         <span>
                             <strong className="text-gray-700">
                                 {filteredSales.length}
                             </strong>{" "}
-                            {filteredSales.length === 1 ? "venta" : "ventas"}{" "}
-                            con fotos
+                            ventas
                         </span>
-                        <span>
-                            <strong className="text-gray-700">
-                                {filteredSales.reduce(
-                                    (sum, s) => sum + s.photoUrls.length,
-                                    0,
-                                )}
-                            </strong>{" "}
-                            fotos totales
-                        </span>
-
-                        {/* Review filter toggle */}
                         <button
                             onClick={() =>
                                 setShowOnlyUnreviewed(!showOnlyUnreviewed)
                             }
-                            className={`ml-auto flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-colors ${
+                            className={`flex items-center gap-1 px-2 py-1 rounded transition-colors ${
                                 showOnlyUnreviewed
                                     ? "bg-amber-100 text-amber-700"
-                                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                                    : "hover:bg-gray-200"
                             }`}
                         >
-                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <CheckCircle2 className="w-3 h-3" />
                             <span>
                                 {showOnlyUnreviewed
-                                    ? "Solo sin revisar"
+                                    ? "Sin revisar"
                                     : `${unreviewedCount} sin revisar`}
                             </span>
                         </button>
@@ -424,7 +700,6 @@ export default function FeedTab({
                 {/* Grouped Feed Posts */}
                 {groupedSales.map((group) => (
                     <div key={group.label} className="space-y-4">
-                        {/* Time Group Header */}
                         <div className="flex items-center gap-3 px-1">
                             <div className="h-px flex-1 bg-gray-200" />
                             <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
@@ -433,7 +708,6 @@ export default function FeedTab({
                             <div className="h-px flex-1 bg-gray-200" />
                         </div>
 
-                        {/* Posts in this group */}
                         {group.sales.map((sale, index) => {
                             const saleId = getSaleId(sale);
                             const isReviewed = reviews.has(saleId);
@@ -451,9 +725,7 @@ export default function FeedTab({
                                     )}
                                     <FeedPost
                                         sale={sale}
-                                        onPostClick={(s) =>
-                                            handlePostClick(s, 0)
-                                        }
+                                        onPostClick={handlePostClick}
                                         getDisplayableImageUrl={
                                             getDisplayableImageUrl
                                         }
@@ -465,12 +737,12 @@ export default function FeedTab({
                     </div>
                 ))}
 
-                {/* Load More Button */}
+                {/* Load More */}
                 {hasMoreSales && (
                     <div className="flex justify-center pt-4 pb-8">
                         <button
                             onClick={handleLoadMore}
-                            className="px-6 py-3 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-colors shadow-sm"
+                            className="px-6 py-3 bg-white border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors shadow-sm"
                         >
                             Ver mas ({filteredSales.length - visibleCount}{" "}
                             restantes)
@@ -478,22 +750,32 @@ export default function FeedTab({
                     </div>
                 )}
 
-                {/* End of feed message */}
+                {/* End of feed */}
                 {!hasMoreSales && visibleSales.length > 0 && (
                     <div className="text-center py-8 text-sm text-gray-400">
                         Has llegado al final del feed
                     </div>
                 )}
 
-                {/* Empty state when filtering */}
+                {/* Empty state */}
                 {visibleSales.length === 0 && (
                     <div className="text-center py-12 text-gray-500">
                         <p className="text-lg font-medium">No hay resultados</p>
                         <p className="text-sm mt-1">
-                            {showOnlyUnreviewed
-                                ? "Todas las ventas han sido revisadas"
-                                : "No hay ventas que coincidan con el filtro"}
+                            {activeFilterCount > 0
+                                ? "Intenta con otros filtros"
+                                : showOnlyUnreviewed
+                                  ? "Todas las ventas han sido revisadas"
+                                  : "No hay ventas que mostrar"}
                         </p>
+                        {activeFilterCount > 0 && (
+                            <button
+                                onClick={clearAllFilters}
+                                className="mt-3 text-blue-600 text-sm hover:underline"
+                            >
+                                Limpiar filtros
+                            </button>
+                        )}
                     </div>
                 )}
             </div>
