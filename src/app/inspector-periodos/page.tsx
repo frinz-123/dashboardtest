@@ -66,6 +66,7 @@ type Sale = {
   email: string;
   submissionTime?: string;
   products: Record<string, number>;
+  photoUrls?: string[];
 };
 
 type SellerStats = {
@@ -126,6 +127,7 @@ export default function InspectorPeriodosPage() {
   const [isHideModeEnabled, setIsHideModeEnabled] = useState(false);
   const [hiddenSellers, setHiddenSellers] = useState<Set<string>>(new Set());
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
+  const [selectedPhotoUrl, setSelectedPhotoUrl] = useState<string | null>(null);
 
   const availablePeriods = useMemo(() => getAllPeriods().reverse(), []);
   const isAdmin = useMemo(
@@ -209,11 +211,26 @@ export default function InspectorPeriodosPage() {
     setIsLoading(true);
     try {
       const response = await fetch(
-        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:AK?key=${googleApiKey}`,
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:AP?key=${googleApiKey}`,
       );
       const data = await response.json();
       const headers = data.values?.[0] || [];
       const rows = data.values?.slice(1) || [];
+      const parsePhotoUrls = (value?: string): string[] => {
+        if (!value) return [];
+        try {
+          const parsed = JSON.parse(value);
+          if (Array.isArray(parsed)) {
+            return parsed.map((url) => String(url)).filter(Boolean);
+          }
+        } catch (error) {
+          console.warn("Error parsing photo urls:", error);
+        }
+        return value
+          .split(",")
+          .map((url) => url.trim())
+          .filter(Boolean);
+      };
       const sales: Sale[] = rows.map((row: string[]) => {
         const products: Record<string, number> = {};
         for (let i = 8; i <= 30; i++) {
@@ -234,6 +251,7 @@ export default function InspectorPeriodosPage() {
           email: row[7] || "",
           submissionTime: row[4] || "",
           products,
+          photoUrls: parsePhotoUrls(row[41]),
         };
       });
       setSalesData(sales);
@@ -1927,7 +1945,12 @@ export default function InspectorPeriodosPage() {
       {/* Sale Detail Drawer */}
       <Drawer
         open={!!selectedSale}
-        onOpenChange={(open) => !open && setSelectedSale(null)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedSale(null);
+            setSelectedPhotoUrl(null);
+          }
+        }}
       >
         <DrawerContent className="max-h-[85vh]">
           <DrawerHeader className="border-b border-gray-100 pb-4">
@@ -1980,6 +2003,31 @@ export default function InspectorPeriodosPage() {
                 </div>
               </div>
 
+              {selectedSale.photoUrls && selectedSale.photoUrls.length > 0 && (
+                <div className="mb-4">
+                  <h4 className="text-sm font-semibold text-gray-700 mb-3">
+                    Fotos ({selectedSale.photoUrls.length})
+                  </h4>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedSale.photoUrls.map((url, index) => (
+                      <button
+                        key={`${url}-${index}`}
+                        type="button"
+                        onClick={() => setSelectedPhotoUrl(url)}
+                        className="h-12 w-12 overflow-hidden rounded-lg border border-gray-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                      >
+                        <img
+                          src={url}
+                          alt={`Foto ${index + 1} de ${selectedSale.clientName}`}
+                          className="h-full w-full object-cover"
+                          loading="lazy"
+                        />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Products List */}
               <div>
                 <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
@@ -2028,6 +2076,32 @@ export default function InspectorPeriodosPage() {
           )}
         </DrawerContent>
       </Drawer>
+
+      {selectedPhotoUrl && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          onClick={() => setSelectedPhotoUrl(null)}
+        >
+          <div
+            className="relative max-h-full w-full max-w-3xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => setSelectedPhotoUrl(null)}
+              className="absolute right-2 top-2 rounded-full bg-black/60 p-2 text-white hover:bg-black/80"
+              aria-label="Cerrar imagen"
+            >
+              <X className="h-4 w-4" />
+            </button>
+            <img
+              src={selectedPhotoUrl}
+              alt="Foto de pedido"
+              className="max-h-[80vh] w-full rounded-lg object-contain"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
