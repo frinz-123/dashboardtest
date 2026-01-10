@@ -75,7 +75,6 @@ export default function CleyPhotoCapture({
                     id={inputId}
                     type="file"
                     accept="image/*"
-                    capture="environment"
                     multiple
                     disabled={isBusy || isAtLimit}
                     className="sr-only"
