@@ -17,7 +17,9 @@
       "Bash(npx shadcn@latest add:*)",
       "Bash(timeout 15 npm run dev)",
       "Bash(ls:*)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []

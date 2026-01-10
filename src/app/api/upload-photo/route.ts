@@ -34,7 +34,9 @@ export async function POST(req: Request) {
         );
     }
 
+    let stage = "init";
     try {
+        stage = "formData";
         const formData = await req.formData();
         const file = formData.get("file");
         const submissionId = (
@@ -52,14 +54,18 @@ export async function POST(req: Request) {
             );
         }
 
+        stage = "buffer";
         const mimeType = file.type || "application/octet-stream";
         const extension = mimeType.includes("png") ? "png" : "jpg";
         const filename = `cley-${submissionId}-${photoId}.${extension}`;
 
         const buffer = Buffer.from(await file.arrayBuffer());
         const photoHash = createHash("sha256").update(buffer).digest("hex");
+
+        stage = "driveInit";
         const drive = google.drive({ version: "v3", auth: driveAuth });
 
+        stage = "checkDuplicate";
         const existing = await drive.files.list({
             q: `'${folderId}' in parents and trashed = false and appProperties has { key='photoHash' and value='${photoHash}' }`,
             fields: "files(id, name)",
@@ -79,6 +85,7 @@ export async function POST(req: Request) {
             );
         }
 
+        stage = "upload";
         const createResponse = await drive.files.create({
             requestBody: {
                 name: filename,
@@ -103,6 +110,7 @@ export async function POST(req: Request) {
             );
         }
 
+        stage = "permissions";
         await drive.permissions.create({
             fileId,
             requestBody: {
@@ -112,6 +120,7 @@ export async function POST(req: Request) {
             supportsAllDrives: true,
         });
 
+        stage = "getLink";
         const fileResponse = await drive.files.get({
             fileId,
             fields: "webViewLink, webContentLink",
@@ -129,22 +138,37 @@ export async function POST(req: Request) {
         }
 
         return NextResponse.json({ success: true, url, fileId });
-    } catch (error) {
-        console.error("Drive upload error:", error);
-        const errorMessage =
-            error instanceof Error ? error.message : "Unknown error";
-        const errorStack = error instanceof Error ? error.stack : undefined;
-        console.error("Error details:", { errorMessage, errorStack });
+    } catch (error: unknown) {
+        console.error("Drive upload error at stage:", stage, error);
 
-        // Return more detailed error info in development, generic in production
-        const isDev = process.env.NODE_ENV === "development";
+        // Extract error details from various error formats
+        let errorMessage = "Unknown error";
+        let errorCode = "";
+
+        if (error instanceof Error) {
+            errorMessage = error.message;
+            // Google API errors often have additional properties
+            const gError = error as Error & {
+                code?: number | string;
+                errors?: Array<{ message: string; reason: string }>;
+            };
+            if (gError.code) errorCode = String(gError.code);
+            if (gError.errors?.[0]) {
+                errorMessage = `${gError.errors[0].reason}: ${gError.errors[0].message}`;
+            }
+        } else if (typeof error === "object" && error !== null) {
+            errorMessage = JSON.stringify(error);
+        }
+
+        console.error("Error details:", { stage, errorMessage, errorCode });
+
+        // Temporarily return details in production for debugging
         return NextResponse.json(
             {
                 success: false,
-                error: isDev
-                    ? `Upload failed: ${errorMessage}`
-                    : "No se pudo subir la foto",
-                ...(isDev && { details: errorMessage }),
+                error: `Error en ${stage}: ${errorMessage}`,
+                stage,
+                code: errorCode,
             },
             { status: 500 },
         );
