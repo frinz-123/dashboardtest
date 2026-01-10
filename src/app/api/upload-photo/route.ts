@@ -44,7 +44,13 @@ export async function POST(req: Request) {
         ).toString();
         const photoId = (formData.get("photoId") || "photo").toString();
 
-        if (!(file instanceof File)) {
+        // Check if file is a valid Blob-like object (File extends Blob)
+        // We can't use `instanceof File` because File is not defined in Node.js runtime
+        if (
+            !file ||
+            typeof file !== "object" ||
+            typeof (file as Blob).arrayBuffer !== "function"
+        ) {
             return NextResponse.json(
                 {
                     success: false,
@@ -55,11 +61,12 @@ export async function POST(req: Request) {
         }
 
         stage = "buffer";
-        const mimeType = file.type || "application/octet-stream";
+        const blob = file as Blob;
+        const mimeType = blob.type || "application/octet-stream";
         const extension = mimeType.includes("png") ? "png" : "jpg";
         const filename = `cley-${submissionId}-${photoId}.${extension}`;
 
-        const buffer = Buffer.from(await file.arrayBuffer());
+        const buffer = Buffer.from(await blob.arrayBuffer());
         const photoHash = createHash("sha256").update(buffer).digest("hex");
 
         stage = "driveInit";
