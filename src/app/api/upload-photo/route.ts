@@ -4,14 +4,31 @@ import { google } from "googleapis";
 import { NextResponse } from "next/server";
 import { driveAuth } from "@/utils/googleAuth";
 
+// Force Node.js runtime (not Edge) for stream and crypto compatibility
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
 const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
 
 export async function POST(req: Request) {
     if (!folderId) {
+        console.error("Missing GOOGLE_DRIVE_FOLDER_ID");
         return NextResponse.json(
             {
                 success: false,
                 error: "Falta configurar GOOGLE_DRIVE_FOLDER_ID",
+            },
+            { status: 500 },
+        );
+    }
+
+    // Verify auth is available
+    if (!driveAuth) {
+        console.error("Drive auth not configured");
+        return NextResponse.json(
+            {
+                success: false,
+                error: "Drive authentication not configured",
             },
             { status: 500 },
         );
@@ -114,10 +131,20 @@ export async function POST(req: Request) {
         return NextResponse.json({ success: true, url, fileId });
     } catch (error) {
         console.error("Drive upload error:", error);
+        const errorMessage =
+            error instanceof Error ? error.message : "Unknown error";
+        const errorStack = error instanceof Error ? error.stack : undefined;
+        console.error("Error details:", { errorMessage, errorStack });
+
+        // Return more detailed error info in development, generic in production
+        const isDev = process.env.NODE_ENV === "development";
         return NextResponse.json(
             {
                 success: false,
-                error: "No se pudo subir la foto",
+                error: isDev
+                    ? `Upload failed: ${errorMessage}`
+                    : "No se pudo subir la foto",
+                ...(isDev && { details: errorMessage }),
             },
             { status: 500 },
         );

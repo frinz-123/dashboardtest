@@ -2,6 +2,10 @@
   command = "npm run build"
   publish = ".next"
 
+[functions]
+  # Extend timeout for API routes that handle file uploads
+  external_node_modules = ["googleapis"]
+
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
