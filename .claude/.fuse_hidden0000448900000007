@@ -22,8 +22,7 @@
       "Bash(git commit:*)",
       "Bash(npm --version)",
       "Bash(git config:*)",
-      "Bash(git push)",
-      "Skill(frontend-design)"
+      "Bash(git push)"
     ],
     "deny": [],
     "ask": []
