@@ -1,5 +1,12 @@
 import { google } from "googleapis";
 import { NextResponse } from "next/server";
+import {
+  EMAIL_TO_VENDOR_LABELS,
+  getVendorEmailFromLabel,
+  getVendorIdentifiers,
+  isMasterAccount,
+  normalizeVendorValue,
+} from "../../../../utils/auth";
 
 // Force dynamic rendering for this API route
 export const dynamic = "force-dynamic";
@@ -72,25 +79,42 @@ async function updateVisitStatus(body: any) {
     );
   }
 
+  if (userEmail === "ALL_ROUTES" || userEmail === "null") {
+    return NextResponse.json(
+      { error: "Invalid userEmail for write operation" },
+      { status: 400 },
+    );
+  }
+
   const sheets = google.sheets({ version: "v4", auth });
 
-  // Import master account utilities
-  const { isMasterAccount, EMAIL_TO_VENDOR_LABELS } = await import(
-    "../../../../utils/auth"
-  );
 
   // Handle master account audit trail
   const isMaster = isMasterAccount(masterEmail || userEmail);
-  const effectiveVendor = EMAIL_TO_VENDOR_LABELS[userEmail] || userEmail;
-  const auditInfo = isMaster
-    ? `${effectiveVendor} (via ${masterEmail})`
-    : effectiveVendor;
+  const normalizedUserEmail = userEmail.toLowerCase().trim();
+  const effectiveVendor =
+    EMAIL_TO_VENDOR_LABELS[normalizedUserEmail] || normalizedUserEmail;
 
   const vendedor = effectiveVendor;
-  // ✅ REVISED: Use the provided visitDate, or default to today's date
-  const effectiveDate = visitDate ? new Date(visitDate) : new Date();
-  const fecha = effectiveDate.toISOString().split("T")[0];
-  const weekNumber = getWeekNumber(effectiveDate);
+
+  // ✅ REVISED: Prefer explicit visitDate (date-only), otherwise use Mazatlán-local "today".
+  const dateOnlyFromInput =
+    typeof visitDate === "string" && /^\d{4}-\d{2}-\d{2}/.test(visitDate)
+      ? visitDate.slice(0, 10)
+      : null;
+
+  const nowUtc = new Date();
+  const mazatlanOffset = -7; // GMT-7
+  const mazatlanNow = new Date(nowUtc.getTime() + mazatlanOffset * 60 * 60 * 1000);
+
+  const fecha = dateOnlyFromInput || mazatlanNow.toISOString().split("T")[0];
+
+  // Use a stable midday timestamp for week calculations when we have a date-only input.
+  const effectiveDateForWeek = dateOnlyFromInput
+    ? new Date(`${fecha}T12:00:00.000Z`)
+    : mazatlanNow;
+
+  const weekNumber = getWeekNumber(effectiveDateForWeek);
 
   // ✅ Generate a unique ID for the visit
   const id_visita = `visit_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
@@ -191,13 +215,17 @@ async function scheduleNextVisit(
 
     // Find the client and get their frequency
     const headers = clientsData[0];
-    const clientRow = clientsData
-      .slice(1)
-      .find(
-        (row: any[]) =>
-          row[0] === clientName &&
-          (row[6] === vendedor || row[6] === getEmailFromLabel(vendedor)),
+
+    const vendorEmail = getVendorEmailFromLabel(vendedor);
+    const vendorIdentifiers = getVendorIdentifiers(vendorEmail);
+
+    const clientRow = clientsData.slice(1).find((row: any[]) => {
+      const rowVendor = row[6] || "";
+      return (
+        row[0] === clientName &&
+        vendorIdentifiers.has(normalizeVendorValue(String(rowVendor)))
       );
+    });
 
     if (!clientRow) {
       console.warn(`Client ${clientName} not found for vendor ${vendedor}`);
@@ -350,23 +378,6 @@ async function scheduleNextVisit(
   }
 }
 
-// ✅ ADDED: Helper function to get email from friendly label
-function getEmailFromLabel(label: string): string {
-  const labelToEmail: Record<string, string> = {
-    Ernesto: "ventas1productoselrey@gmail.com",
-    Roel: "ventas2productoselrey@gmail.com",
-    Lidia: "ventas3productoselrey@gmail.com",
-    Mazatlan: "ventasmztproductoselrey.com@gmail.com",
-    Mochis: "ventasmochisproductoselrey@gmail.com",
-    Franz: "franzcharbell@gmail.com", // ✅ REVERTED: Franz has his own mapping
-    Cesar: "cesar.reyes.ochoa@gmail.com",
-    "Arturo Mty": "arturo.elreychiltepin@gmail.com",
-    Arlyn: "alopezelrey@gmail.com",
-    Brenda: "promotoriaelrey@gmail.com",
-  };
-
-  return labelToEmail[label] || label;
-}
 
 // Helper function to get ISO week number
 function getWeekNumber(date: Date): number {
@@ -411,23 +422,18 @@ async function updateRouteSummary(body: any) {
     );
   }
 
+  if (userEmail === "ALL_ROUTES" || userEmail === "null") {
+    return NextResponse.json(
+      { error: "Invalid userEmail for write operation" },
+      { status: 400 },
+    );
+  }
+
   const sheets = google.sheets({ version: "v4", auth });
 
-  // Get friendly name for vendedor
-  const emailLabels: Record<string, string> = {
-    "ventas1productoselrey@gmail.com": "Ernesto",
-    "ventas2productoselrey@gmail.com": "Roel",
-    "ventas3productoselrey@gmail.com": "Lidia",
-    "ventasmztproductoselrey.com@gmail.com": "Mazatlan",
-    "ventasmochisproductoselrey@gmail.com": "Mochis",
-    "franzcharbell@gmail.com": "Franz", // ✅ REVERTED: Franz has his own data with his email
-    "cesar.reyes.ochoa@gmail.com": "Cesar",
-    "arturo.elreychiltepin@gmail.com": "Arturo Mty",
-    "alopezelrey@gmail.com": "Arlyn",
-    "promotoriaelrey@gmail.com": "Brenda",
-  };
-
-  const vendedor = emailLabels[userEmail] || userEmail;
+  const normalizedUserEmail = userEmail.toLowerCase().trim();
+  const vendedor =
+    EMAIL_TO_VENDOR_LABELS[normalizedUserEmail] || normalizedUserEmail;
 
   // Data matching the exact sheet columns:
   // fecha,dia_ruta,vendedor,clientes_programados,clientes_visitados,ventas_totales,tiempo_inicio,tiempo_fin,kilometros_recorridos,combustible_gastado,observaciones
@@ -514,23 +520,20 @@ async function updateWeeklySchedule(body: any) {
     );
   }
 
+  if (userEmail === "ALL_ROUTES" || userEmail === "null") {
+    return NextResponse.json(
+      { error: "Invalid userEmail for write operation" },
+      { status: 400 },
+    );
+  }
+
   const sheets = google.sheets({ version: "v4", auth });
 
-  // Get friendly name for vendedor
-  const emailLabels: Record<string, string> = {
-    "ventas1productoselrey@gmail.com": "Ernesto",
-    "ventas2productoselrey@gmail.com": "Roel",
-    "ventas3productoselrey@gmail.com": "Lidia",
-    "ventasmztproductoselrey.com@gmail.com": "Mazatlan",
-    "ventasmochisproductoselrey@gmail.com": "Mochis",
-    "franzcharbell@gmail.com": "Franz", // ✅ REVERTED: Franz has his own data with his email
-    "cesar.reyes.ochoa@gmail.com": "Cesar",
-    "arturo.elreychiltepin@gmail.com": "Arturo Mty",
-    "alopezelrey@gmail.com": "Arlyn",
-    "promotoriaelrey@gmail.com": "Brenda",
-  };
-
-  const vendedorName = vendedor || emailLabels[userEmail] || userEmail;
+  const normalizedUserEmail = userEmail.toLowerCase().trim();
+  const vendedorName =
+    vendedor ||
+    EMAIL_TO_VENDOR_LABELS[normalizedUserEmail] ||
+    normalizedUserEmail;
 
   // Calculate week start date
   const weekStartDate = new Date();

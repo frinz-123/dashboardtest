@@ -142,17 +142,36 @@ export async function GET(request: NextRequest) {
       });
 
       // Import master account utilities
-      const { isMasterAccount, EMAIL_TO_VENDOR_LABELS } = await import(
-        "../../../utils/auth"
-      );
+      const {
+        isMasterAccount,
+        getVendorIdentifiers,
+        normalizeVendorValue,
+      } = await import("../../../utils/auth");
 
       // Check if this is a master account request
       const isMaster = isMasterAccount(email);
-      const effectiveEmail = viewAsEmail && isMaster ? viewAsEmail : email;
+      const isAllRoutesRequest =
+        isMaster && (viewAsEmail === null || viewAsEmail === "null");
+
+      // For master accounts, allow viewing as another vendor.
+      // For "all routes" explicitly, keep effectiveEmail as the caller email (used only for logging).
+      const effectiveEmail =
+        !isAllRoutesRequest && viewAsEmail && isMaster ? viewAsEmail : email;
+
+      const vendorIdentifiers = isAllRoutesRequest
+        ? null
+        : getVendorIdentifiers(effectiveEmail);
+
+      const matchesVendor = (value: any) => {
+        if (isAllRoutesRequest) return true;
+        return vendorIdentifiers?.has(normalizeVendorValue(String(value || ""))) || false;
+      };
 
       console.log(
         "🔍 API DEBUG: Master account check - isMaster:",
         isMaster,
+        "isAllRoutesRequest:",
+        isAllRoutesRequest,
         "effectiveEmail:",
         effectiveEmail,
       );
@@ -176,102 +195,38 @@ export async function GET(request: NextRequest) {
 
       // Filter by vendedor (seller) based on sheet type
       let filteredData = data;
-      if (sheet === "clientes") {
-        // ✅ FIXED: Always filter for specific vendor, even for master accounts
-        // Only show ALL clients if master explicitly requests it with viewAsEmail=null
-        if (isMaster && (viewAsEmail === null || viewAsEmail === "null")) {
-          // Master account explicitly requesting ALL clients
-          console.log(
-            "🔍 API DEBUG: Master account - returning ALL clients (explicit request)",
-          );
-          filteredData = data;
-        } else {
-          // Regular filtering or master account viewing as specific vendor (including themselves)
-          const userLabel = EMAIL_TO_VENDOR_LABELS[effectiveEmail];
 
-          filteredData = data.filter((item) => {
-            const vendedor = item.Vendedor;
-
-            // Match if vendedor is either the email OR the friendly label
-            return vendedor === effectiveEmail || vendedor === userLabel;
-          });
-
-          console.log(
-            "🔍 API DEBUG: Looking for email:",
-            effectiveEmail,
-            "or label:",
-            userLabel,
-          );
-          console.log(
-            "🔍 API DEBUG: Filtered data for user:",
-            filteredData.length,
-          );
-          if (filteredData.length > 0) {
-            console.log("🔍 API DEBUG: Filtered sample:", filteredData[0]);
-
-            // Basic filtering validation
-            const filteredCleyData = filteredData.filter(
-              (item) => item.Tipo_Cliente?.toUpperCase() === "CLEY",
-            );
-            console.log(
-              "🔍 API DEBUG: CLEY clients after filtering:",
-              filteredCleyData.length,
-            );
-          }
-        }
+      if (isAllRoutesRequest) {
+        console.log(
+          "🔍 API DEBUG: Master account - returning ALL records (explicit all-routes request)",
+        );
+        filteredData = data;
+      } else if (sheet === "clientes") {
+        filteredData = data.filter((item) => matchesVendor(item.Vendedor));
       } else if (
         sheet === "metricas" ||
         sheet === "performance" ||
         sheet === "visitas"
       ) {
-        // For visit tracking sheets, filter by vendedor (seller name/email)
-        const userLabel =
-          EMAIL_TO_VENDOR_LABELS[effectiveEmail] || effectiveEmail;
-
-        // ✅ ADDED: Debug logging for vendedor field mapping
-        if (data.length > 0) {
-          console.log(
-            "🔍 API DEBUG: Sample record for vendedor analysis:",
-            data[0],
-          );
-          console.log(
-            "🔍 API DEBUG: Available fields in first record:",
-            Object.keys(data[0]),
-          );
-          console.log("🔍 API DEBUG: vendedor field value:", data[0].vendedor);
-          console.log("🔍 API DEBUG: Vendedor field value:", data[0].Vendedor);
-        }
-
-        filteredData = data.filter((item) => {
-          const vendedor = item.vendedor || item.Vendedor;
-          const matches = vendedor === effectiveEmail || vendedor === userLabel;
-
-          // ✅ ADDED: Log each record's vendedor value for debugging
-          if (!matches) {
-            console.log(
-              `🔍 API DEBUG: Record excluded - vendedor: "${vendedor}", looking for: "${effectiveEmail}" or "${userLabel}"`,
-            );
-          }
-
-          return matches;
-        });
-
-        console.log(
-          "🔍 API DEBUG: Filtering visits for:",
-          effectiveEmail,
-          "or label:",
-          userLabel,
+        filteredData = data.filter((item) =>
+          matchesVendor(item.vendedor || item.Vendedor),
         );
-        console.log("🔍 API DEBUG: Filtered visit data:", filteredData.length);
       } else if (sheet === "programacion") {
-        // Filter programacion by vendedor
-        const userLabel =
-          EMAIL_TO_VENDOR_LABELS[effectiveEmail] || effectiveEmail;
-        filteredData = data.filter((item) => {
-          const vendedor = item.vendedor || item.Vendedor;
-          return vendedor === effectiveEmail || vendedor === userLabel;
-        });
+        filteredData = data.filter((item) =>
+          matchesVendor(item.vendedor || item.Vendedor),
+        );
+      } else if (sheet === "reprogramadas") {
+        filteredData = data.filter((item) =>
+          matchesVendor(item.vendedor || item.Vendedor),
+        );
       }
+
+      console.log(
+        "🔍 API DEBUG: Returning filtered rows:",
+        filteredData.length,
+        "sheet:",
+        sheet,
+      );
 
       return NextResponse.json({ data: filteredData }, { status: 200 });
     } catch (sheetsError: any) {
