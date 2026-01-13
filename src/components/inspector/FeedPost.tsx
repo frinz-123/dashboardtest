@@ -61,6 +61,13 @@ const getInitials = (name: string): string => {
     return name.substring(0, 2).toUpperCase();
 };
 
+const formatTimeTo12Hour = (timeStr: string): string => {
+    const [hours, minutes] = timeStr.split(":").map(Number);
+    const period = hours >= 12 ? "p.m." : "a.m.";
+    const hour12 = hours % 12 || 12;
+    return `${hour12}:${minutes.toString().padStart(2, "0")} ${period}`;
+};
+
 export default function FeedPost({
     sale,
     onPostClick,
@@ -79,7 +86,11 @@ export default function FeedPost({
         day: "numeric",
         month: "short",
     });
-    const timeStr = sale.submissionTime?.split(" ")[1]?.slice(0, 5) || "";
+    // submissionTime can be "HH:mm:ss" or "date HH:mm:ss" format
+    const rawTime = sale.submissionTime?.includes(" ")
+        ? sale.submissionTime.split(" ")[1]?.slice(0, 5)
+        : sale.submissionTime?.slice(0, 5);
+    const timeStr = rawTime ? formatTimeTo12Hour(rawTime) : "";
 
     // Calculate total products
     const totalProducts = Object.values(sale.products).reduce((sum, qty) => sum + qty, 0);
@@ -103,7 +114,7 @@ export default function FeedPost({
                     <p className="font-semibold text-gray-900 truncate">{sellerName}</p>
                     <div className="flex items-center gap-2 text-xs text-gray-500">
                         <Clock className="w-3 h-3" />
-                        <span>{dateStr} {timeStr && `a las ${timeStr}`}</span>
+                        <span>{dateStr}{timeStr && `, ${timeStr}`}</span>
                     </div>
                 </div>
 

@@ -130,20 +130,24 @@ export default function FeedTab({
         fetchReviews();
     }, []);
 
+    // Helper to extract time from submissionTime (can be "HH:mm:ss" or "date HH:mm:ss")
+    const getTimeFromSubmission = (submissionTime?: string): string => {
+        if (!submissionTime) return "00:00:00";
+        return submissionTime.includes(" ")
+            ? submissionTime.split(" ")[1] || "00:00:00"
+            : submissionTime;
+    };
+
     // Filter sales with photos and sort by most recent
     const salesWithPhotos = useMemo(() => {
         return salesData
             .filter((sale) => sale.photoUrls && sale.photoUrls.length > 0)
             .sort((a, b) => {
                 const dateA = new Date(
-                    a.fechaSinHora +
-                        " " +
-                        (a.submissionTime?.split(" ")[1] || "00:00:00"),
+                    a.fechaSinHora + " " + getTimeFromSubmission(a.submissionTime),
                 );
                 const dateB = new Date(
-                    b.fechaSinHora +
-                        " " +
-                        (b.submissionTime?.split(" ")[1] || "00:00:00"),
+                    b.fechaSinHora + " " + getTimeFromSubmission(b.submissionTime),
                 );
                 return dateB.getTime() - dateA.getTime();
             });
