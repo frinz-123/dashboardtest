@@ -1,9 +1,8 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import Link from "next/link";
-import { Menu, ChevronDown, CheckSquare, Square } from "lucide-react";
-import BlurIn from "@/components/ui/blur-in";
+import { ChevronDown, CheckSquare, Square, Map } from "lucide-react";
+import AppHeader from "@/components/AppHeader";
 import { useSession } from "next-auth/react";
 import { redirect } from "next/navigation";
 
@@ -334,7 +333,6 @@ const getStatusColor = (status: RouteStatus): string => {
 };
 
 export default function RutasPage() {
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [selectedRoute, setSelectedRoute] = useState("");
   const [completedClients, setCompletedClients] = useState<Set<string>>(
     new Set(),
@@ -474,95 +472,11 @@ export default function RutasPage() {
 
   return (
     <div
-      className="min-h-screen bg-white px-4 py-3 font-sans w-full"
+      className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50 font-sans w-full"
       style={{ fontFamily: "Inter, sans-serif", fontSize: "0.8rem" }}
     >
-      <header className="flex justify-between items-center mb-4">
-        <div className="flex items-center">
-          <div className="w-8 h-8 bg-blue-600 rounded-full mr-2 flex items-center justify-center">
-            <div className="w-5 h-0.5 bg-white rounded-full transform -rotate-45"></div>
-          </div>
-          <BlurIn
-            word="Rutas"
-            className="text-2xl font-medium tracking-tight"
-            duration={0.5}
-            variant={{
-              hidden: { filter: "blur(4px)", opacity: 0 },
-              visible: { filter: "blur(0px)", opacity: 1 },
-            }}
-          />
-        </div>
-        <div className="flex items-center">
-          <div className="relative">
-            <button
-              className="p-1 rounded-full hover:bg-gray-200 transition-colors duration-200"
-              onClick={() => setIsMenuOpen(!isMenuOpen)}
-            >
-              <Menu className="h-5 w-5 text-gray-600" />
-            </button>
-            {isMenuOpen && (
-              <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-50">
-                <div
-                  className="py-1"
-                  role="menu"
-                  aria-orientation="vertical"
-                  aria-labelledby="options-menu"
-                >
-                  <Link
-                    href="/"
-                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                    role="menuitem"
-                  >
-                    Dashboard
-                  </Link>
-                  <Link
-                    href="/admin"
-                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                    role="menuitem"
-                  >
-                    Admin
-                  </Link>
-                  <Link
-                    href="/form"
-                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                    role="menuitem"
-                  >
-                    Form
-                  </Link>
-                  <Link
-                    href="/clientes"
-                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                    role="menuitem"
-                  >
-                    Clientes
-                  </Link>
-                  <Link
-                    href="/rutas"
-                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                    role="menuitem"
-                  >
-                    Rutas
-                  </Link>
-                  <Link
-                    href="/inventario"
-                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                    role="menuitem"
-                  >
-                    Inventario
-                  </Link>
-                  <Link
-                    href="/navegar"
-                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                    role="menuitem"
-                  >
-                    Navegar
-                  </Link>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </header>
+      <AppHeader title="Rutas" icon={Map} />
+      <main className="px-4 py-4 max-w-2xl mx-auto">
 
       <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
         <div className="relative">
@@ -674,6 +588,7 @@ export default function RutasPage() {
           </div>
         </div>
       )}
+      </main>
     </div>
   );
 }

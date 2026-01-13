@@ -3,9 +3,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useSession } from "next-auth/react";
-import Link from "next/link";
 import {
-    Menu,
     TrendingUp,
     DollarSign,
     Package,
@@ -30,7 +28,7 @@ import {
     Map,
     Printer,
 } from "lucide-react";
-import BlurIn from "@/components/ui/blur-in";
+import AppHeader from "@/components/AppHeader";
 import SearchInput from "@/components/ui/SearchInput";
 import InputGray from "@/components/ui/InputGray";
 import VendedoresSection, {
@@ -1792,7 +1790,6 @@ export default function ClientesPage() {
     );
     const userEmail = (session?.user?.email || "").toLowerCase();
     const isAllowed = allowedEmails.includes(userEmail);
-    const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
     const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
     const [clientNames, setClientNames] = useState<string[]>([]);
@@ -2635,7 +2632,7 @@ export default function ClientesPage() {
 
     return (
         <div
-            className="min-h-screen bg-white px-4 py-3 font-sans w-full"
+            className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50 font-sans w-full"
             style={{ fontFamily: "Inter, sans-serif", fontSize: "0.8rem" }}
         >
             {/* Error Toast */}
@@ -2643,91 +2640,24 @@ export default function ClientesPage() {
                 <ErrorToast message={error} onClose={() => setError(null)} />
             )}
 
-            <header className="flex justify-between items-center mb-4">
-                <div className="flex items-center">
-                    <div className="w-8 h-8 bg-blue-600 rounded-full mr-2 flex items-center justify-center">
-                        <Users className="w-5 h-5 text-white" />
-                    </div>
-                    <div className="flex items-center">
-                        {viewMode === "client" && (
-                            <button
-                                onClick={() => {
-                                    setSelectedClient("");
-                                    setSearchTerm("");
-                                    setClientData(null);
-                                }}
-                                className="mr-3 text-gray-500 hover:text-gray-700"
-                            >
-                                ← Dashboard
-                            </button>
-                        )}
-                        <BlurIn
-                            word={
-                                viewMode === "client"
-                                    ? selectedClient
-                                    : "Clientes"
-                            }
-                            className="text-2xl font-medium tracking-tight"
-                            duration={0.5}
-                            variant={{
-                                hidden: { filter: "blur(4px)", opacity: 0 },
-                                visible: { filter: "blur(0px)", opacity: 1 },
-                            }}
-                        />
-                    </div>
-                </div>
-                <div className="flex items-center relative">
-                    <div className="relative">
-                        <button
-                            className="p-1 rounded-full hover:bg-gray-200 transition-colors duration-200"
-                            onClick={() => setIsMenuOpen(!isMenuOpen)}
-                        >
-                            <Menu className="h-5 w-5 text-gray-600" />
-                        </button>
-                        {isMenuOpen && (
-                            <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-50">
-                                <div className="py-1">
-                                    <Link
-                                        href="/"
-                                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                                        role="menuitem"
-                                    >
-                                        Dashboard
-                                    </Link>
-                                    <Link
-                                        href="/form"
-                                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                                        role="menuitem"
-                                    >
-                                        Ventas
-                                    </Link>
-                                    <Link
-                                        href="/recorridos"
-                                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                                        role="menuitem"
-                                    >
-                                        Recorridos
-                                    </Link>
-                                    <Link
-                                        href="/inventario"
-                                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                                        role="menuitem"
-                                    >
-                                        Inventario
-                                    </Link>
-                                    <Link
-                                        href="/navegar"
-                                        className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                                        role="menuitem"
-                                    >
-                                        Navegar
-                                    </Link>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            </header>
+            <AppHeader
+                title={viewMode === "client" ? selectedClient : "Clientes"}
+                icon={Users}
+            >
+                {viewMode === "client" && (
+                    <button
+                        onClick={() => {
+                            setSelectedClient("");
+                            setSearchTerm("");
+                            setClientData(null);
+                        }}
+                        className="px-3 py-2 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
+                    >
+                        ← Volver
+                    </button>
+                )}
+            </AppHeader>
+            <main className="px-4 py-4 max-w-2xl mx-auto">
 
             {/* Client Selection */}
             <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
@@ -3883,6 +3813,7 @@ export default function ClientesPage() {
                     </p>
                 </div>
             ) : null}
+            </main>
         </div>
     );
 }

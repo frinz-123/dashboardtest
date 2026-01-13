@@ -7,13 +7,13 @@ import {
   Clock,
   ChevronRight,
   Target,
-  Menu,
   Search,
   TrendingUp,
   TrendingDown,
   CheckCircle2,
   ShoppingBag,
 } from "lucide-react";
+import AppHeader from "./AppHeader";
 import {
   BarChart,
   Bar,
@@ -90,8 +90,7 @@ export default function Dashboard() {
   const [showAllSales, setShowAllSales] = useState(false);
   const [goalProgress, setGoalProgress] = useState<number>(0);
   const [currentPeriodSales, setCurrentPeriodSales] = useState<number>(0);
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [clientNames, setClientNames] = useState<string[]>([]);
+    const [clientNames, setClientNames] = useState<string[]>([]);
   const [selectedClient, setSelectedClient] = useState<string>("");
   const [clientSales, setClientSales] = useState<Sale[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -778,125 +777,27 @@ export default function Dashboard() {
 
   return (
     <div
-      className="min-h-screen bg-white px-4 py-4 font-sans w-full"
+      className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50 font-sans w-full"
       style={{ fontFamily: "Inter, sans-serif", fontSize: "0.82rem" }}
     >
-      <header className="flex justify-between items-center mb-4">
-        <div className="flex items-center">
-          <div className="w-9 h-9 bg-gradient-to-br from-blue-600 to-indigo-500 rounded-2xl mr-2 flex items-center justify-center">
-            <div className="w-5 h-0.5 bg-white rounded-full transform -rotate-45"></div>
-          </div>
-          <BlurIn
-            word="Ventas"
-            className="text-2xl font-medium tracking-tight"
-            duration={0.5}
-            variant={{
-              hidden: { filter: "blur(4px)", opacity: 0 },
-              visible: { filter: "blur(0px)", opacity: 1 },
-            }}
-          />
+      <AppHeader title="Dashboard" icon={BarChart2}>
+        <div className="relative">
+          <select
+            className="appearance-none text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl pl-3 pr-8 py-2.5 text-xs font-medium border-0 focus:outline-none focus:ring-2 focus:ring-blue-400 transition cursor-pointer"
+            value={selectedEmail}
+            onChange={(e) => setSelectedEmail(e.target.value)}
+          >
+            {selectableEmails.map((email) => (
+              <option key={email} value={email}>
+                {emailLabels[email]?.label || email}
+              </option>
+            ))}
+          </select>
+          <ChevronDown className="absolute right-2.5 top-1/2 transform -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
         </div>
-        <div className="flex items-center">
-          <div className="relative mr-2">
-            <select
-              className="appearance-none flex items-center text-gray-600 bg-white rounded-full pl-3 pr-8 py-1 text-xs border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-blue-300 transition"
-              value={selectedEmail}
-              onChange={(e) => setSelectedEmail(e.target.value)}
-            >
-              {selectableEmails.map((email) => (
-                <option key={email} value={email}>
-                  {emailLabels[email]?.label || email}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 h-3 w-3 text-gray-400 pointer-events-none" />
-          </div>
-          <div className="relative">
-            <button
-              className="p-1.5 rounded-full hover:bg-gray-200 transition-colors duration-200"
-              onClick={() => setIsMenuOpen(!isMenuOpen)}
-            >
-              <Menu className="h-5 w-5 text-gray-600" />
-            </button>
-            {isMenuOpen && (
-              <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 z-[100]">
-                <div
-                  className="py-1"
-                  role="menu"
-                  aria-orientation="vertical"
-                  aria-labelledby="options-menu"
-                >
-                  <Link
-                    href="/"
-                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                    role="menuitem"
-                  >
-                    Dashboard
-                  </Link>
-                  <Link
-                    href="/admin"
-                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                    role="menuitem"
-                  >
-                    Admin
-                  </Link>
-                  {isMasterAccount(session?.user?.email) && (
-                    <Link
-                      href="/inspector-periodos"
-                      className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                      role="menuitem"
-                    >
-                      Inspector de Periodos
-                    </Link>
-                  )}
-                  <Link
-                    href="/form"
-                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                    role="menuitem"
-                  >
-                    Ventas
-                  </Link>
-                  <Link
-                    href="/clientes"
-                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                    role="menuitem"
-                  >
-                    Clientes
-                  </Link>
-                  <Link
-                    href="/recorridos"
-                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                    role="menuitem"
-                  >
-                    Recorridos
-                  </Link>
-                  <Link
-                    href="/inventario"
-                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                    role="menuitem"
-                  >
-                    Inventario
-                  </Link>
-                  <Link
-                    href="/navegar"
-                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                    role="menuitem"
-                  >
-                    Navegar
-                  </Link>
-                  <button
-                    onClick={() => signOut()}
-                    className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                    role="menuitem"
-                  >
-                    Cerrar sesión
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </header>
+      </AppHeader>
+
+      <main className="px-4 py-4 max-w-2xl mx-auto">
 
       <div className="bg-white rounded-lg mb-3 p-0.5 border border-[#E2E4E9]/70">
         <div className="inline-flex rounded-md w-full">
@@ -1551,6 +1452,7 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+      </main>
 
       {selectedSale && (
         <SaleDetailsPopup

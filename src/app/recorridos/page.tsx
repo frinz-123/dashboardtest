@@ -2,12 +2,12 @@
 
 import React, { useState, useEffect, useMemo } from "react";
 import { useSession } from "next-auth/react";
-import Link from "next/link";
 import {
-  Menu, MapPin, Calendar, Clock, CheckCircle, XCircle,
+  MapPin, Calendar, Clock, CheckCircle, XCircle,
   AlertTriangle, Users, Route, Navigation, Save, Timer,
   ChevronDown, Fuel, TrendingUp, X,
 } from "lucide-react";
+import AppHeader from "@/components/AppHeader";
 import VendorSelector from "@/components/VendorSelector";
 import {
   getVendorIdentifiers, getVendorLabel, getVendorEmails,
@@ -80,7 +80,6 @@ export default function RecorridosPage() {
   });
 
   // UI State
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [dataLoaded, setDataLoaded] = useState(false);
   const [selectedDay, setSelectedDay] = useState<RouteDay>(getMazatlanDayName);
@@ -635,34 +634,7 @@ export default function RecorridosPage() {
       `}} />
 
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50" style={{ fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif" }}>
-        {/* Header */}
-        <header className="sticky top-0 z-40 backdrop-blur-xl bg-white/80 border-b border-slate-200/50">
-          <div className="px-4 py-3 flex justify-between items-center max-w-2xl mx-auto">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
-                <Route className="h-5 w-5 text-white" />
-              </div>
-              <div>
-                <h1 className="text-lg font-semibold text-slate-900 tracking-tight">Recorridos</h1>
-                {isMaster && <p className="text-xs text-blue-600 font-medium">{viewingAsVendor}</p>}
-              </div>
-            </div>
-            <div className="relative">
-              <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="w-10 h-10 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition-colors">
-                <Menu className="h-5 w-5 text-slate-600" />
-              </button>
-              {isMenuOpen && (
-                <div className="absolute right-0 mt-2 w-52 rounded-xl bg-white card-shadow border border-slate-200/50 overflow-hidden animate-scaleIn origin-top-right">
-                  <div className="py-2">
-                    {[{ href: "/", label: "Dashboard" }, { href: "/form", label: "Ventas" }, { href: "/clientes", label: "Clientes" }, { href: "/inventario", label: "Inventario" }, { href: "/admin", label: "Admin" }, { href: "/navegar", label: "Navegar" }].map(item => (
-                      <Link key={item.href} href={item.href} className="block px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors">{item.label}</Link>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </header>
+        <AppHeader title="Recorridos" icon={Route} subtitle={isMaster ? viewingAsVendor : undefined} />
 
         <main className="px-4 py-4 max-w-2xl mx-auto space-y-4">
           {/* Vendor Selector */}
