@@ -782,6 +782,52 @@ export async function GET(req: Request) {
         });
       });
 
+      // Aggregate sales stats by code (similar to clientStats but grouped by code)
+      const codeStats: Record<
+        string,
+        {
+          totalSales: number;
+          entries: number;
+          salesEntries: number;
+          avgOrder: number;
+        }
+      > = {};
+
+      yearlyEntries.forEach((entry: any) => {
+        const code = (entry.code || "").toString().trim().toUpperCase();
+        if (!code) return;
+
+        if (!codeStats[code]) {
+          codeStats[code] = {
+            totalSales: 0,
+            entries: 0,
+            salesEntries: 0,
+            avgOrder: 0,
+          };
+        }
+
+        codeStats[code].entries += 1;
+        codeStats[code].totalSales += entry.total;
+
+        if (entry.hasSale) {
+          codeStats[code].salesEntries += 1;
+        }
+      });
+
+      // Calculate average order for each code based on sales entries
+      Object.values(codeStats).forEach((stats) => {
+        stats.avgOrder =
+          stats.salesEntries > 0 ? stats.totalSales / stats.salesEntries : 0;
+      });
+
+      // Top codes by sales (similar to topClients)
+      const topCodigos = Object.entries(codeStats)
+        .map(([code, stats]) => ({ code, ...stats }))
+        .sort((a, b) => b.totalSales - a.totalSales)
+        .slice(0, 50);
+
+      console.log("📊 Top Codigos calculated:", topCodigos.slice(0, 5));
+
       const responseData = {
         totalSales,
         totalClients: uniqueClients,
@@ -792,6 +838,7 @@ export async function GET(req: Request) {
         clientCodes,
         clientVendedores,
         productsByCode,
+        topCodigos,
       };
       console.log("Final analytics response:", responseData);
       return NextResponse.json({

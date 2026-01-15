@@ -27,6 +27,7 @@ import {
     Shield,
     Map,
     Printer,
+    Hash,
 } from "lucide-react";
 import AppHeader from "@/components/AppHeader";
 import SearchInput from "@/components/ui/SearchInput";
@@ -179,6 +180,13 @@ interface ClientData {
     totalEntries: number;
 }
 
+interface CodeStats {
+    totalSales: number;
+    entries: number;
+    salesEntries: number;
+    avgOrder: number;
+}
+
 interface AnalyticsData {
     totalSales: number;
     totalClients: number;
@@ -192,6 +200,8 @@ interface AnalyticsData {
     clientVendedores?: Record<string, string>;
     // Aggregated products by client code for current year
     productsByCode?: Record<string, Record<string, number>>;
+    // Top codes by sales
+    topCodigos?: Array<{ code: string } & CodeStats>;
 }
 
 interface ClientPerformance {
@@ -1845,6 +1855,17 @@ export default function ClientesPage() {
     const [topProductsCustomDateTo, setTopProductsCustomDateTo] =
         useState<string>("");
     const [showAllTopProducts, setShowAllTopProducts] = useState(false);
+    const [topCodigosData, setTopCodigosData] =
+        useState<AnalyticsData | null>(null);
+    const [isLoadingTopCodigos, setIsLoadingTopCodigos] = useState(false);
+    const [topCodigosDateFilter, setTopCodigosDateFilter] = useState<
+        "currentMonth" | "30d" | "2m" | "6m" | "year" | "custom"
+    >("year");
+    const [topCodigosCustomDateFrom, setTopCodigosCustomDateFrom] =
+        useState<string>("");
+    const [topCodigosCustomDateTo, setTopCodigosCustomDateTo] =
+        useState<string>("");
+    const [showAllTopCodigos, setShowAllTopCodigos] = useState(false);
     const [productosPorCodigoData, setProductosPorCodigoData] =
         useState<AnalyticsData | null>(null);
     const [isLoadingProductosPorCodigo, setIsLoadingProductosPorCodigo] =
@@ -1938,6 +1959,27 @@ export default function ClientesPage() {
         topProductsDateFilter,
         topProductsCustomDateFrom,
         topProductsCustomDateTo,
+        isAllowed,
+        status,
+    ]);
+
+    // Fetch top codigos data when date filter changes (including initial load)
+    useEffect(() => {
+        if (!isAllowed || status !== "authenticated") return;
+
+        const { startDate, endDate } = getTopCodigosDateRange();
+        const dateFrom = startDate.toISOString().split("T")[0];
+        const dateTo = endDate.toISOString().split("T")[0];
+
+        console.log("🔄 Fetching top codigos with date range:", {
+            dateFrom,
+            dateTo,
+        });
+        fetchTopCodigosData(dateFrom, dateTo);
+    }, [
+        topCodigosDateFilter,
+        topCodigosCustomDateFrom,
+        topCodigosCustomDateTo,
         isAllowed,
         status,
     ]);
@@ -2103,6 +2145,33 @@ export default function ClientesPage() {
             console.error("🚨 Error fetching top products data:", error);
         } finally {
             setIsLoadingTopProducts(false);
+        }
+    };
+
+    const fetchTopCodigosData = async (dateFrom?: string, dateTo?: string) => {
+        setIsLoadingTopCodigos(true);
+        try {
+            console.log("🔍 Fetching top codigos data with date filters:", {
+                dateFrom,
+                dateTo,
+            });
+            const params = new URLSearchParams({ action: "analytics" });
+            if (dateFrom) params.append("dateFrom", dateFrom);
+            if (dateTo) params.append("dateTo", dateTo);
+
+            const response = await fetch(`/api/clientes?${params.toString()}`);
+            const data = await response.json();
+            console.log("📊 Frontend received top codigos data:", data);
+            if (data.success) {
+                console.log("✅ Setting top codigos data:", data.data);
+                setTopCodigosData(data.data);
+            } else {
+                console.error("❌ Error fetching top codigos:", data.error);
+            }
+        } catch (error) {
+            console.error("🚨 Error fetching top codigos data:", error);
+        } finally {
+            setIsLoadingTopCodigos(false);
         }
     };
 
@@ -2384,6 +2453,45 @@ export default function ClientesPage() {
                 if (topProductsCustomDateFrom && topProductsCustomDateTo) {
                     startDate = new Date(topProductsCustomDateFrom);
                     endDate = new Date(topProductsCustomDateTo);
+                } else {
+                    startDate = new Date(now.getFullYear(), 0, 1);
+                }
+                break;
+            default:
+                startDate = new Date(now.getFullYear(), 0, 1);
+        }
+
+        return { startDate, endDate };
+    };
+
+    const getTopCodigosDateRange = () => {
+        const now = new Date();
+        let startDate: Date;
+        let endDate = now;
+
+        switch (topCodigosDateFilter) {
+            case "currentMonth":
+                startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+                break;
+            case "30d":
+                startDate = new Date();
+                startDate.setDate(now.getDate() - 30);
+                break;
+            case "2m":
+                startDate = new Date();
+                startDate.setMonth(now.getMonth() - 2);
+                break;
+            case "6m":
+                startDate = new Date();
+                startDate.setMonth(now.getMonth() - 6);
+                break;
+            case "year":
+                startDate = new Date(now.getFullYear(), 0, 1);
+                break;
+            case "custom":
+                if (topCodigosCustomDateFrom && topCodigosCustomDateTo) {
+                    startDate = new Date(topCodigosCustomDateFrom);
+                    endDate = new Date(topCodigosCustomDateTo);
                 } else {
                     startDate = new Date(now.getFullYear(), 0, 1);
                 }
@@ -3062,6 +3170,238 @@ export default function ClientesPage() {
                                 <div className="text-center py-4">
                                     <p className="text-sm text-gray-500">
                                         No hay datos de clientes disponibles
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Top Codigos */}
+                    <div className="bg-white rounded-lg p-4 border border-[#E2E4E9]">
+                        <div className="flex items-center justify-between mb-3">
+                            <h3 className="font-semibold text-gray-700 flex items-center text-sm">
+                                <Hash className="mr-2 h-4 w-4" /> Top Códigos
+                            </h3>
+                        </div>
+
+                        {/* Date Filter Controls */}
+                        <div className="mb-3 space-y-2">
+                            <div className="flex flex-wrap gap-2">
+                                <button
+                                    onClick={() =>
+                                        setTopCodigosDateFilter("currentMonth")
+                                    }
+                                    className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
+                                        topCodigosDateFilter === "currentMonth"
+                                            ? "bg-blue-600 text-white"
+                                            : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                    }`}
+                                >
+                                    Mes Actual
+                                </button>
+                                <button
+                                    onClick={() =>
+                                        setTopCodigosDateFilter("30d")
+                                    }
+                                    className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
+                                        topCodigosDateFilter === "30d"
+                                            ? "bg-blue-600 text-white"
+                                            : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                    }`}
+                                >
+                                    Últimos 30 días
+                                </button>
+                                <button
+                                    onClick={() =>
+                                        setTopCodigosDateFilter("2m")
+                                    }
+                                    className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
+                                        topCodigosDateFilter === "2m"
+                                            ? "bg-blue-600 text-white"
+                                            : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                    }`}
+                                >
+                                    Últimos 2 meses
+                                </button>
+                                <button
+                                    onClick={() =>
+                                        setTopCodigosDateFilter("6m")
+                                    }
+                                    className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
+                                        topCodigosDateFilter === "6m"
+                                            ? "bg-blue-600 text-white"
+                                            : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                    }`}
+                                >
+                                    Últimos 6 meses
+                                </button>
+                                <button
+                                    onClick={() =>
+                                        setTopCodigosDateFilter("year")
+                                    }
+                                    className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
+                                        topCodigosDateFilter === "year"
+                                            ? "bg-blue-600 text-white"
+                                            : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                    }`}
+                                >
+                                    Este Año
+                                </button>
+                                <button
+                                    onClick={() =>
+                                        setTopCodigosDateFilter("custom")
+                                    }
+                                    className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
+                                        topCodigosDateFilter === "custom"
+                                            ? "bg-blue-600 text-white"
+                                            : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                    }`}
+                                >
+                                    Personalizado
+                                </button>
+                            </div>
+
+                            {/* Custom Date Range Inputs */}
+                            {topCodigosDateFilter === "custom" && (
+                                <div className="grid grid-cols-2 gap-2 pt-2">
+                                    <div>
+                                        <label className="block text-xs text-gray-600 mb-1">
+                                            Desde
+                                        </label>
+                                        <input
+                                            type="date"
+                                            value={topCodigosCustomDateFrom}
+                                            onChange={(e) =>
+                                                setTopCodigosCustomDateFrom(
+                                                    e.target.value,
+                                                )
+                                            }
+                                            className="w-full text-xs border border-gray-300 rounded px-2 py-1.5"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs text-gray-600 mb-1">
+                                            Hasta
+                                        </label>
+                                        <input
+                                            type="date"
+                                            value={topCodigosCustomDateTo}
+                                            onChange={(e) =>
+                                                setTopCodigosCustomDateTo(
+                                                    e.target.value,
+                                                )
+                                            }
+                                            className="w-full text-xs border border-gray-300 rounded px-2 py-1.5"
+                                        />
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                        <div className="space-y-2">
+                            {isLoadingTopCodigos ? (
+                                <div className="text-center py-4">
+                                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto mb-2"></div>
+                                    <p className="text-sm text-gray-500">
+                                        Cargando códigos...
+                                    </p>
+                                </div>
+                            ) : topCodigosData?.topCodigos &&
+                              topCodigosData.topCodigos.length > 0 ? (
+                                <>
+                                    {topCodigosData.topCodigos
+                                        .slice(0, showAllTopCodigos ? 40 : 5)
+                                        .map((codigo, index) => (
+                                            <div
+                                                key={codigo.code}
+                                                className="flex items-center justify-between py-2 border-b border-gray-100 last:border-b-0"
+                                            >
+                                                <div className="flex items-center">
+                                                    <div
+                                                        className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold mr-3 ${
+                                                            index === 0
+                                                                ? "bg-yellow-100 text-yellow-800"
+                                                                : index === 1
+                                                                  ? "bg-gray-100 text-gray-800"
+                                                                  : index === 2
+                                                                    ? "bg-orange-100 text-orange-800"
+                                                                    : "bg-blue-100 text-blue-800"
+                                                        }`}
+                                                    >
+                                                        {index + 1}
+                                                    </div>
+                                                    <div>
+                                                        <p className="font-medium text-sm text-gray-800">
+                                                            {codigo.code}
+                                                        </p>
+                                                        <p className="text-xs text-gray-500">
+                                                            {codigo.entries}{" "}
+                                                            pedidos
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                <div className="text-right">
+                                                    <p className="font-semibold text-sm text-green-600">
+                                                        {formatCurrency(
+                                                            codigo.totalSales,
+                                                        )}
+                                                    </p>
+                                                    <p className="text-xs text-gray-500">
+                                                        Promedio:{" "}
+                                                        {formatCurrency(
+                                                            codigo.avgOrder,
+                                                        )}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        ))}
+
+                                    {/* Ver más button */}
+                                    {topCodigosData.topCodigos.length > 5 && (
+                                        <div className="pt-2">
+                                            <button
+                                                onClick={() =>
+                                                    setShowAllTopCodigos(
+                                                        !showAllTopCodigos,
+                                                    )
+                                                }
+                                                className="w-full text-xs font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 py-2 rounded-md transition-colors flex items-center justify-center gap-1"
+                                            >
+                                                {showAllTopCodigos ? (
+                                                    <>
+                                                        Ver menos
+                                                        <ArrowRight className="h-3 w-3 transform rotate-90" />
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        Ver más
+                                                        <ArrowRight className="h-3 w-3 transform -rotate-90" />
+                                                    </>
+                                                )}
+                                            </button>
+                                            <p className="text-xs text-gray-500 text-center mt-1">
+                                                Mostrando{" "}
+                                                {showAllTopCodigos
+                                                    ? Math.min(
+                                                          40,
+                                                          topCodigosData
+                                                              .topCodigos
+                                                              .length,
+                                                      )
+                                                    : 5}{" "}
+                                                de{" "}
+                                                {
+                                                    topCodigosData.topCodigos
+                                                        .length
+                                                }{" "}
+                                                códigos
+                                            </p>
+                                        </div>
+                                    )}
+                                </>
+                            ) : (
+                                <div className="text-center py-4">
+                                    <p className="text-sm text-gray-500">
+                                        No hay datos de códigos disponibles
                                     </p>
                                 </div>
                             )}
