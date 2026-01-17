@@ -62,6 +62,7 @@ type Role = "vendedor" | "Bodeguero" | "Supervisor";
 const emailLabels: Record<string, { label: string; role: Role }> = {
   "ventas1productoselrey@gmail.com": { label: "Ernesto", role: "vendedor" },
   "ventas2productoselrey@gmail.com": { label: "Roel", role: "Supervisor" },
+  "jesus.chiltepinelrey@gmail.com": { label: "Jesus", role: "Supervisor" },
   "ventas3productoselrey@gmail.com": { label: "Lidia", role: "vendedor" },
   "ventasmztproductoselrey.com@gmail.com": {
     label: "Mazatlan",

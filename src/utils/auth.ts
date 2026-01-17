@@ -5,6 +5,7 @@ export const MASTER_ACCOUNTS = [
   "franzcharbell@gmail.com",
   "cesar.reyes.ochoa@gmail.com",
   "ventas2productoselrey@gmail.com",
+  "jesus.chiltepinelrey@gmail.com",
 ];
 
 export const isMasterAccount = (email: string | null | undefined): boolean => {
@@ -26,6 +27,7 @@ export const EMAIL_TO_VENDOR_LABELS: Record<string, string> = {
   "alopezelrey@gmail.com": "Arlyn",
   "promotoriaelrey@gmail.com": "Karla",
   "bodegaelrey034@gmail.com": "Bodega",
+  "jesus.chiltepinelrey@gmail.com": "Jesus",
 };
 
 // Legacy/alternate labels that may exist in sheets.
