@@ -1,6 +1,5 @@
-import NextAuth from "next-auth";
+import NextAuth, { type AuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
-import { AuthOptions } from "next-auth";
 
 export const authOptions: AuthOptions = {
   providers: [
@@ -27,6 +26,7 @@ export const authOptions: AuthOptions = {
         "promotoriaelrey@gmail.com",
         "ventas4productoselrey@gmail.com",
         "bodegaelrey034@gmail.com",
+        "jesus.chiltepinelrey@gmail.com",
         process.env.OVERRIDE_EMAIL,
       ].filter(Boolean);
 
