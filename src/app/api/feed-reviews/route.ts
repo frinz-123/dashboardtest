@@ -1,11 +1,143 @@
 import { google } from "googleapis";
+import webPush from "web-push";
 import { NextResponse } from "next/server";
 import { sheetsAuth } from "@/utils/googleAuth";
+import { EMAIL_TO_VENDOR_LABELS } from "@/utils/auth";
 
 const SPREADSHEET_ID = "1a0jZVdKFNWTHDsM-68LT5_OLPMGejAKs9wfCxYqqe_g";
 const SHEET_GID = "1368603165";
 const SHEET_NAME = "FeedReviews";
 const REVIEW_HEADERS = ["saleId", "reviewedAt", "reviewedBy", "note", "seenBy"];
+const SUBSCRIPTIONS_SHEET_NAME = "PushSubscriptions";
+
+type PushSubscriptionRow = {
+    email: string;
+    endpoint: string;
+    p256dh: string;
+    auth: string;
+};
+
+const getVapidConfig = () => {
+    const publicKey =
+        process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ||
+        process.env.VAPID_PUBLIC_KEY;
+    const privateKey = process.env.VAPID_PRIVATE_KEY;
+    const subject = process.env.VAPID_SUBJECT;
+
+    if (!publicKey || !privateKey || !subject) {
+        return null;
+    }
+
+    return { publicKey, privateKey, subject };
+};
+
+const getOwnerEmail = (saleId: string): string => {
+    return (saleId || "").split("|")[0]?.trim().toLowerCase() || "";
+};
+
+const fetchPushSubscriptions = async (
+    sheets: ReturnType<typeof google.sheets>,
+    email: string,
+): Promise<PushSubscriptionRow[]> => {
+    const response = await sheets.spreadsheets.values.get({
+        spreadsheetId: SPREADSHEET_ID,
+        range: `${SUBSCRIPTIONS_SHEET_NAME}!A:F`,
+    });
+
+    const rows = response.data.values || [];
+    const hasHeader = rows.length > 0 && rows[0][0] === "email";
+    const dataRows = hasHeader ? rows.slice(1) : rows;
+
+    return dataRows
+        .filter((row) => (row[0] || "").toLowerCase().trim() === email)
+        .map((row) => ({
+            email: row[0] || "",
+            endpoint: row[1] || "",
+            p256dh: row[2] || "",
+            auth: row[3] || "",
+        }))
+        .filter((row) => row.endpoint && row.p256dh && row.auth);
+};
+
+const clearPushSubscription = async (
+    sheets: ReturnType<typeof google.sheets>,
+    endpoint: string,
+) => {
+    const response = await sheets.spreadsheets.values.get({
+        spreadsheetId: SPREADSHEET_ID,
+        range: `${SUBSCRIPTIONS_SHEET_NAME}!A:F`,
+    });
+
+    const rows = response.data.values || [];
+    const hasHeader = rows.length > 0 && rows[0][0] === "email";
+    const dataRows = hasHeader ? rows.slice(1) : rows;
+    const rowIndex = dataRows.findIndex((row) => row[1] === endpoint);
+
+    if (rowIndex === -1) return;
+
+    const sheetRow = rowIndex + (hasHeader ? 2 : 1);
+    await sheets.spreadsheets.values.clear({
+        spreadsheetId: SPREADSHEET_ID,
+        range: `${SUBSCRIPTIONS_SHEET_NAME}!A${sheetRow}:F${sheetRow}`,
+    });
+};
+
+const sendReviewPushNotification = async (
+    sheets: ReturnType<typeof google.sheets>,
+    saleId: string,
+    reviewedBy: string,
+): Promise<void> => {
+    const ownerEmail = getOwnerEmail(saleId);
+    if (!ownerEmail) return;
+
+    const vapidConfig = getVapidConfig();
+    if (!vapidConfig) {
+        console.warn("VAPID keys missing - skipping push notification.");
+        return;
+    }
+
+    const subscriptions = await fetchPushSubscriptions(sheets, ownerEmail);
+    if (subscriptions.length === 0) return;
+
+    webPush.setVapidDetails(
+        vapidConfig.subject,
+        vapidConfig.publicKey,
+        vapidConfig.privateKey,
+    );
+
+    const reviewerKey = reviewedBy.toLowerCase().trim();
+    const reviewerLabel = EMAIL_TO_VENDOR_LABELS[reviewerKey] ||
+        reviewedBy.split("@")[0];
+    const payload = JSON.stringify({
+        title: "Nuevo comentario",
+        body: `Tienes un comentario de ${reviewerLabel}`,
+        data: {
+            url: "/buzon",
+        },
+    });
+
+    await Promise.all(
+        subscriptions.map(async (subscription) => {
+            try {
+                await webPush.sendNotification(
+                    {
+                        endpoint: subscription.endpoint,
+                        keys: {
+                            p256dh: subscription.p256dh,
+                            auth: subscription.auth,
+                        },
+                    },
+                    payload,
+                );
+            } catch (error: any) {
+                const statusCode = error?.statusCode || error?.status;
+                if (statusCode === 404 || statusCode === 410) {
+                    await clearPushSubscription(sheets, subscription.endpoint);
+                }
+            }
+        }),
+    );
+};
 
 const ensureHeaderRow = async (
     sheets: ReturnType<typeof google.sheets>,
@@ -78,6 +210,7 @@ export async function POST(request: Request) {
     try {
         const body = await request.json();
         const { saleId, reviewedBy, note } = body;
+        const noteText = (note || "").trim();
 
         if (!saleId || !reviewedBy) {
             return NextResponse.json(
@@ -98,9 +231,17 @@ export async function POST(request: Request) {
             range: `${SHEET_NAME}!A:E`,
             valueInputOption: "RAW",
             requestBody: {
-                values: [[saleId, reviewedAt, reviewedBy, note || "", ""]],
+                values: [[saleId, reviewedAt, reviewedBy, noteText, ""]],
             },
         });
+
+        if (noteText) {
+            sendReviewPushNotification(sheets, saleId, reviewedBy).catch(
+                (error) => {
+                    console.error("Error sending push notification:", error);
+                },
+            );
+        }
 
         return NextResponse.json({
             success: true,
@@ -108,7 +249,7 @@ export async function POST(request: Request) {
                 saleId,
                 reviewedAt,
                 reviewedBy,
-                note: note || "",
+                note: noteText,
                 seenBy: "",
             },
         });

@@ -46,10 +46,20 @@ self.addEventListener("periodicsync", (event) => {
 
 // Push notification event
 self.addEventListener("push", (event) => {
-    const data = event.data?.json() || {
+    let data = {
         title: "El Rey",
         body: "Notificacion",
+        data: { url: "/form" },
     };
+
+    if (event.data) {
+        try {
+            data = { ...data, ...event.data.json() };
+        } catch {
+            // Ignore invalid payloads.
+        }
+    }
+
     const options = {
         body: data.body,
         icon: "/icons/icon-192x192.png",
@@ -66,15 +76,17 @@ self.addEventListener("push", (event) => {
 self.addEventListener("notificationclick", (event) => {
     event.notification.close();
 
+    const targetPath = event.notification?.data?.url || "/form";
+    const targetUrl = new URL(targetPath, self.location.origin).href;
+
     event.waitUntil(
         self.clients.matchAll({ type: "window" }).then((clients) => {
-            // Focus existing window or open new one
             for (const client of clients) {
-                if (client.url.includes("/form") && "focus" in client) {
+                if (client.url.startsWith(targetUrl) && "focus" in client) {
                     return client.focus();
                 }
             }
-            return self.clients.openWindow("/form");
+            return self.clients.openWindow(targetUrl);
         }),
     );
 });
@@ -159,7 +171,9 @@ async function deletePhotoRecords(ids) {
         const transaction = db.transaction([PHOTO_STORE_NAME], "readwrite");
         const store = transaction.objectStore(PHOTO_STORE_NAME);
 
-        ids.forEach((id) => store.delete(id));
+        ids.forEach((id) => {
+            store.delete(id);
+        });
 
         transaction.oncomplete = () => resolve();
         transaction.onerror = () => reject(transaction.error);

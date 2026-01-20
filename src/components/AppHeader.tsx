@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import Link from "next/link";
 import { Menu, LucideIcon } from "lucide-react";
 import { signOut } from "next-auth/react";
+import { useBuzonNotifications } from "@/hooks/useBuzonNotifications";
 
 interface NavItem {
   href: string;
@@ -40,6 +41,12 @@ export default function AppHeader({
   navItems = DEFAULT_NAV_ITEMS,
 }: AppHeaderProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const { unseenCount } = useBuzonNotifications();
+  const buzonBadge = useMemo(() => {
+    if (unseenCount <= 0) return "";
+    return unseenCount > 99 ? "99+" : String(unseenCount);
+  }, [unseenCount]);
+  const showBuzonBadge = unseenCount > 0;
 
   return (
     <>
@@ -93,14 +100,19 @@ export default function AppHeader({
                   />
                   <div className="absolute right-0 mt-2 w-52 rounded-xl bg-white shadow-lg shadow-slate-200/50 border border-slate-200/50 overflow-hidden header-menu-animate origin-top-right z-50">
                     <div className="py-2">
-                      {navItems.map(item => (
+                      {navItems.map((item) => (
                         <Link
                           key={item.href}
                           href={item.href}
                           onClick={() => setIsMenuOpen(false)}
-                          className="block px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                          className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
                         >
-                          {item.label}
+                          <span>{item.label}</span>
+                          {item.href === "/buzon" && showBuzonBadge ? (
+                            <span className="min-w-[1.25rem] h-5 px-1 rounded-full bg-red-500 text-white text-[10px] font-semibold flex items-center justify-center">
+                              {buzonBadge}
+                            </span>
+                          ) : null}
                         </Link>
                       ))}
                       {showSignOut && (
