@@ -1,8 +1,10 @@
 import { google } from "googleapis";
 import webPush from "web-push";
 import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
 import { sheetsAuth } from "@/utils/googleAuth";
-import { EMAIL_TO_VENDOR_LABELS } from "@/utils/auth";
+import { EMAIL_TO_VENDOR_LABELS, isMasterAccount } from "@/utils/auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 
 const SPREADSHEET_ID = "1a0jZVdKFNWTHDsM-68LT5_OLPMGejAKs9wfCxYqqe_g";
 const SHEET_GID = "1368603165";
@@ -265,14 +267,28 @@ export async function POST(request: Request) {
 // PATCH - Update seenBy
 export async function PATCH(request: Request) {
     try {
-        const body = await request.json();
-        const { saleId, seenBy } = body;
+        const session = await getServerSession(authOptions);
+        const sessionEmail = session?.user?.email?.toLowerCase().trim() || "";
 
-        if (!saleId || !seenBy) {
+        if (!sessionEmail) {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        }
+
+        const body = await request.json();
+        const { saleId, reviewedAt, seenBy } = body;
+
+        if (!saleId || !reviewedAt) {
             return NextResponse.json(
-                { error: "saleId and seenBy are required" },
+                { error: "saleId and reviewedAt are required" },
                 { status: 400 }
             );
+        }
+
+        if (seenBy && seenBy.toLowerCase().trim() !== sessionEmail) {
+            const isAdmin = isMasterAccount(sessionEmail);
+            if (!isAdmin) {
+                return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+            }
         }
 
         const sheets = google.sheets({ version: "v4", auth: sheetsAuth });
@@ -286,7 +302,9 @@ export async function PATCH(request: Request) {
         const rows = response.data.values || [];
         const hasHeader = rows.length > 0 && rows[0][0] === "saleId";
         const dataRows = hasHeader ? rows.slice(1) : rows;
-        const rowIndex = dataRows.findIndex((row) => row[0] === saleId);
+        const rowIndex = dataRows.findIndex(
+            (row) => row[0] === saleId && row[1] === reviewedAt,
+        );
 
         if (rowIndex === -1) {
             return NextResponse.json(
@@ -302,8 +320,8 @@ export async function PATCH(request: Request) {
             .map((entry: string) => entry.trim())
             .filter(Boolean);
 
-        if (!seenByList.includes(seenBy)) {
-            seenByList.push(seenBy);
+        if (!seenByList.includes(sessionEmail)) {
+            seenByList.push(sessionEmail);
         }
 
         const updatedSeenBy = seenByList.join(", ");

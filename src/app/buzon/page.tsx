@@ -435,6 +435,7 @@ export default function BuzonPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           saleId: entry.review.saleId,
+          reviewedAt: entry.review.reviewedAt,
           seenBy: sessionEmail,
         }),
       });
