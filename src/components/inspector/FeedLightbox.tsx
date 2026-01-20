@@ -33,6 +33,9 @@ type FeedLightboxProps = {
     onMarkReviewed: (note?: string) => Promise<void>;
     isSubmittingReview: boolean;
     isReadOnly?: boolean;
+    isSeen?: boolean;
+    onMarkSeen?: () => Promise<void> | void;
+    isMarkingSeen?: boolean;
 };
 
 const CODE_COLORS: Record<string, string> = {
@@ -54,6 +57,9 @@ export default function FeedLightbox({
     onMarkReviewed,
     isSubmittingReview,
     isReadOnly = false,
+    isSeen = false,
+    onMarkSeen,
+    isMarkingSeen = false,
 }: FeedLightboxProps) {
     const [currentIndex, setCurrentIndex] = useState(initialPhotoIndex);
     const [showNoteInput, setShowNoteInput] = useState(false);
@@ -277,6 +283,23 @@ export default function FeedLightbox({
                                             {review.note}
                                         </div>
                                     )}
+                                    {isReadOnly && onMarkSeen ? (
+                                        isSeen ? (
+                                            <div className="flex items-center gap-1 text-xs text-gray-500">
+                                                <Check className="w-3 h-3" />
+                                                Visto
+                                            </div>
+                                        ) : (
+                                            <button
+                                                type="button"
+                                                onClick={onMarkSeen}
+                                                disabled={isMarkingSeen}
+                                                className="px-3 py-2 text-xs font-semibold rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                                            >
+                                                {isMarkingSeen ? "Guardando..." : "Marcar visto"}
+                                            </button>
+                                        )
+                                    ) : null}
                                 </div>
                             ) : isReadOnly ? (
                                 <p className="text-xs text-gray-500">

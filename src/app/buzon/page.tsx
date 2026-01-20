@@ -12,6 +12,8 @@ const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY;
 const spreadsheetId = process.env.NEXT_PUBLIC_SPREADSHEET_ID;
 const sheetName = process.env.NEXT_PUBLIC_SHEET_NAME;
 
+const ITEMS_PER_PAGE = 15;
+
 type Sale = {
   clientName: string;
   venta: number;
@@ -28,6 +30,7 @@ type FeedReview = {
   reviewedAt: string;
   reviewedBy: string;
   note: string;
+  seenBy?: string;
 };
 
 type BuzonEntry = {
@@ -164,6 +167,16 @@ const formatCurrency = (value: number) => {
   })}`;
 };
 
+const parseSeenBy = (value?: string): Set<string> => {
+  if (!value) return new Set();
+  return new Set(
+    value
+      .split(",")
+      .map((entry) => entry.trim().toLowerCase())
+      .filter(Boolean),
+  );
+};
+
 const getVendorLabel = (email: string): string => {
   if (!email) return "";
   return EMAIL_TO_VENDOR_LABELS[email] || email.split("@")[0];
@@ -171,11 +184,14 @@ const getVendorLabel = (email: string): string => {
 
 export default function BuzonPage() {
   const { data: session, status } = useSession();
+  const sessionEmail = session?.user?.email || "";
   const [salesData, setSalesData] = useState<Sale[]>([]);
   const [reviews, setReviews] = useState<FeedReview[]>([]);
   const [isLoadingSales, setIsLoadingSales] = useState(false);
   const [isLoadingReviews, setIsLoadingReviews] = useState(false);
   const [selectedEntry, setSelectedEntry] = useState<BuzonEntry | null>(null);
+  const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE);
+  const [markingSaleId, setMarkingSaleId] = useState<string | null>(null);
 
   const isAdmin = useMemo(
     () => isMasterAccount(session?.user?.email),
@@ -183,7 +199,7 @@ export default function BuzonPage() {
   );
 
   useEffect(() => {
-    if (!session?.user?.email) return;
+    if (!sessionEmail) return;
 
     const fetchSalesData = async () => {
       setIsLoadingSales(true);
@@ -288,10 +304,9 @@ export default function BuzonPage() {
 
     fetchSalesData();
     fetchReviews();
-  }, [session?.user?.email]);
+  }, [sessionEmail]);
 
   const entries = useMemo(() => {
-    const sessionEmail = session?.user?.email || "";
     if (!sessionEmail) return [];
     const saleMap = new Map<string, Sale>();
     salesData.forEach((sale) => {
@@ -313,7 +328,46 @@ export default function BuzonPage() {
       const dateB = new Date(b.review.reviewedAt).getTime();
       return dateB - dateA;
     });
-  }, [reviews, salesData, session?.user?.email, isAdmin]);
+  }, [reviews, salesData, sessionEmail, isAdmin]);
+
+  useEffect(() => {
+    setVisibleCount(ITEMS_PER_PAGE);
+  }, [entries.length]);
+
+  const handleMarkSeen = async (entry: BuzonEntry) => {
+    if (!sessionEmail) return;
+    setMarkingSaleId(entry.review.saleId);
+    try {
+      const response = await fetch("/api/feed-reviews", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          saleId: entry.review.saleId,
+          seenBy: sessionEmail,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setReviews((prev) =>
+          prev.map((review) =>
+            review.saleId === entry.review.saleId
+              ? { ...review, seenBy: data.seenBy }
+              : review,
+          ),
+        );
+        setSelectedEntry((prev) =>
+          prev && prev.review.saleId === entry.review.saleId
+            ? { ...prev, review: { ...prev.review, seenBy: data.seenBy } }
+            : prev,
+        );
+      }
+    } catch (error) {
+      console.error("Error updating seenBy:", error);
+    } finally {
+      setMarkingSaleId(null);
+    }
+  };
 
   if (status === "loading") {
     return (
@@ -342,6 +396,8 @@ export default function BuzonPage() {
   }
 
   const isLoading = isLoadingSales || isLoadingReviews;
+  const visibleEntries = entries.slice(0, visibleCount);
+  const hasMoreEntries = visibleCount < entries.length;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50 font-sans">
@@ -380,10 +436,14 @@ export default function BuzonPage() {
           </div>
         ) : (
           <div className="space-y-3">
-            {entries.map((entry) => {
+            {visibleEntries.map((entry) => {
               const reviewerName = getVendorLabel(entry.review.reviewedBy);
               const sellerName = getVendorLabel(entry.sale.email);
               const saleDate = formatSaleDate(entry.sale);
+              const seenBySet = parseSeenBy(entry.review.seenBy);
+              const isSeen = sessionEmail
+                ? seenBySet.has(sessionEmail.toLowerCase())
+                : false;
               return (
                 <button
                   key={`${entry.review.saleId}-${entry.review.reviewedAt}`}
@@ -403,9 +463,20 @@ export default function BuzonPage() {
                           : ""}
                       </p>
                     </div>
-                    <span className="text-xs font-semibold text-slate-600">
-                      {formatCurrency(entry.sale.venta)}
-                    </span>
+                    <div className="text-right">
+                      <span className="block text-xs font-semibold text-slate-600">
+                        {formatCurrency(entry.sale.venta)}
+                      </span>
+                      <span
+                        className={`mt-1 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                          isSeen
+                            ? "bg-emerald-50 text-emerald-700"
+                            : "bg-amber-50 text-amber-700"
+                        }`}
+                      >
+                        {isSeen ? "Visto" : "Nuevo"}
+                      </span>
+                    </div>
                   </div>
                   <p className="mt-2 text-sm text-slate-700">
                     {entry.review.note}
@@ -418,6 +489,19 @@ export default function BuzonPage() {
                 </button>
               );
             })}
+            {hasMoreEntries && (
+              <div className="flex justify-center pt-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setVisibleCount((prev) => prev + ITEMS_PER_PAGE)
+                  }
+                  className="px-5 py-2.5 text-xs font-semibold rounded-full border border-slate-200 text-slate-700 hover:bg-slate-50 transition"
+                >
+                  Cargar mas ({entries.length - visibleCount} restantes)
+                </button>
+              </div>
+            )}
           </div>
         )}
       </main>
@@ -432,6 +516,11 @@ export default function BuzonPage() {
           onMarkReviewed={async () => {}}
           isSubmittingReview={false}
           isReadOnly
+          isSeen={parseSeenBy(selectedEntry.review.seenBy).has(
+            sessionEmail.toLowerCase(),
+          )}
+          onMarkSeen={() => handleMarkSeen(selectedEntry)}
+          isMarkingSeen={markingSaleId === selectedEntry.review.saleId}
         />
       )}
     </div>
