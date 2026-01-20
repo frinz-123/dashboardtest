@@ -27,6 +27,7 @@ const DEFAULT_NAV_ITEMS: NavItem[] = [
   { href: "/inventario", label: "Inventario" },
   { href: "/admin", label: "Admin" },
   { href: "/navegar", label: "Navegar" },
+  { href: "/buzon", label: "Buzon" },
   { href: "/inspector-periodos", label: "Inspector Periodos" },
 ];
 
@@ -42,10 +43,21 @@ export default function AppHeader({
 
   return (
     <>
-      <style dangerouslySetInnerHTML={{ __html: `
-        @keyframes headerScaleIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
-        .header-menu-animate { animation: headerScaleIn 0.2s ease-out forwards; }
-      `}} />
+      <style jsx>{`
+        @keyframes headerScaleIn {
+          from {
+            opacity: 0;
+            transform: scale(0.95);
+          }
+          to {
+            opacity: 1;
+            transform: scale(1);
+          }
+        }
+        .header-menu-animate {
+          animation: headerScaleIn 0.2s ease-out forwards;
+        }
+      `}</style>
 
       <header className="sticky top-0 z-40 backdrop-blur-xl bg-white/80 border-b border-slate-200/50">
         <div className="px-4 py-3 flex justify-between items-center max-w-2xl mx-auto">
@@ -64,6 +76,7 @@ export default function AppHeader({
 
             <div className="relative">
               <button
+                type="button"
                 onClick={() => setIsMenuOpen(!isMenuOpen)}
                 className="w-10 h-10 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center transition-colors"
               >
@@ -72,8 +85,10 @@ export default function AppHeader({
 
               {isMenuOpen && (
                 <>
-                  <div
-                    className="fixed inset-0 z-40"
+                  <button
+                    type="button"
+                    className="fixed inset-0 z-40 bg-transparent border-0 p-0 cursor-default"
+                    aria-label="Cerrar menu"
                     onClick={() => setIsMenuOpen(false)}
                   />
                   <div className="absolute right-0 mt-2 w-52 rounded-xl bg-white shadow-lg shadow-slate-200/50 border border-slate-200/50 overflow-hidden header-menu-animate origin-top-right z-50">
@@ -92,6 +107,7 @@ export default function AppHeader({
                         <>
                           <div className="border-t border-slate-100 my-1" />
                           <button
+                            type="button"
                             onClick={() => signOut()}
                             className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
                           >
