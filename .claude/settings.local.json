@@ -23,7 +23,11 @@
       "Bash(npm --version)",
       "Bash(git config:*)",
       "Bash(git push)",
-      "Skill(frontend-design)"
+      "Skill(frontend-design)",
+      "Bash(npx add-skill benjitaylor/agentation)",
+      "Bash(npx add-skill benjitaylor/agentation --yes)",
+      "Bash(npx add-skill:*)",
+      "Bash(pnpm dlx:*)"
     ],
     "deny": [],
     "ask": []

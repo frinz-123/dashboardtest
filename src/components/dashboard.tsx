@@ -1,46 +1,46 @@
 "use client";
-import React, { useState, useEffect } from "react";
 import {
-  ChevronDown,
   BarChart2,
-  Users,
-  Clock,
-  ChevronRight,
-  Target,
-  Search,
-  TrendingUp,
-  TrendingDown,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  Clock,
+  Search,
   ShoppingBag,
+  Target,
+  TrendingDown,
+  TrendingUp,
+  Users,
 } from "lucide-react";
-import AppHeader from "./AppHeader";
+import React, { useEffect, useState } from "react";
+import { buildStyles, CircularProgressbar } from "react-circular-progressbar";
 import {
-  BarChart,
+  Area,
+  AreaChart,
   Bar,
+  BarChart,
+  ResponsiveContainer,
+  Tooltip,
   XAxis,
   YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  AreaChart,
-  Area,
 } from "recharts";
-import { CircularProgressbar, buildStyles } from "react-circular-progressbar";
+import AppHeader from "./AppHeader";
 import "react-circular-progressbar/dist/styles.css";
-import BlurIn from "./ui/blur-in";
+import { motion } from "framer-motion";
+import { signOut, useSession } from "next-auth/react";
+import { isMasterAccount } from "@/utils/auth";
 import {
   getCurrentPeriodInfo,
+  getCurrentPeriodNumber,
   getWeekDates,
   isDateInPeriod,
-  getCurrentPeriodNumber,
 } from "@/utils/dateUtils";
 import { getSellerGoal } from "@/utils/sellerGoals";
-import { isMasterAccount } from "@/utils/auth";
-import { motion } from "framer-motion";
-import SaleDetailsPopup from "./SaleDetailsPopup";
-import Link from "next/link";
-import { useSession, signOut } from "next-auth/react";
-import StatisticCard11 from "./statistic-card-11";
 import GoalDetailsDialog from "./goal-details-dialog";
+import SaleDetailsPopup from "./SaleDetailsPopup";
+import StatisticCard11 from "./statistic-card-11";
+import BlurIn from "./ui/blur-in";
+import { CountingNumber } from "./ui/counting-number";
 
 const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY;
 const spreadsheetId = process.env.NEXT_PUBLIC_SPREADSHEET_ID;
@@ -75,7 +75,7 @@ const emailLabels: Record<string, { label: string; role: Role }> = {
   "alopezelrey@gmail.com": { label: "Arlyn", role: "Supervisor" },
   "promotoriaelrey@gmail.com": { label: "Karla", role: "vendedor" },
   "ventas4productoselrey@gmail.com": { label: "Reyna", role: "vendedor" },
-  "bodegaelrey034@gmail.com": { label: "Bodega", role: "vendedor" },
+  "bodegaelrey034@gmail.com": { label: "Bodega", role: "Bodeguero" },
 };
 
 export default function Dashboard() {
@@ -98,6 +98,7 @@ export default function Dashboard() {
   const [filteredClientNames, setFilteredClientNames] = useState<string[]>([]);
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
   const [isGoalDetailsOpen, setIsGoalDetailsOpen] = useState(false);
+  const clientHistoryRef = React.useRef<HTMLDivElement | null>(null);
 
   const periods: TimePeriod[] = ["Diario", "Ayer", "Semanal", "Mensual"];
 
@@ -800,18 +801,26 @@ export default function Dashboard() {
 
       <main className="px-4 py-4 max-w-2xl mx-auto">
         <div className="bg-white rounded-lg mb-3 p-0.5 border border-[#E2E4E9]/70">
-          <div className="inline-flex rounded-md w-full">
+          <div className="inline-flex rounded-md w-full relative">
             {periods.map((period) => (
               <button
                 key={period}
-                className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-200 ease-in-out ${
+                type="button"
+                className={`relative flex-1 px-3 py-1.5 text-base font-medium rounded-md transition-colors duration-200 ${
                   selectedPeriod === period
-                    ? "bg-gradient-to-r from-blue-500 to-indigo-500 text-white"
-                    : "bg-transparent text-gray-500 hover:text-gray-700"
+                    ? "text-gray-900"
+                    : "text-gray-500 hover:text-gray-700"
                 }`}
                 onClick={() => setSelectedPeriod(period)}
               >
-                {period}
+                {selectedPeriod === period && (
+                  <motion.div
+                    layoutId="activeTab"
+                    className="absolute inset-0 bg-gray-100 rounded-md"
+                    transition={{ type: "spring", duration: 0.2, bounce: 0.15 }}
+                  />
+                )}
+                <span className="relative z-10">{period}</span>
               </button>
             ))}
           </div>
@@ -819,11 +828,18 @@ export default function Dashboard() {
 
         <div className="bg-white mb-3 overflow-hidden -mx-4">
           <div className="px-9 pt-5 pb-0">
-            <h2 className="text-gray-500 text-xs mb-0.5">Vendido</h2>
+            <h2 className="text-gray-500 text-sm font-medium mb-0.5">
+              Vendido
+            </h2>
             <div className="flex items-center">
-              <span className="text-4xl font-bold mr-2">
-                ${totalSales.toFixed(2)}
-              </span>
+              <CountingNumber
+                from={0}
+                to={totalSales}
+                duration={1.5}
+                className="text-4xl font-bold mr-2"
+                format={(value) => `$${value.toFixed(2)}`}
+                startOnView={false}
+              />
               <span
                 className={`text-xs px-1.5 py-0.5 rounded-full ${percentageDifference >= 0 ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}
               >
@@ -1023,7 +1039,7 @@ export default function Dashboard() {
 
           <div className="bg-white rounded-xl p-3 border border-[#E2E4E9]/70">
             <div className="flex items-center justify-between mb-2">
-              <h2 className="text-xs font-semibold text-gray-700">
+              <h2 className="text-sm font-medium text-gray-700">
                 Actividad del Equipo
               </h2>
               <span className="text-[10px] uppercase tracking-wide text-purple-500 font-semibold bg-purple-50 px-2 py-0.5 rounded-full">
@@ -1084,7 +1100,7 @@ export default function Dashboard() {
         </div>
 
         <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
-          <h2 className="text-gray-700 font-semibold mb-2 flex items-center text-xs">
+          <h2 className="text-gray-700 font-medium mb-2 flex items-center text-sm">
             <Users className="mr-1.5 h-4 w-4" /> Visitas
           </h2>
           <p className="text-sm">
@@ -1100,7 +1116,7 @@ export default function Dashboard() {
         </div>
 
         <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
-          <h2 className="text-gray-700 font-semibold mb-2 flex items-center text-xs">
+          <h2 className="text-gray-700 font-medium mb-2 flex items-center text-sm">
             <BarChart2 className="mr-1.5 h-4 w-4" /> Ventas por Código
           </h2>
           {Object.keys(salesByType).length > 0 ? (
@@ -1138,7 +1154,7 @@ export default function Dashboard() {
         </div>
 
         <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
-          <h2 className="text-gray-700 font-semibold mb-2 flex items-center text-xs">
+          <h2 className="text-gray-700 font-medium mb-2 flex items-center text-sm">
             <ShoppingBag className="mr-1.5 h-4 w-4" /> Desglose de productos
           </h2>
           {Object.keys(productsSold).length > 0 ? (
@@ -1178,165 +1194,343 @@ export default function Dashboard() {
           )}
         </div>
 
-        <div className="bg-white rounded-xl p-3 border border-[#E2E4E9]/70 mb-3 shadow-sm">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h2 className="text-sm font-semibold text-gray-900">
-                Clientes a Vigilar
-              </h2>
-              <p className="text-xs text-gray-500 mt-1">
-                Insights automáticos basados en comportamiento de compra
-              </p>
+        <div className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_0_rgba(15,23,42,0.04),0_12px_28px_rgba(15,23,42,0.06)] mb-3">
+          <div className="relative flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <div className="min-w-0">
+                  <h2 className="text-sm font-semibold text-slate-900 tracking-tight">
+                    Clientes a Visitar
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Señales para decidir tu próxima visita
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700 ring-1 ring-inset ring-amber-200/60">
+                  <Clock className="h-3.5 w-3.5" />
+                  {clientInsights.attentionClients.length} atención (umbral{" "}
+                  {clientInsights.attentionThreshold} días)
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200/60">
+                  <TrendingUp className="h-3.5 w-3.5" />
+                  {clientInsights.topGrowth.length} en crecimiento
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-700 ring-1 ring-inset ring-rose-200/60">
+                  <TrendingDown className="h-3.5 w-3.5" />
+                  {clientInsights.topDecline.length} en riesgo
+                </span>
+              </div>
             </div>
-            <span className="inline-flex items-center rounded-full bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-700 ring-1 ring-inset ring-indigo-700/10">
-              Inteligencia
-            </span>
+
+            <div className="flex shrink-0 items-center gap-2">
+              <span className="hidden sm:inline-flex items-center rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 ring-1 ring-inset ring-slate-200/70">
+                Inteligencia
+              </span>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* At Risk Section */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="p-1.5 rounded-md bg-amber-100 text-amber-600">
-                  <Clock className="h-4 w-4" />
+          <div className="relative mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-40px" }}
+              transition={{ duration: 0.35, ease: "easeOut" }}
+              className="rounded-2xl bg-white ring-1 ring-inset ring-amber-200/60 shadow-sm"
+            >
+              <div className="flex items-start justify-between gap-3 p-4">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <div className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
+                      <Clock className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <h3 className="text-xs font-semibold text-slate-900 uppercase tracking-wide">
+                        Necesitan Atención
+                      </h3>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Umbral: {clientInsights.attentionThreshold} días sin
+                        compra
+                      </p>
+                    </div>
+                  </div>
                 </div>
-                <h3 className="text-xs font-medium text-gray-900 uppercase tracking-wide">
-                  Necesitan Atención
-                </h3>
+                <span className="inline-flex items-center rounded-full bg-white/70 px-2 py-1 text-[11px] font-semibold text-amber-700 ring-1 ring-inset ring-amber-200/60">
+                  {clientInsights.attentionClients.length}
+                </span>
               </div>
-              <div className="space-y-3">
+
+              <div className="px-2 pb-2">
                 {clientInsights.attentionClients.length > 0 ? (
-                  clientInsights.attentionClients.map((client) => (
-                    <div
-                      key={client.client}
-                      className="group flex items-start gap-3 p-3 rounded-lg border border-gray-100 bg-gray-50/50 hover:bg-white hover:border-gray-200 hover:shadow-sm transition-all duration-200"
-                    >
-                      <div className="h-8 w-8 rounded-full bg-white border border-gray-200 flex items-center justify-center text-xs font-bold text-gray-500 shadow-sm shrink-0">
-                        {client.client.substring(0, 2).toUpperCase()}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-gray-900 truncate group-hover:text-indigo-600 transition-colors">
-                          {client.client}
-                        </p>
-                        <p className="text-xs text-amber-600 mt-0.5 flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                          Ausente por {client.daysSinceLastPurchase} días
-                        </p>
-                      </div>
-                    </div>
-                  ))
+                  <div className="space-y-2">
+                    {clientInsights.attentionClients.map((client, idx) => (
+                      <button
+                        key={client.client}
+                        type="button"
+                        onClick={() => {
+                          setSelectedClient(client.client);
+                          clientHistoryRef.current?.scrollIntoView({
+                            behavior: "smooth",
+                            block: "start",
+                          });
+                        }}
+                        className={`group w-full rounded-xl px-3 py-3 text-left ring-1 ring-inset hover:bg-white hover:ring-slate-300/70 hover:shadow-sm transition ${
+                          selectedClient === client.client
+                            ? "bg-white ring-slate-300/70 shadow-sm"
+                            : "bg-white/70 ring-slate-200/60"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex min-w-0 items-start gap-3">
+                            <div className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white text-[11px] font-bold">
+                              {client.client.substring(0, 2).toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <p className="text-sm font-semibold text-slate-900 truncate">
+                                  {client.client}
+                                </p>
+                                <span className="inline-flex items-center rounded-full bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600 ring-1 ring-inset ring-slate-200/70">
+                                  #{idx + 1}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-500 mt-0.5">
+                                Sin compra reciente
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700 ring-1 ring-inset ring-amber-200/60">
+                              {client.daysSinceLastPurchase} d
+                            </span>
+                            <ChevronRight className="h-4 w-4 text-slate-400 group-hover:text-slate-700 transition-colors" />
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
                 ) : (
-                  <div className="flex flex-col items-center justify-center py-8 text-center border border-dashed border-gray-200 rounded-lg bg-gray-50/30">
-                    <div className="p-2 rounded-full bg-gray-100 mb-2">
-                      <CheckCircle2 className="h-4 w-4 text-gray-400" />
+                  <div className="flex flex-col items-center justify-center py-10 text-center">
+                    <div className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-white/70 ring-1 ring-inset ring-slate-200/70 shadow-sm">
+                      <CheckCircle2 className="h-5 w-5 text-slate-400" />
                     </div>
-                    <p className="text-xs text-gray-500">
-                      Todos los clientes activos
+                    <p className="text-xs text-slate-700 font-semibold mt-3">
+                      Todo bajo control
+                    </p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      No hay clientes fuera del umbral
                     </p>
                   </div>
                 )}
               </div>
-            </div>
+            </motion.div>
 
-            {/* Growth Section */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="p-1.5 rounded-md bg-emerald-100 text-emerald-600">
-                  <TrendingUp className="h-4 w-4" />
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-40px" }}
+              transition={{ duration: 0.35, ease: "easeOut", delay: 0.05 }}
+              className="rounded-2xl bg-white ring-1 ring-inset ring-emerald-200/60 shadow-sm"
+            >
+              <div className="flex items-start justify-between gap-3 p-4">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <div className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700">
+                      <TrendingUp className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <h3 className="text-xs font-semibold text-slate-900 uppercase tracking-wide">
+                        En Crecimiento
+                      </h3>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Oportunidad para aumentar ticket
+                      </p>
+                    </div>
+                  </div>
                 </div>
-                <h3 className="text-xs font-medium text-gray-900 uppercase tracking-wide">
-                  En Crecimiento
-                </h3>
+                <span className="inline-flex items-center rounded-full bg-white/70 px-2 py-1 text-[11px] font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200/60">
+                  {clientInsights.topGrowth.length}
+                </span>
               </div>
-              <div className="space-y-3">
+
+              <div className="px-2 pb-2">
                 {clientInsights.topGrowth.length > 0 ? (
-                  clientInsights.topGrowth.map((client) => (
-                    <div
-                      key={client.client}
-                      className="group flex items-start gap-3 p-3 rounded-lg border border-gray-100 bg-gray-50/50 hover:bg-white hover:border-gray-200 hover:shadow-sm transition-all duration-200"
-                    >
-                      <div className="h-8 w-8 rounded-full bg-emerald-50 border border-emerald-100 flex items-center justify-center text-xs font-bold text-emerald-600 shadow-sm shrink-0">
-                        <TrendingUp className="h-3.5 w-3.5" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-gray-900 truncate group-hover:text-emerald-700 transition-colors">
-                          {client.client}
-                        </p>
-                        <p className="text-xs text-emerald-600 mt-0.5 font-medium">
-                          +
-                          {formatCurrency(
-                            client.deltaFromPreviousSale as number,
-                          )}{" "}
-                          vs anterior
-                        </p>
-                      </div>
-                    </div>
-                  ))
+                  <div className="space-y-2">
+                    {clientInsights.topGrowth.map((client, idx) => (
+                      <button
+                        key={client.client}
+                        type="button"
+                        onClick={() => {
+                          setSelectedClient(client.client);
+                          clientHistoryRef.current?.scrollIntoView({
+                            behavior: "smooth",
+                            block: "start",
+                          });
+                        }}
+                        className={`group w-full rounded-xl px-3 py-3 text-left ring-1 ring-inset hover:bg-white hover:ring-slate-300/70 hover:shadow-sm transition ${
+                          selectedClient === client.client
+                            ? "bg-white ring-slate-300/70 shadow-sm"
+                            : "bg-white/70 ring-slate-200/60"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex min-w-0 items-start gap-3">
+                            <div className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-700 text-white text-[11px] font-bold shadow-sm">
+                              +
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <p className="text-sm font-semibold text-slate-900 truncate">
+                                  {client.client}
+                                </p>
+                                <span className="inline-flex items-center rounded-full bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600 ring-1 ring-inset ring-slate-200/70">
+                                  #{idx + 1}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-500 mt-0.5">
+                                Aumentó vs compra anterior
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200/60 whitespace-nowrap">
+                              +
+                              {formatCurrency(
+                                client.deltaFromPreviousSale as number,
+                              )}
+                            </span>
+                            <ChevronRight className="h-4 w-4 text-slate-400 group-hover:text-slate-700 transition-colors" />
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
                 ) : (
-                  <div className="flex flex-col items-center justify-center py-8 text-center border border-dashed border-gray-200 rounded-lg bg-gray-50/30">
-                    <p className="text-xs text-gray-500">
-                      Sin tendencias de crecimiento
+                  <div className="flex flex-col items-center justify-center py-10 text-center">
+                    <div className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-white/70 ring-1 ring-inset ring-slate-200/70 shadow-sm">
+                      <TrendingUp className="h-5 w-5 text-slate-400" />
+                    </div>
+                    <p className="text-xs text-slate-700 font-semibold mt-3">
+                      Sin señales de crecimiento
+                    </p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Vuelve a revisar el siguiente periodo
                     </p>
                   </div>
                 )}
               </div>
-            </div>
+            </motion.div>
 
-            {/* Decline Section */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="p-1.5 rounded-md bg-rose-100 text-rose-600">
-                  <TrendingDown className="h-4 w-4" />
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-40px" }}
+              transition={{ duration: 0.35, ease: "easeOut", delay: 0.1 }}
+              className="rounded-2xl bg-white ring-1 ring-inset ring-rose-200/60 shadow-sm sm:col-span-2"
+            >
+              <div className="flex items-start justify-between gap-3 p-4">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <div className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-rose-100 text-rose-700">
+                      <TrendingDown className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <h3 className="text-xs font-semibold text-slate-900 uppercase tracking-wide">
+                        En Riesgo
+                      </h3>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Prioriza un contacto
+                      </p>
+                    </div>
+                  </div>
                 </div>
-                <h3 className="text-xs font-medium text-gray-900 uppercase tracking-wide">
-                  En Riesgo
-                </h3>
+                <span className="inline-flex items-center rounded-full bg-white/70 px-2 py-1 text-[11px] font-semibold text-rose-700 ring-1 ring-inset ring-rose-200/60">
+                  {clientInsights.topDecline.length}
+                </span>
               </div>
-              <div className="space-y-3">
+
+              <div className="px-2 pb-2">
                 {clientInsights.topDecline.length > 0 ? (
-                  clientInsights.topDecline.map((client) => (
-                    <div
-                      key={client.client}
-                      className="group flex items-start gap-3 p-3 rounded-lg border border-gray-100 bg-gray-50/50 hover:bg-white hover:border-gray-200 hover:shadow-sm transition-all duration-200"
-                    >
-                      <div className="h-8 w-8 rounded-full bg-rose-50 border border-rose-100 flex items-center justify-center text-xs font-bold text-rose-600 shadow-sm shrink-0">
-                        <TrendingDown className="h-3.5 w-3.5" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-gray-900 truncate group-hover:text-rose-700 transition-colors">
-                          {client.client}
-                        </p>
-                        <p className="text-xs text-rose-600 mt-0.5 font-medium">
-                          {formatCurrency(
-                            client.deltaFromPreviousSale as number,
-                          )}{" "}
-                          vs anterior
-                        </p>
-                      </div>
-                    </div>
-                  ))
+                  <div className="space-y-2">
+                    {clientInsights.topDecline.map((client, idx) => (
+                      <button
+                        key={client.client}
+                        type="button"
+                        onClick={() => {
+                          setSelectedClient(client.client);
+                          clientHistoryRef.current?.scrollIntoView({
+                            behavior: "smooth",
+                            block: "start",
+                          });
+                        }}
+                        className={`group w-full rounded-xl px-3 py-3 text-left ring-1 ring-inset hover:bg-white hover:ring-slate-300/70 hover:shadow-sm transition ${
+                          selectedClient === client.client
+                            ? "bg-white ring-slate-300/70 shadow-sm"
+                            : "bg-white/70 ring-slate-200/60"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex min-w-0 items-start gap-3">
+                            <div className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-rose-700 text-white text-[11px] font-bold shadow-sm">
+                              -
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <p className="text-sm font-semibold text-slate-900 truncate">
+                                  {client.client}
+                                </p>
+                                <span className="inline-flex items-center rounded-full bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600 ring-1 ring-inset ring-slate-200/70">
+                                  #{idx + 1}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-500 mt-0.5">
+                                Cayó vs compra anterior
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <span className="inline-flex items-center rounded-full bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700 ring-1 ring-inset ring-rose-200/60 whitespace-nowrap">
+                              {formatCurrency(
+                                client.deltaFromPreviousSale as number,
+                              )}
+                            </span>
+                            <ChevronRight className="h-4 w-4 text-slate-400 group-hover:text-slate-700 transition-colors" />
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
                 ) : (
-                  <div className="flex flex-col items-center justify-center py-8 text-center border border-dashed border-gray-200 rounded-lg bg-gray-50/30">
-                    <div className="p-2 rounded-full bg-gray-100 mb-2">
-                      <CheckCircle2 className="h-4 w-4 text-gray-400" />
+                  <div className="flex flex-col items-center justify-center py-10 text-center">
+                    <div className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-white/70 ring-1 ring-inset ring-slate-200/70 shadow-sm">
+                      <CheckCircle2 className="h-5 w-5 text-slate-400" />
                     </div>
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-slate-700 font-semibold mt-3">
                       Sin caídas significativas
                     </p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Mantén el seguimiento
+                    </p>
                   </div>
                 )}
               </div>
-            </div>
+            </motion.div>
           </div>
         </div>
 
         <div className="bg-white rounded-lg mb-3 border border-[#E2E4E9]">
           <div className="p-3 pb-1.5">
             <div className="flex justify-between items-center">
-              <h2 className="text-gray-700 font-semibold flex items-center text-xs">
+              <h2 className="text-gray-700 font-medium flex items-center text-sm">
                 <Clock className="mr-1.5 h-4 w-4" /> Ventas Recientes
               </h2>
               <button
+                type="button"
                 className="text-blue-600 text-xs"
                 onClick={() => setShowAllSales(!showAllSales)}
               >
@@ -1347,10 +1541,11 @@ export default function Dashboard() {
           <div className="px-3">
             {filteredSales
               .slice(0, showAllSales ? undefined : 4)
-              .map((sale, index) => (
-                <div
-                  key={index}
-                  className="flex items-center justify-between py-2 border-b last:border-b-0 cursor-pointer hover:bg-gray-100"
+              .map((sale) => (
+                <button
+                  key={`${sale.codigo}-${sale.fechaSinHora}-${sale.submissionTime ?? ""}-${sale.venta}`}
+                  type="button"
+                  className="w-full flex items-center justify-between py-2 border-b last:border-b-0 hover:bg-gray-100 text-left"
                   onClick={() => setSelectedSale(sale)}
                 >
                   <div>
@@ -1369,15 +1564,18 @@ export default function Dashboard() {
                     </div>
                     <ChevronRight className="h-4 w-3 text-gray-400" />
                   </div>
-                </div>
+                </button>
               ))}
           </div>
         </div>
 
-        <div className="bg-white rounded-lg border border-[#E2E4E9]">
+        <div
+          ref={clientHistoryRef}
+          className="bg-white rounded-lg border border-[#E2E4E9]"
+        >
           <div className="p-3">
             <div className="mb-2">
-              <h2 className="text-gray-700 font-semibold flex items-center text-xs">
+              <h2 className="text-gray-700 font-medium flex items-center text-sm">
                 <Clock className="mr-1.5 h-4 w-4" /> Historial De Cliente
               </h2>
               {selectedClient && (
@@ -1401,16 +1599,17 @@ export default function Dashboard() {
               {filteredClientNames.length > 0 && (
                 <div className="absolute z-10 mt-1 left-0 right-0 bg-white border border-gray-300 rounded-md shadow-lg">
                   {filteredClientNames.map((name) => (
-                    <div
+                    <button
                       key={name}
-                      className="px-4 py-2 text-base hover:bg-gray-100 cursor-pointer"
+                      type="button"
+                      className="w-full px-4 py-2 text-base text-left hover:bg-gray-100"
                       onClick={() => {
                         setSelectedClient(name);
                         setSearchTerm("");
                       }}
                     >
                       {name}
-                    </div>
+                    </button>
                   ))}
                 </div>
               )}
@@ -1424,10 +1623,11 @@ export default function Dashboard() {
                         new Date(b.fechaSinHora).getTime() -
                         new Date(a.fechaSinHora).getTime(),
                     )
-                    .map((sale, index) => (
-                      <div
-                        key={index}
-                        className="flex items-center justify-between py-2 border-b last:border-b-0 cursor-pointer hover:bg-gray-100"
+                    .map((sale) => (
+                      <button
+                        key={`${sale.codigo}-${sale.fechaSinHora}-${sale.submissionTime ?? ""}-${sale.venta}`}
+                        type="button"
+                        className="w-full flex items-center justify-between py-2 border-b last:border-b-0 hover:bg-gray-100 text-left"
                         onClick={() => setSelectedSale(sale)}
                       >
                         <div className="flex items-center">
@@ -1444,7 +1644,7 @@ export default function Dashboard() {
                           </div>
                         </div>
                         <ChevronRight className="h-4 w-3 text-gray-400" />
-                      </div>
+                      </button>
                     ))
                 ) : (
                   <p className="text-xs text-gray-500 text-center py-4">

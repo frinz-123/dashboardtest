@@ -17,6 +17,56 @@
 - `src/__tests__/`: Jest tests mirroring `src/` paths.
 - `public/`: PWA assets, service worker, manifest files.
 
+## Architecture Notes
+- Mixed routing: App Router is primary; Pages Router is legacy only.
+- App entry points: `src/app/layout.tsx` and `src/app/page.tsx`.
+- Feature areas include dashboard, clients, inventory, and routes modules.
+- API handlers live in `src/app/api/**/route.ts` and use Next.js route handlers.
+- Some routes opt into dynamic rendering with `export const dynamic = "force-dynamic"`.
+- Shared hooks are in `src/hooks/` and should stay lightweight.
+- Business utilities belong in `src/utils/` and should avoid React dependencies.
+- Keep generated PWA files in `public/` intact unless regenerating.
+
+## Authentication & Authorization
+- NextAuth is configured in `src/app/api/auth/[...nextauth]/route.ts`.
+- Client auth uses `useSession` from `next-auth/react`.
+- Server routes should validate sessions before calling Google APIs.
+- Master account helpers live in `src/utils/auth.ts`.
+- Some API routes accept `viewAsEmail`; guard it with master checks.
+- Keep auth-related env vars in `.env.local` only.
+
+## Google Sheets Integration
+- Use the `googleapis` client with service-account credentials.
+- `src/utils/googleAuth.ts` exposes shared auth helpers for Sheets.
+- Use `google.sheets({ version: "v4", auth })` for requests.
+- Validate and normalize Sheet data before returning to clients.
+- Provide explicit 400/401/500 responses with `NextResponse.json`.
+- Add context-rich logs around Sheets requests and payload parsing.
+
+## PWA & Offline
+- `next-pwa` is wired in `next.config.js`.
+- Service worker sources live in `public/service-worker.js`.
+- Generated PWA assets may appear in `public/workbox-*.js` or `public/sw.js`.
+- Update `public/manifest.json` when altering app identity or icons.
+- Avoid editing generated assets by hand unless rebuilding them.
+
+## Maps & Geospatial
+- Mapbox GL powers map views; see `src/components/ui/Map.tsx`.
+- Require `MAPBOX_ACCESS_TOKEN` in `.env.local` for runtime maps.
+- Mapbox is mocked in `jest.setup.js` for tests.
+
+## Localization & Formatting
+- Date formatting uses Spanish locales (e.g., `"es-ES"`) in `src/utils/dateUtils.ts`.
+- Preserve locale formatting for reports and labels.
+- Currency formatting helpers are passed into UI components; keep consistent.
+- Normalize user-entered strings before comparisons (see `src/utils/auth.ts`).
+
+## Quality Gates & CI Notes
+- `next.config.js` disables ESLint and TypeScript build blocking.
+- Always run `npm run lint` and `npm run check` before shipping changes.
+- Use `npm run test:ci` for CI parity with coverage.
+- Optional typecheck: `npx tsc --noEmit`.
+
 ## Install, Build, Lint, Test
 - Install: `npm ci`
 - Dev server: `npm run dev`

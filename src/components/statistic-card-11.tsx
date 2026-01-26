@@ -29,7 +29,7 @@ export default function StatisticCard11({
   return (
     <Card className="w-full h-full border border-[#E2E4E9]/70 shadow-none">
       <CardHeader className="border-0 min-h-auto p-3 pb-1.5 flex flex-row items-center justify-between">
-        <CardTitle className="text-xs font-semibold text-gray-700">
+        <CardTitle className="text-sm font-medium text-gray-700">
           {title}
         </CardTitle>
         <Button

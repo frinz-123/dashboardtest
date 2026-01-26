@@ -3,6 +3,7 @@ import "./globals.css";
 import AuthProvider from "@/components/providers/AuthProvider";
 import { ZoomPrevention } from "@/components/ZoomPrevention";
 import ClientDataPrefetcher from "@/components/ClientDataPrefetcher";
+import { Agentation } from "agentation";
 
 export const metadata: Metadata = {
   title: "Dashboard El rey",
@@ -60,6 +61,7 @@ export default function RootLayout({
         <ZoomPrevention />
         <ClientDataPrefetcher />
         <AuthProvider>{children}</AuthProvider>
+        {process.env.NODE_ENV === "development" && <Agentation />}
       </body>
     </html>
   );

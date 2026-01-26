@@ -1798,66 +1798,64 @@ export default function FormPage() {
 
       <AppHeader title="Ventas" icon={ShoppingCart} />
       <main className="px-4 py-4 max-w-2xl mx-auto">
-        <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
-          <div className="relative">
-            <SearchInput
-              value={searchTerm}
-              onChange={handleSearchChange}
-              onClear={() => {
-                setSearchTerm("");
-                setDebouncedSearchTerm("");
-                setSelectedClient("");
-                setFilteredClients([]);
-              }}
-              placeholder="Buscar cliente..."
-            />
-            {filteredClients.length > 0 && (
-              <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
-                {filteredClients.map((name) => (
-                  <button
-                    key={name}
-                    type="button"
-                    className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100"
-                    onClick={() => {
-                      haptics.light(); // Haptic feedback for client selection
-                      setSelectedClient(name);
-                      setSearchTerm(name);
-                      setFilteredClients([]);
-                    }}
-                  >
-                    {name}
-                  </button>
-                ))}
-                {debouncedSearchTerm && filteredClients.length === 20 && (
-                  <div className="px-4 py-2 text-xs text-gray-500 italic">
-                    Mostrando primeros 20 resultados. Continúa escribiendo para
-                    refinar la búsqueda.
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-          {selectedClient && (
-            <div className="text-sm text-gray-600 mt-2 flex items-center justify-between">
-              <p>
-                Cliente seleccionado: {selectedClient} (
-                {getClientCode(selectedClient)})
-              </p>
-              {distanceToClient !== null && (
-                <span
-                  className={`ml-2 ${distanceToClient > MAX_CLIENT_DISTANCE ? "text-red-600" : "text-green-600"}`}
+        <div className="relative mb-3">
+          <SearchInput
+            value={searchTerm}
+            onChange={handleSearchChange}
+            onClear={() => {
+              setSearchTerm("");
+              setDebouncedSearchTerm("");
+              setSelectedClient("");
+              setFilteredClients([]);
+            }}
+            placeholder="Buscar cliente..."
+          />
+          {filteredClients.length > 0 && (
+            <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+              {filteredClients.map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100"
+                  onClick={() => {
+                    haptics.light(); // Haptic feedback for client selection
+                    setSelectedClient(name);
+                    setSearchTerm(name);
+                    setFilteredClients([]);
+                  }}
                 >
-                  {formatDistance(distanceToClient)}
-                </span>
+                  {name}
+                </button>
+              ))}
+              {debouncedSearchTerm && filteredClients.length === 20 && (
+                <div className="px-4 py-2 text-xs text-gray-500 italic">
+                  Mostrando primeros 20 resultados. Continúa escribiendo para
+                  refinar la búsqueda.
+                </div>
               )}
             </div>
           )}
-          {locationAlert && (
-            <p className="text-sm text-red-600 mt-2 font-medium">
-              ⚠️ {locationAlert}
-            </p>
-          )}
         </div>
+        {selectedClient && (
+          <div className="text-sm text-gray-600 mb-2 flex items-center justify-between">
+            <p>
+              Cliente seleccionado: {selectedClient} (
+              {getClientCode(selectedClient)})
+            </p>
+            {distanceToClient !== null && (
+              <span
+                className={`ml-2 ${distanceToClient > MAX_CLIENT_DISTANCE ? "text-red-600" : "text-green-600"}`}
+              >
+                {formatDistance(distanceToClient)}
+              </span>
+            )}
+          </div>
+        )}
+        {locationAlert && (
+          <p className="text-sm text-red-600 mb-3 font-medium">
+            ⚠️ {locationAlert}
+          </p>
+        )}
 
         {/* Admin Override Section - Only visible for admin users */}
         {isOverrideEmail(session?.user?.email || cachedEmail) && (
@@ -2083,7 +2081,10 @@ export default function FormPage() {
 
         {/* Sticky order details at bottom with animations */}
         {Object.values(quantities).some((q) => q > 0) && (
-          <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-4 shadow-lg z-40 animate-in slide-in-from-bottom duration-300">
+          <div
+            className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 p-4 z-40 animate-in slide-in-from-bottom duration-300"
+            style={{ boxShadow: '0 -1px 2px rgba(0,0,0,0.03), 0 -2px 4px rgba(0,0,0,0.03), 0 -4px 8px rgba(0,0,0,0.03), 0 -8px 16px rgba(0,0,0,0.03), 0 -16px 32px rgba(0,0,0,0.02)' }}
+          >
             <div className="max-w-md mx-auto">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
