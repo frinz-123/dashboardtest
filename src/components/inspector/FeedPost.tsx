@@ -172,8 +172,8 @@ export default function FeedPost({
                         ))}
                     </div>
                 ) : sale.photoUrls.length === 3 ? (
-                    <div className="grid grid-cols-2 gap-1 rounded-lg overflow-hidden">
-                        <div className="aspect-square overflow-hidden bg-gray-100">
+                    <div className="grid grid-cols-2 gap-1 rounded-lg overflow-hidden" style={{ aspectRatio: '2/1' }}>
+                        <div className="overflow-hidden bg-gray-100">
                             <img
                                 src={getDisplayableImageUrl(sale.photoUrls[0])}
                                 alt="Foto 1"

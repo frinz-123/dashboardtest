@@ -1,4 +1,5 @@
 "use client";
+import { motion } from "framer-motion";
 import {
   BarChart2,
   CheckCircle2,
@@ -7,39 +8,23 @@ import {
   Clock,
   Search,
   ShoppingBag,
-  Target,
   TrendingDown,
   TrendingUp,
   Users,
 } from "lucide-react";
+import { useSession } from "next-auth/react";
 import React, { useEffect, useState } from "react";
-import { buildStyles, CircularProgressbar } from "react-circular-progressbar";
-import {
-  Area,
-  AreaChart,
-  Bar,
-  BarChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-import AppHeader from "./AppHeader";
-import "react-circular-progressbar/dist/styles.css";
-import { motion } from "framer-motion";
-import { signOut, useSession } from "next-auth/react";
-import { isMasterAccount } from "@/utils/auth";
+import { Area, AreaChart, ResponsiveContainer, Tooltip } from "recharts";
 import {
   getCurrentPeriodInfo,
-  getCurrentPeriodNumber,
   getWeekDates,
   isDateInPeriod,
 } from "@/utils/dateUtils";
 import { getSellerGoal } from "@/utils/sellerGoals";
+import AppHeader from "./AppHeader";
 import GoalDetailsDialog from "./goal-details-dialog";
 import SaleDetailsPopup from "./SaleDetailsPopup";
 import StatisticCard11 from "./statistic-card-11";
-import BlurIn from "./ui/blur-in";
 import { CountingNumber } from "./ui/counting-number";
 
 const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY;
@@ -58,6 +43,86 @@ type Sale = {
 };
 
 type Role = "vendedor" | "Bodeguero" | "Supervisor";
+
+type DateRange = {
+  startDate: Date;
+  endDate: Date;
+};
+
+const PERIODS: TimePeriod[] = ["Diario", "Ayer", "Semanal", "Mensual"];
+
+const getTimeDifference = (period: TimePeriod) => {
+  switch (period) {
+    case "Diario":
+      return 24 * 60 * 60 * 1000; // 1 day in milliseconds
+    case "Ayer":
+      return 24 * 60 * 60 * 1000; // 1 day in milliseconds
+    case "Semanal":
+      return 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
+    case "Mensual":
+      return 30 * 24 * 60 * 60 * 1000; // 30 days in milliseconds (approximate)
+  }
+
+  return 0;
+};
+
+const getPeriodRange = (period: TimePeriod, referenceDate: Date): DateRange => {
+  const currentDate = new Date(referenceDate);
+  let startDate: Date;
+  let endDate: Date;
+
+  if (period === "Diario") {
+    startDate = new Date(currentDate.setHours(0, 0, 0, 0));
+    endDate = new Date(currentDate.setHours(23, 59, 59, 999));
+  } else if (period === "Ayer") {
+    const yesterday = new Date(currentDate);
+    yesterday.setDate(yesterday.getDate() - 1);
+    startDate = new Date(yesterday.setHours(0, 0, 0, 0));
+    endDate = new Date(yesterday.setHours(23, 59, 59, 999));
+  } else if (period === "Semanal") {
+    const { weekStart, weekEnd } = getWeekDates(currentDate);
+    startDate = weekStart;
+    endDate = weekEnd;
+  } else {
+    const { periodStartDate, periodEndDate } =
+      getCurrentPeriodInfo(currentDate);
+    startDate = periodStartDate;
+    endDate = periodEndDate;
+  }
+
+  return { startDate, endDate };
+};
+
+const getPreviousPeriodRange = (
+  period: TimePeriod,
+  referenceDate: Date,
+): DateRange => {
+  const reference = new Date(referenceDate);
+  let startDate: Date;
+  let endDate: Date;
+
+  if (period === "Diario") {
+    startDate = new Date(reference.setDate(reference.getDate() - 1));
+    startDate.setHours(0, 0, 0, 0);
+    endDate = new Date(startDate);
+    endDate.setHours(23, 59, 59, 999);
+  } else if (period === "Ayer") {
+    startDate = new Date(reference.setDate(reference.getDate() - 2));
+    startDate.setHours(0, 0, 0, 0);
+    endDate = new Date(startDate);
+    endDate.setHours(23, 59, 59, 999);
+  } else {
+    startDate = new Date(reference.getTime() - getTimeDifference(period) * 2);
+    endDate = new Date(reference.getTime() - getTimeDifference(period));
+  }
+
+  return { startDate, endDate };
+};
+
+const isSaleInRange = (sale: Sale, range: DateRange) => {
+  const saleDate = new Date(sale.fechaSinHora);
+  return isDateInPeriod(saleDate, range.startDate, range.endDate);
+};
 
 const emailLabels: Record<string, { label: string; role: Role }> = {
   "ventas1productoselrey@gmail.com": { label: "Christian", role: "vendedor" },
@@ -83,228 +148,83 @@ export default function Dashboard() {
   const [selectedPeriod, setSelectedPeriod] = useState<TimePeriod>("Diario");
   const [selectedEmail, setSelectedEmail] = useState<string>("");
   const [salesData, setSalesData] = useState<Sale[]>([]);
-  const [emails, setEmails] = useState<string[]>([]);
-  const [chartData, setChartData] = useState<{ x: string; venta: number }[]>(
-    [],
-  );
-  const [percentageDifference, setPercentageDifference] = useState<number>(0);
   const [showAllSales, setShowAllSales] = useState(false);
-  const [goalProgress, setGoalProgress] = useState<number>(0);
-  const [currentPeriodSales, setCurrentPeriodSales] = useState<number>(0);
-  const [clientNames, setClientNames] = useState<string[]>([]);
   const [selectedClient, setSelectedClient] = useState<string>("");
-  const [clientSales, setClientSales] = useState<Sale[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
-  const [filteredClientNames, setFilteredClientNames] = useState<string[]>([]);
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
   const [isGoalDetailsOpen, setIsGoalDetailsOpen] = useState(false);
   const clientHistoryRef = React.useRef<HTMLDivElement | null>(null);
 
-  const periods: TimePeriod[] = ["Diario", "Ayer", "Semanal", "Mensual"];
+  const todayKey = new Date().toDateString();
+  const periodReferenceDate = React.useMemo(() => new Date(), [todayKey]);
+  const periodInfo = React.useMemo(
+    () => getCurrentPeriodInfo(periodReferenceDate),
+    [periodReferenceDate],
+  );
+  const selectedPeriodRange = React.useMemo(
+    () => getPeriodRange(selectedPeriod, periodReferenceDate),
+    [selectedPeriod, periodReferenceDate],
+  );
+  const previousPeriodRange = React.useMemo(
+    () => getPreviousPeriodRange(selectedPeriod, periodReferenceDate),
+    [selectedPeriod, periodReferenceDate],
+  );
 
-  const updateChartData = React.useCallback(() => {
-    const filteredSales = salesData
-      .filter((sale) => sale.email === selectedEmail)
-      .filter((sale) => filterSalesByDate([sale], selectedPeriod).length > 0);
-
-    if (selectedPeriod === "Diario" || selectedPeriod === "Ayer") {
-      const sortedSales = filteredSales.sort(
-        (a, b) =>
-          new Date(a.fechaSinHora).getTime() -
-          new Date(b.fechaSinHora).getTime(),
-      );
-      setChartData(
-        sortedSales.map((sale, index) => ({
-          x: `${index + 1}`,
-          venta: sale.venta,
-        })),
-      );
-    } else if (selectedPeriod === "Semanal") {
-      const groupedData = filteredSales.reduce(
-        (acc, sale) => {
-          const date = new Date(sale.fechaSinHora);
-          const key = date.toLocaleDateString("es-ES", {
-            month: "short",
-            day: "numeric",
-          });
-          if (!acc[key]) {
-            acc[key] = 0;
-          }
-          acc[key] += sale.venta;
-          return acc;
-        },
-        {} as Record<string, number>,
-      );
-
-      const sortedData = Object.entries(groupedData)
-        .sort(
-          ([dateA], [dateB]) =>
-            new Date(dateA).getTime() - new Date(dateB).getTime(),
-        )
-        .map(([date, venta]) => ({ x: date, venta }));
-
-      setChartData(sortedData);
-    } else if (selectedPeriod === "Mensual") {
-      const { periodStartDate } = getCurrentPeriodInfo();
-      const groupedData = filteredSales.reduce(
-        (acc, sale) => {
-          const saleDate = new Date(sale.fechaSinHora);
-          const weekNumber =
-            Math.floor(
-              (saleDate.getTime() - periodStartDate.getTime()) /
-                (7 * 24 * 60 * 60 * 1000),
-            ) + 1;
-          const key = `S${weekNumber}`;
-          if (!acc[key]) {
-            acc[key] = 0;
-          }
-          acc[key] += sale.venta;
-          return acc;
-        },
-        {} as Record<string, number>,
-      );
-
-      const sortedData = Object.entries(groupedData)
-        .sort(([weekA], [weekB]) => weekA.localeCompare(weekB))
-        .map(([week, venta]) => ({ x: week, venta }));
-
-      setChartData(sortedData);
-    }
-
-    // Calculate percentage difference
-    const currentPeriodTotal = filteredSales.reduce(
-      (sum, sale) => sum + sale.venta,
-      0,
-    );
-    let previousPeriodStartDate: Date;
-    let previousPeriodEndDate: Date;
-
-    if (selectedPeriod === "Diario") {
-      previousPeriodStartDate = new Date(
-        new Date().setDate(new Date().getDate() - 1),
-      );
-      previousPeriodStartDate.setHours(0, 0, 0, 0);
-      previousPeriodEndDate = new Date(previousPeriodStartDate);
-      previousPeriodEndDate.setHours(23, 59, 59, 999);
-    } else if (selectedPeriod === "Ayer") {
-      previousPeriodStartDate = new Date(
-        new Date().setDate(new Date().getDate() - 2),
-      );
-      previousPeriodStartDate.setHours(0, 0, 0, 0);
-      previousPeriodEndDate = new Date(previousPeriodStartDate);
-      previousPeriodEndDate.setHours(23, 59, 59, 999);
-    } else {
-      previousPeriodStartDate = new Date(
-        new Date().getTime() - getTimeDifference(selectedPeriod) * 2,
-      );
-      previousPeriodEndDate = new Date(
-        new Date().getTime() - getTimeDifference(selectedPeriod),
-      );
-    }
-
-    const previousPeriodSales = salesData
-      .filter((sale) => sale.email === selectedEmail)
-      .filter((sale) => {
-        const saleDate = new Date(sale.fechaSinHora);
-        return (
-          saleDate >= previousPeriodStartDate &&
-          saleDate <= previousPeriodEndDate
-        );
-      });
-    const previousPeriodTotal = previousPeriodSales.reduce(
-      (sum, sale) => sum + sale.venta,
-      0,
-    );
-
-    const difference =
-      previousPeriodTotal !== 0
-        ? ((currentPeriodTotal - previousPeriodTotal) / previousPeriodTotal) *
-          100
-        : 0;
-    setPercentageDifference(difference);
-  }, [salesData, selectedEmail, selectedPeriod]);
-
-  const updateGoalProgress = React.useCallback(() => {
-    const currentPeriodNumber = getCurrentPeriodNumber();
-    console.log("Current Period Number:", currentPeriodNumber);
-
-    const { periodStartDate, periodEndDate } = getCurrentPeriodInfo();
-
-    const periodSales = salesData
-      .filter((sale) => sale.email === selectedEmail)
-      .filter((sale) => {
-        const saleDate = new Date(sale.fechaSinHora);
-        return isDateInPeriod(saleDate, periodStartDate, periodEndDate);
-      })
-      .reduce((sum, sale) => sum + sale.venta, 0);
-
-    console.log("Period Sales:", periodSales);
-    setCurrentPeriodSales(periodSales);
-
-    const goal = getSellerGoal(
-      selectedEmail,
-      currentPeriodNumber as 11 | 12 | 13,
-    );
-    console.log("Goal:", goal);
-
-    const progress = goal > 0 ? (periodSales / goal) * 100 : 0;
-    console.log("Progress:", progress);
-
-    setGoalProgress(isNaN(progress) ? 0 : progress);
-  }, [salesData, selectedEmail]);
-
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  useEffect(() => {
-    if (salesData.length > 0 && selectedEmail) {
-      updateChartData();
-      updateGoalProgress();
-    }
-  }, [
-    selectedPeriod,
-    selectedEmail,
-    salesData,
-    updateChartData,
-    updateGoalProgress,
-  ]);
-
-  useEffect(() => {
-    if (selectedClient) {
-      const filteredSales = salesData.filter(
-        (sale) => sale.clientName === selectedClient,
-      );
-      setClientSales(filteredSales);
-    }
-  }, [selectedClient, salesData]);
-
-  useEffect(() => {
-    if (searchTerm) {
-      const filtered = clientNames.filter(
-        (name) => name && name.toLowerCase().includes(searchTerm.toLowerCase()),
-      );
-      setFilteredClientNames(filtered);
-      if (filtered.length > 0) {
-        setSelectedClient(filtered[0]);
+  const emails = React.useMemo(() => {
+    const uniqueEmails = new Set<string>();
+    for (const sale of salesData) {
+      if (sale.email) {
+        uniqueEmails.add(sale.email);
       }
-    } else {
-      setFilteredClientNames([]);
     }
-  }, [searchTerm, clientNames]);
+    return Array.from(uniqueEmails);
+  }, [salesData]);
 
-  useEffect(() => {
-    if (session?.user?.email) {
-      console.log(
-        "[Dashboard] Session detected, setting selectedEmail to session user",
-        session.user.email,
-      );
-      setSelectedEmail(session.user.email);
-      fetchData();
+  const emailsSet = React.useMemo(() => new Set(emails), [emails]);
+
+  const clientNames = React.useMemo(() => {
+    const uniqueClients = new Set<string>();
+    for (const sale of salesData) {
+      if (sale.clientName) {
+        uniqueClients.add(sale.clientName);
+      }
     }
-  }, [session]);
+    return Array.from(uniqueClients);
+  }, [salesData]);
 
-  const fetchData = async () => {
+  const normalizedSearchTerm = searchTerm.trim().toLowerCase();
+
+  const filteredClientNames = React.useMemo(() => {
+    if (!normalizedSearchTerm) {
+      return [];
+    }
+    return clientNames.filter(
+      (name) => name && name.toLowerCase().includes(normalizedSearchTerm),
+    );
+  }, [clientNames, normalizedSearchTerm]);
+
+  const clientSales = React.useMemo(() => {
+    if (!selectedClient) {
+      return [];
+    }
+    return salesData.filter((sale) => sale.clientName === selectedClient);
+  }, [salesData, selectedClient]);
+
+  const currencyFormatter = React.useMemo(
+    () =>
+      new Intl.NumberFormat("en-US", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }),
+    [],
+  );
+
+  const formatCurrency = React.useCallback(
+    (value: number) => `$${currencyFormatter.format(value)}`,
+    [currencyFormatter],
+  );
+
+  const fetchData = React.useCallback(async () => {
     const response = await fetch(
       `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:AK?key=${googleApiKey}`,
     );
@@ -333,240 +253,259 @@ export default function Dashboard() {
       };
     });
     setSalesData(sales);
-    const uniqueEmails = [...new Set(sales.map((sale) => sale.email))];
-    console.log("[Dashboard] Fetched unique emails from sheet", uniqueEmails);
-    setEmails(uniqueEmails);
-    if (uniqueEmails.length > 0) {
-      setSelectedEmail((prevSelectedEmail) => {
-        const sessionEmail = session?.user?.email;
-        const fallbackEmail = uniqueEmails[0];
+  }, []);
 
-        const nextSelectedEmail =
-          prevSelectedEmail && uniqueEmails.includes(prevSelectedEmail)
-            ? prevSelectedEmail
-            : sessionEmail && uniqueEmails.includes(sessionEmail)
-              ? sessionEmail
-              : fallbackEmail;
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
-        console.log("[Dashboard] Resolving selectedEmail", {
-          prevSelectedEmail,
-          sessionEmail,
-          fallbackEmail,
-          nextSelectedEmail,
-        });
-
-        return nextSelectedEmail;
-      });
+  useEffect(() => {
+    if (emails.length === 0) {
+      return;
     }
-
-    // Extract unique client names
-    const uniqueClientNames = Array.from(
-      new Set(sales.map((sale) => sale.clientName)),
-    ).filter(Boolean);
-    setClientNames(uniqueClientNames);
-    // Remove or comment out the following lines:
-    // if (uniqueClientNames.length > 0) {
-    //   setSelectedClient(uniqueClientNames[0])
-    // }
-  };
-
-  const filterSalesByDate = (sales: Sale[], period: TimePeriod) => {
-    const currentDate = new Date();
-    let startDate: Date, endDate: Date;
-
-    if (period === "Diario") {
-      startDate = new Date(currentDate.setHours(0, 0, 0, 0));
-      endDate = new Date(currentDate.setHours(23, 59, 59, 999));
-    } else if (period === "Ayer") {
-      const yesterday = new Date(currentDate);
-      yesterday.setDate(yesterday.getDate() - 1);
-      startDate = new Date(yesterday.setHours(0, 0, 0, 0));
-      endDate = new Date(yesterday.setHours(23, 59, 59, 999));
-    } else if (period === "Semanal") {
-      const { weekStart, weekEnd } = getWeekDates(currentDate);
-      startDate = weekStart;
-      endDate = weekEnd;
-    } else if (period === "Mensual") {
-      const { periodStartDate, periodEndDate } =
-        getCurrentPeriodInfo(currentDate);
-      startDate = periodStartDate;
-      endDate = periodEndDate;
-    }
-
-    return sales.filter((sale) => {
-      const saleDate = new Date(sale.fechaSinHora);
-      return isDateInPeriod(saleDate, startDate, endDate);
-    });
-  };
-
-  const getTimeDifference = (period: TimePeriod) => {
-    switch (period) {
-      case "Diario":
-        return 24 * 60 * 60 * 1000; // 1 day in milliseconds
-      case "Ayer":
-        return 24 * 60 * 60 * 1000; // 1 day in milliseconds
-      case "Semanal":
-        return 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
-      case "Mensual":
-        return 30 * 24 * 60 * 60 * 1000; // 30 days in milliseconds (approximate)
-    }
-  };
-
-  const filteredSales = salesData
-    .filter((sale) => sale.email === selectedEmail)
-    .filter((sale) => filterSalesByDate([sale], selectedPeriod).length > 0);
-
-  const totalSales = filteredSales.reduce((sum, sale) => sum + sale.venta, 0);
-
-  const salesByType = filteredSales.reduce(
-    (acc, sale) => {
-      acc[sale.codigo] = (acc[sale.codigo] || 0) + sale.venta;
-      return acc;
-    },
-    {} as Record<string, number>,
-  );
-
-  const productsSold = filteredSales.reduce(
-    (acc, sale) => {
-      if (sale.products) {
-        Object.entries(sale.products).forEach(([product, quantity]) => {
-          acc[product] = (acc[product] || 0) + quantity;
-        });
+    setSelectedEmail((prevSelectedEmail) => {
+      if (prevSelectedEmail && emailsSet.has(prevSelectedEmail)) {
+        return prevSelectedEmail;
       }
-      return acc;
-    },
-    {} as Record<string, number>,
+      const sessionEmail = session?.user?.email;
+      if (sessionEmail && emailsSet.has(sessionEmail)) {
+        return sessionEmail;
+      }
+      return emails[0];
+    });
+  }, [emails, emailsSet, session]);
+
+  useEffect(() => {
+    if (!normalizedSearchTerm || filteredClientNames.length === 0) {
+      return;
+    }
+    setSelectedClient((prevSelectedClient) =>
+      prevSelectedClient === filteredClientNames[0]
+        ? prevSelectedClient
+        : filteredClientNames[0],
+    );
+  }, [filteredClientNames, normalizedSearchTerm]);
+
+  const filteredSales = React.useMemo(() => {
+    if (!selectedEmail) {
+      return [];
+    }
+    return salesData.filter((sale) => {
+      if (sale.email !== selectedEmail) {
+        return false;
+      }
+      return isSaleInRange(sale, selectedPeriodRange);
+    });
+  }, [salesData, selectedEmail, selectedPeriodRange]);
+
+  const totalSales = React.useMemo(
+    () => filteredSales.reduce((sum, sale) => sum + sale.venta, 0),
+    [filteredSales],
   );
+
+  const previousPeriodTotal = React.useMemo(() => {
+    if (!selectedEmail) {
+      return 0;
+    }
+    const { startDate, endDate } = previousPeriodRange;
+    let total = 0;
+    for (const sale of salesData) {
+      if (sale.email !== selectedEmail) {
+        continue;
+      }
+      const saleDate = new Date(sale.fechaSinHora);
+      if (saleDate >= startDate && saleDate <= endDate) {
+        total += sale.venta;
+      }
+    }
+    return total;
+  }, [previousPeriodRange, salesData, selectedEmail]);
+
+  const percentageDifference =
+    previousPeriodTotal !== 0
+      ? ((totalSales - previousPeriodTotal) / previousPeriodTotal) * 100
+      : 0;
+
+  const chartData = React.useMemo(() => {
+    if (filteredSales.length === 0) {
+      return [];
+    }
+
+    if (selectedPeriod === "Diario" || selectedPeriod === "Ayer") {
+      const sortedSales = [...filteredSales].sort(
+        (a, b) =>
+          new Date(a.fechaSinHora).getTime() -
+          new Date(b.fechaSinHora).getTime(),
+      );
+      return sortedSales.map((sale, index) => ({
+        x: `${index + 1}`,
+        venta: sale.venta,
+      }));
+    }
+
+    if (selectedPeriod === "Semanal") {
+      const groupedData: Record<string, number> = {};
+      for (const sale of filteredSales) {
+        const date = new Date(sale.fechaSinHora);
+        const key = date.toLocaleDateString("es-ES", {
+          month: "short",
+          day: "numeric",
+        });
+        groupedData[key] = (groupedData[key] || 0) + sale.venta;
+      }
+
+      return Object.entries(groupedData)
+        .sort(
+          ([dateA], [dateB]) =>
+            new Date(dateA).getTime() - new Date(dateB).getTime(),
+        )
+        .map(([date, venta]) => ({ x: date, venta }));
+    }
+
+    const { periodStartDate } = periodInfo;
+    const groupedData: Record<string, number> = {};
+    for (const sale of filteredSales) {
+      const saleDate = new Date(sale.fechaSinHora);
+      const weekNumber =
+        Math.floor(
+          (saleDate.getTime() - periodStartDate.getTime()) /
+            (7 * 24 * 60 * 60 * 1000),
+        ) + 1;
+      const key = `S${weekNumber}`;
+      groupedData[key] = (groupedData[key] || 0) + sale.venta;
+    }
+
+    return Object.entries(groupedData)
+      .sort(([weekA], [weekB]) => weekA.localeCompare(weekB))
+      .map(([week, venta]) => ({ x: week, venta }));
+  }, [filteredSales, periodInfo, selectedPeriod]);
+
+  const salesByType = React.useMemo(() => {
+    const totals: Record<string, number> = {};
+    for (const sale of filteredSales) {
+      totals[sale.codigo] = (totals[sale.codigo] || 0) + sale.venta;
+    }
+    return totals;
+  }, [filteredSales]);
+
+  const productsSold = React.useMemo(() => {
+    const totals: Record<string, number> = {};
+    for (const sale of filteredSales) {
+      if (!sale.products) {
+        continue;
+      }
+      for (const [product, quantity] of Object.entries(sale.products)) {
+        totals[product] = (totals[product] || 0) + quantity;
+      }
+    }
+    return totals;
+  }, [filteredSales]);
 
   const visitsCount = filteredSales.length;
   const maxVisits =
     selectedPeriod === "Diario" ? 30 : selectedPeriod === "Semanal" ? 180 : 720;
   const visitPercentage = (visitsCount / maxVisits) * 100;
 
-  const getVisitStatus = () => {
-    if (visitPercentage >= 66)
+  const visitStatus = React.useMemo(() => {
+    if (visitPercentage >= 66) {
       return { color: "bg-green-400", text: "Es considerado un numero alto" };
-    if (visitPercentage >= 33)
+    }
+    if (visitPercentage >= 33) {
       return { color: "bg-yellow-400", text: "Es considerado un numero medio" };
+    }
     return { color: "bg-red-400", text: "Es considerado un numero bajo" };
-  };
+  }, [visitPercentage]);
 
-  const visitStatus = getVisitStatus();
-
-  const currentPeriodNumber = getCurrentPeriodNumber();
-  const currentGoal = getSellerGoal(
-    selectedEmail,
-    currentPeriodNumber as 11 | 12 | 13,
-  ); // Añadido punto y coma
-
-  const periodInfo = getCurrentPeriodInfo();
-
-  const previousPeriodLabel = React.useMemo(() => {
-    switch (selectedPeriod) {
-      case "Diario":
-        return "ayer";
-      case "Ayer":
-        return "antier";
-      case "Semanal":
-        return "la semana previa";
-      case "Mensual":
-        return "el periodo anterior";
-      default:
-        return "el periodo previo";
+  const currentPeriodNumber = periodInfo.periodNumber;
+  const currentPeriodFilteredSales = React.useMemo(() => {
+    if (!selectedEmail) {
+      return [];
     }
-  }, [selectedPeriod]);
+    const { periodStartDate, periodEndDate } = periodInfo;
+    return salesData.filter(
+      (sale) =>
+        sale.email === selectedEmail &&
+        isDateInPeriod(
+          new Date(sale.fechaSinHora),
+          periodStartDate,
+          periodEndDate,
+        ),
+    );
+  }, [periodInfo, salesData, selectedEmail]);
 
-  const currentVsGoalDelta = React.useMemo(() => {
-    if (!currentGoal) {
-      return currentPeriodSales;
-    }
-    return currentPeriodSales - currentGoal;
-  }, [currentGoal, currentPeriodSales]);
-
-  const insightBadges = React.useMemo(
-    () => [
-      {
-        label: "Meta actual",
-        value: currentGoal
-          ? `$${currentGoal.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-          : "Sin meta",
-        tone: "neutral" as const,
-      },
-      {
-        label: "Progreso",
-        value: `${goalProgress ? goalProgress.toFixed(1) : "0.0"}%`,
-        tone:
-          goalProgress >= 100
-            ? ("positive" as const)
-            : goalProgress >= 66
-              ? ("warning" as const)
-              : ("neutral" as const),
-      },
-      {
-        label: `Vs ${previousPeriodLabel}`,
-        value: `${percentageDifference >= 0 ? "+" : ""}${percentageDifference.toFixed(1)}%`,
-        tone:
-          percentageDifference >= 0
-            ? ("positive" as const)
-            : ("negative" as const),
-      },
-    ],
-    [currentGoal, goalProgress, percentageDifference, previousPeriodLabel],
+  const currentPeriodSales = React.useMemo(
+    () => currentPeriodFilteredSales.reduce((sum, sale) => sum + sale.venta, 0),
+    [currentPeriodFilteredSales],
   );
 
+  const currentGoal = React.useMemo(() => {
+    if (!selectedEmail) {
+      return 0;
+    }
+    return getSellerGoal(selectedEmail, currentPeriodNumber as 11 | 12 | 13);
+  }, [currentPeriodNumber, selectedEmail]);
+
+  const periodSalesByEmail = React.useMemo(() => {
+    const totals = new Map<string, number>();
+    const { startDate, endDate } = selectedPeriodRange;
+    for (const sale of salesData) {
+      const saleDate = new Date(sale.fechaSinHora);
+      if (!isDateInPeriod(saleDate, startDate, endDate)) {
+        continue;
+      }
+      totals.set(sale.email, (totals.get(sale.email) || 0) + sale.venta);
+    }
+    return totals;
+  }, [salesData, selectedPeriodRange]);
+
   const topPerformers = React.useMemo(() => {
-    const ranked = emails
-      .map((email) => {
-        const userSales = salesData
-          .filter((sale) => sale.email === email)
-          .filter(
-            (sale) => filterSalesByDate([sale], selectedPeriod).length > 0,
-          );
-        const total = userSales.reduce((sum, sale) => sum + sale.venta, 0);
+    const ranked: Array<{
+      email: string;
+      label: string;
+      total: number;
+      goal: number;
+      goalProgress: number;
+    }> = [];
 
-        // Calculate goal progress - always use monthly goal as reference
-        let goal = 0;
-        let goalProgress = 0;
-        goal = getSellerGoal(
-          email,
-          currentPeriodNumber as
-            | 11
-            | 12
-            | 13
-            | 14
-            | 15
-            | 16
-            | 17
-            | 18
-            | 19
-            | 20
-            | 21
-            | 22
-            | 23
-            | 24
-            | 25,
-        );
-        goalProgress = goal > 0 ? (total / goal) * 100 : 0;
+    for (const email of emails) {
+      const total = periodSalesByEmail.get(email) || 0;
+      if (total <= 0) {
+        continue;
+      }
+      const goal = getSellerGoal(
+        email,
+        currentPeriodNumber as
+          | 11
+          | 12
+          | 13
+          | 14
+          | 15
+          | 16
+          | 17
+          | 18
+          | 19
+          | 20
+          | 21
+          | 22
+          | 23
+          | 24
+          | 25,
+      );
+      const goalProgress = goal > 0 ? (total / goal) * 100 : 0;
+      ranked.push({
+        email,
+        label: emailLabels[email]?.label || email,
+        total,
+        goal,
+        goalProgress,
+      });
+    }
 
-        return {
-          email,
-          label: emailLabels[email]?.label || email,
-          total,
-          goal,
-          goalProgress,
-        };
-      })
-      .filter((item) => item.total > 0)
-      .sort((a, b) => b.total - a.total);
-
+    ranked.sort((a, b) => b.total - a.total);
     return ranked.slice(0, 3);
-  }, [emails, salesData, selectedPeriod, currentPeriodNumber]);
+  }, [currentPeriodNumber, emails, periodSalesByEmail]);
 
   const hasLeaderboard = topPerformers.length > 0;
-
-  const formatCurrency = React.useCallback((value: number) => {
-    return `$${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  }, []);
 
   const goalPacing = React.useMemo(() => {
     if (!currentGoal || selectedPeriod !== "Mensual") {
@@ -630,25 +569,38 @@ export default function Dashboard() {
   const clientInsights = React.useMemo(() => {
     const now = new Date();
     const ATTENTION_THRESHOLD_DAYS = 14;
-    const SIX_MONTHS_AGO = new Date();
-    SIX_MONTHS_AGO.setMonth(SIX_MONTHS_AGO.getMonth() - 6);
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
 
-    const salesByClient = salesData
-      .filter((sale) => sale.email === selectedEmail)
-      .filter(
-        (sale) =>
-          !(sale.clientName || "").toUpperCase().includes("ARCHIVADO NO USAR"),
-      )
-      .reduce(
-        (acc, sale) => {
-          if (!acc[sale.clientName]) {
-            acc[sale.clientName] = [];
-          }
-          acc[sale.clientName].push(sale);
-          return acc;
-        },
-        {} as Record<string, Sale[]>,
-      );
+    if (!selectedEmail) {
+      return {
+        attentionClients: [],
+        topGrowth: [],
+        topDecline: [],
+        attentionThreshold: ATTENTION_THRESHOLD_DAYS,
+      };
+    }
+
+    const salesByClient: Record<string, Sale[]> = {};
+    for (const sale of salesData) {
+      if (sale.email !== selectedEmail) {
+        continue;
+      }
+      const clientName = sale.clientName || "";
+      if (clientName.toUpperCase().includes("ARCHIVADO NO USAR")) {
+        continue;
+      }
+      if (!salesByClient[clientName]) {
+        salesByClient[clientName] = [];
+      }
+      salesByClient[clientName].push(sale);
+    }
+
+    const { startDate, endDate } = selectedPeriodRange;
+    const previousPeriodStartDate = new Date(periodInfo.periodStartDate);
+    previousPeriodStartDate.setDate(previousPeriodStartDate.getDate() - 28);
+    const previousPeriodEndDate = new Date(periodInfo.periodStartDate);
+    previousPeriodEndDate.setDate(previousPeriodEndDate.getDate() - 1);
 
     const clients = Object.entries(salesByClient).map(([client, sales]) => {
       const sortedSales = [...sales].sort(
@@ -667,24 +619,20 @@ export default function Dashboard() {
           );
         }) || null;
 
-      const totalThisPeriod = sales
-        .filter((sale) => filterSalesByDate([sale], selectedPeriod).length > 0)
-        .reduce((sum, sale) => sum + sale.venta, 0);
-
-      const previousPeriodStartDate = new Date(periodInfo.periodStartDate);
-      previousPeriodStartDate.setDate(previousPeriodStartDate.getDate() - 28);
-      const previousPeriodEndDate = new Date(periodInfo.periodStartDate);
-      previousPeriodEndDate.setDate(previousPeriodEndDate.getDate() - 1);
-
-      const totalPreviousPeriod = sales
-        .filter((sale) => {
-          const saleDate = new Date(sale.fechaSinHora);
-          return (
-            saleDate >= previousPeriodStartDate &&
-            saleDate <= previousPeriodEndDate
-          );
-        })
-        .reduce((sum, sale) => sum + sale.venta, 0);
+      let totalThisPeriod = 0;
+      let totalPreviousPeriod = 0;
+      for (const sale of sales) {
+        const saleDate = new Date(sale.fechaSinHora);
+        if (saleDate >= startDate && saleDate <= endDate) {
+          totalThisPeriod += sale.venta;
+        }
+        if (
+          saleDate >= previousPeriodStartDate &&
+          saleDate <= previousPeriodEndDate
+        ) {
+          totalPreviousPeriod += sale.venta;
+        }
+      }
 
       const mostRecentDate = mostRecent
         ? new Date(mostRecent.fechaSinHora)
@@ -694,8 +642,7 @@ export default function Dashboard() {
             (now.getTime() - mostRecentDate.getTime()) / (1000 * 60 * 60 * 24),
           )
         : Infinity;
-      const hasRecentVisit =
-        !!mostRecentDate && mostRecentDate >= SIX_MONTHS_AGO;
+      const hasRecentVisit = !!mostRecentDate && mostRecentDate >= sixMonthsAgo;
       const deltaFromPreviousSale =
         lastPositive && previousPositive
           ? lastPositive.venta - previousPositive.venta
@@ -752,7 +699,7 @@ export default function Dashboard() {
       topDecline,
       attentionThreshold: ATTENTION_THRESHOLD_DAYS,
     };
-  }, [salesData, selectedEmail, selectedPeriod, periodInfo]);
+  }, [periodInfo, salesData, selectedEmail, selectedPeriodRange]);
 
   const selectableEmails = React.useMemo(() => {
     if (!session?.user?.email) return emails;
@@ -766,16 +713,6 @@ export default function Dashboard() {
 
     return emails;
   }, [emails, session]);
-
-  const currentPeriodFilteredSales = React.useMemo(() => {
-    const { periodStartDate, periodEndDate } = getCurrentPeriodInfo();
-    return salesData
-      .filter((sale) => sale.email === selectedEmail)
-      .filter((sale) => {
-        const saleDate = new Date(sale.fechaSinHora);
-        return isDateInPeriod(saleDate, periodStartDate, periodEndDate);
-      });
-  }, [salesData, selectedEmail]);
 
   return (
     <div
@@ -802,7 +739,7 @@ export default function Dashboard() {
       <main className="px-4 py-4 max-w-2xl mx-auto">
         <div className="bg-white rounded-lg mb-3 p-0.5 border border-[#E2E4E9]/70">
           <div className="inline-flex rounded-md w-full relative">
-            {periods.map((period) => (
+            {PERIODS.map((period) => (
               <button
                 key={period}
                 type="button"
@@ -849,8 +786,8 @@ export default function Dashboard() {
             </div>
             {selectedPeriod === "Mensual" && (
               <p className="text-xs text-gray-500 mt-1">
-                Periodo {getCurrentPeriodInfo().periodNumber}, Semana{" "}
-                {getCurrentPeriodInfo().weekInPeriod}
+                Periodo {periodInfo.periodNumber}, Semana{" "}
+                {periodInfo.weekInPeriod}
               </p>
             )}
           </div>
@@ -1673,7 +1610,7 @@ export default function Dashboard() {
         onClose={() => setIsGoalDetailsOpen(false)}
         currentSales={currentPeriodSales}
         goal={currentGoal}
-        periodInfo={getCurrentPeriodInfo()}
+        periodInfo={periodInfo}
         salesData={currentPeriodFilteredSales}
         formatCurrency={formatCurrency}
       />
