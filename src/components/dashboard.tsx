@@ -60,7 +60,7 @@ type Sale = {
 type Role = "vendedor" | "Bodeguero" | "Supervisor";
 
 const emailLabels: Record<string, { label: string; role: Role }> = {
-  "ventas1productoselrey@gmail.com": { label: "Ernesto", role: "vendedor" },
+  "ventas1productoselrey@gmail.com": { label: "Christian", role: "vendedor" },
   "ventas2productoselrey@gmail.com": { label: "Roel", role: "Supervisor" },
   "jesus.chiltepinelrey@gmail.com": { label: "Jesus", role: "Supervisor" },
   "ventas3productoselrey@gmail.com": { label: "Lidia", role: "vendedor" },
@@ -91,7 +91,7 @@ export default function Dashboard() {
   const [showAllSales, setShowAllSales] = useState(false);
   const [goalProgress, setGoalProgress] = useState<number>(0);
   const [currentPeriodSales, setCurrentPeriodSales] = useState<number>(0);
-    const [clientNames, setClientNames] = useState<string[]>([]);
+  const [clientNames, setClientNames] = useState<string[]>([]);
   const [selectedClient, setSelectedClient] = useState<string>("");
   const [clientSales, setClientSales] = useState<Sale[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -799,660 +799,666 @@ export default function Dashboard() {
       </AppHeader>
 
       <main className="px-4 py-4 max-w-2xl mx-auto">
-
-      <div className="bg-white rounded-lg mb-3 p-0.5 border border-[#E2E4E9]/70">
-        <div className="inline-flex rounded-md w-full">
-          {periods.map((period) => (
-            <button
-              key={period}
-              className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-200 ease-in-out ${
-                selectedPeriod === period
-                  ? "bg-gradient-to-r from-blue-500 to-indigo-500 text-white"
-                  : "bg-transparent text-gray-500 hover:text-gray-700"
-              }`}
-              onClick={() => setSelectedPeriod(period)}
-            >
-              {period}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="bg-white mb-3 overflow-hidden -mx-4">
-        <div className="px-9 pt-5 pb-0">
-          <h2 className="text-gray-500 text-xs mb-0.5">Vendido</h2>
-          <div className="flex items-center">
-            <span className="text-4xl font-bold mr-2">
-              ${totalSales.toFixed(2)}
-            </span>
-            <span
-              className={`text-xs px-1.5 py-0.5 rounded-full ${percentageDifference >= 0 ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}
-            >
-              {percentageDifference >= 0 ? "+" : ""}
-              {percentageDifference.toFixed(2)}%
-            </span>
-          </div>
-          {selectedPeriod === "Mensual" && (
-            <p className="text-xs text-gray-500 mt-1">
-              Periodo {getCurrentPeriodInfo().periodNumber}, Semana{" "}
-              {getCurrentPeriodInfo().weekInPeriod}
-            </p>
-          )}
-        </div>
-        <div className="mt-3 h-[180px] w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <AreaChart
-              data={chartData}
-              margin={{ top: 0, right: 0, left: 0, bottom: 0 }}
-            >
-              <defs>
-                <linearGradient id="colorVenta" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <Tooltip
-                formatter={(value: number) => [`$${value.toFixed(2)}`, "Venta"]}
-                labelFormatter={(label) => label}
-                contentStyle={{
-                  fontSize: "10px",
-                  borderRadius: "8px",
-                  border: "none",
-                  boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
-                }}
-              />
-              <Area
-                type="monotone"
-                dataKey="venta"
-                stroke="#3b82f6"
-                fillOpacity={1}
-                fill="url(#colorVenta)"
-                strokeWidth={2}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      {goalPacing && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-3">
-          <div className="bg-white rounded-xl p-4 border border-[#E2E4E9]/70">
-            <h3 className="text-xs font-semibold text-gray-700 mb-1">
-              Ritmo del Periodo
-            </h3>
-            <p className="text-xxs uppercase tracking-wide text-gray-500 mb-3">
-              Seguimiento de meta mensual
-            </p>
-            <div className="grid grid-cols-2 gap-3 text-xs text-gray-600">
-              <div>
-                <p className="text-[10px] uppercase tracking-wide text-gray-500">
-                  Ventas diarias
-                </p>
-                <p className="text-sm font-semibold text-blue-600">
-                  {formatCurrency(goalPacing.achievedDaily || 0)}/día
-                </p>
-              </div>
-              <div>
-                <p className="text-[10px] uppercase tracking-wide text-gray-500">
-                  Ritmo objetivo
-                </p>
-                <p className="text-sm font-semibold text-gray-700">
-                  {formatCurrency(goalPacing.targetDaily || 0)}/día
-                </p>
-              </div>
-              <div>
-                <p className="text-[10px] uppercase tracking-wide text-gray-500">
-                  Días transcurridos
-                </p>
-                <p className="text-sm font-semibold text-gray-700">
-                  {goalPacing.elapsedDays} / {goalPacing.totalDays}
-                </p>
-              </div>
-              <div>
-                <p className="text-[10px] uppercase tracking-wide text-gray-500">
-                  Proyección
-                </p>
-                <p
-                  className={`text-sm font-semibold ${goalPacing.projectedTotal >= currentGoal ? "text-green-600" : "text-amber-600"}`}
-                >
-                  {formatCurrency(goalPacing.projectedTotal || 0)}
-                </p>
-              </div>
-            </div>
-            <div
-              className={`mt-3 border rounded-lg px-3 py-2 text-xs ${goalPacing.paceDifference >= 0 ? "border-green-200 bg-green-50 text-green-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}
-            >
-              {goalPacing.paceDifference >= 0
-                ? `Vas arriba del ritmo por ${formatCurrency(goalPacing.paceDifference)} por día.`
-                : `Debes incrementar ${formatCurrency(Math.abs(goalPacing.paceDifference))} por día para recuperar el objetivo.`}
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl p-4 border border-[#E2E4E9]/70">
-            <h3 className="text-xs font-semibold text-gray-700 mb-1">
-              Hitos de la Meta
-            </h3>
-            <p className="text-xxs uppercase tracking-wide text-gray-500 mb-3">
-              Avance hacia {formatCurrency(currentGoal)}
-            </p>
-            <div className="space-y-2">
-              {goalMilestones.map((milestone) => (
-                <div
-                  key={milestone.threshold}
-                  className={`flex items-center justify-between border rounded-lg px-3 py-2 text-xs ${milestone.achieved ? "border-green-200 bg-green-50 text-green-700" : "border-gray-200 bg-white text-gray-600"}`}
-                >
-                  <div>
-                    <p className="text-[10px] uppercase tracking-wide">
-                      {milestone.threshold}% alcanzado
-                    </p>
-                    <p className="text-sm font-semibold">
-                      {formatCurrency(milestone.required)}
-                    </p>
-                  </div>
-                  {!milestone.achieved && (
-                    <span className="text-xxs text-gray-500">
-                      Faltan {formatCurrency(milestone.remaining)}
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="bg-white rounded-xl p-4 border border-[#E2E4E9]/70">
-            <h3 className="text-xs font-semibold text-gray-700 mb-1">
-              Semana actual
-            </h3>
-            <p className="text-xxs uppercase tracking-wide text-gray-500 mb-3">
-              Contexto del periodo
-            </p>
-            <ul className="text-xs text-gray-600 space-y-2">
-              <li className="flex justify-between">
-                <span>Semana en el periodo</span>
-                <span className="font-semibold">
-                  {goalPacing.weekInPeriod} / 4
-                </span>
-              </li>
-              <li className="flex justify-between">
-                <span>Día de la semana</span>
-                <span className="font-semibold">{goalPacing.dayInWeek}</span>
-              </li>
-              <li className="flex justify-between">
-                <span>Meta restante</span>
-                <span className="font-semibold">
-                  {formatCurrency(
-                    Math.max(0, currentGoal - currentPeriodSales),
-                  )}
-                </span>
-              </li>
-              <li className="flex justify-between">
-                <span>Ventas por lograr/día</span>
-                <span className="font-semibold">
-                  {formatCurrency(
-                    currentGoal > currentPeriodSales
-                      ? (currentGoal - currentPeriodSales) /
-                          Math.max(
-                            1,
-                            goalPacing.totalDays - goalPacing.elapsedDays,
-                          )
-                      : 0,
-                  )}
-                </span>
-              </li>
-            </ul>
-          </div>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-3">
-        <StatisticCard11
-          title="Avance de meta"
-          currentValue={currentPeriodSales}
-          goalValue={currentGoal}
-          periodLabel={selectedPeriod.toLowerCase()}
-          renewsOn={periodInfo.periodEndDate.toLocaleDateString("es-ES", {
-            month: "long",
-            day: "numeric",
-            year: "numeric",
-          })}
-          formatCurrency={formatCurrency}
-          onViewDetails={() => setIsGoalDetailsOpen(true)}
-        />
-
-        <div className="bg-white rounded-xl p-3 border border-[#E2E4E9]/70">
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="text-xs font-semibold text-gray-700">
-              Actividad del Equipo
-            </h2>
-            <span className="text-[10px] uppercase tracking-wide text-purple-500 font-semibold bg-purple-50 px-2 py-0.5 rounded-full">
-              Colaboración
-            </span>
-          </div>
-          {hasLeaderboard ? (
-            <div className="space-y-2">
-              {topPerformers.map((performer, index) => (
-                <div
-                  key={performer.email}
-                  className={`flex items-center justify-between border rounded-lg px-3 py-2 bg-gradient-to-r ${
-                    index === 0
-                      ? "from-yellow-50 to-amber-100 border-amber-200"
-                      : index === 1
-                        ? "from-slate-50 to-slate-100 border-slate-200"
-                        : "from-orange-50 to-orange-100 border-orange-200"
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={`text-xs font-bold w-6 h-6 rounded-full flex items-center justify-center ${
-                        index === 0
-                          ? "bg-amber-400 text-white"
-                          : index === 1
-                            ? "bg-gray-400 text-white"
-                            : "bg-orange-400 text-white"
-                      }`}
-                    >
-                      #{index + 1}
-                    </span>
-                    <div>
-                      <p className="text-xs font-semibold text-gray-700">
-                        {performer.label}
-                      </p>
-                      <p className="text-xxs text-gray-500">
-                        {selectedPeriod} •{" "}
-                        {periodInfo.periodNumber
-                          ? `Periodo ${periodInfo.periodNumber}`
-                          : "Tiempo actual"}
-                      </p>
-                    </div>
-                  </div>
-                  <span className="text-xs font-semibold text-gray-700">
-                    {performer.goal > 0
-                      ? `${performer.goalProgress.toFixed(1)}%`
-                      : formatCurrency(performer.total)}
-                  </span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="h-full flex items-center justify-center text-xs text-gray-500 border border-dashed border-gray-300 rounded-lg py-6">
-              No hay datos del equipo para este periodo.
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
-        <h2 className="text-gray-700 font-semibold mb-2 flex items-center text-xs">
-          <Users className="mr-1.5 h-4 w-4" /> Visitas
-        </h2>
-        <p className="text-sm">
-          Tus Visitas son <strong>{visitsCount}</strong>
-        </p>
-        <p className="text-xs text-gray-500 mb-1.5">{visitStatus.text}</p>
-        <div className="w-full bg-gray-200 h-1.5 rounded-full">
-          <div
-            className={`${visitStatus.color} h-1.5 rounded-full`}
-            style={{ width: `${visitPercentage}%` }}
-          ></div>
-        </div>
-      </div>
-
-      <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
-        <h2 className="text-gray-700 font-semibold mb-2 flex items-center text-xs">
-          <BarChart2 className="mr-1.5 h-4 w-4" /> Ventas por Código
-        </h2>
-        {Object.keys(salesByType).length > 0 ? (
-          <div className="space-y-2">
-            {Object.entries(salesByType)
-              .sort(([, a], [, b]) => b - a)
-              .map(([codigo, venta]) => {
-                const maxVenta = Math.max(...Object.values(salesByType));
-                const percentage = (venta / maxVenta) * 100;
-                return (
-                  <div key={codigo}>
-                    <div className="flex items-center justify-between mb-1">
-                      <p className="text-xs font-medium text-gray-700">
-                        {codigo}
-                      </p>
-                      <p className="text-xs font-semibold text-gray-900">
-                        ${venta.toFixed(2)}
-                      </p>
-                    </div>
-                    <div className="w-full bg-gray-200 h-1.5 rounded-full">
-                      <div
-                        className="bg-blue-500 h-1.5 rounded-full"
-                        style={{ width: `${percentage}%` }}
-                      ></div>
-                    </div>
-                  </div>
-                );
-              })}
-          </div>
-        ) : (
-          <p className="text-xs text-gray-500">
-            No hay ventas en este periodo.
-          </p>
-        )}
-      </div>
-
-      <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
-        <h2 className="text-gray-700 font-semibold mb-2 flex items-center text-xs">
-          <ShoppingBag className="mr-1.5 h-4 w-4" /> Desglose de productos
-        </h2>
-        {Object.keys(productsSold).length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-xs text-left text-gray-500">
-              <thead className="text-xs text-gray-700 uppercase bg-gray-50">
-                <tr>
-                  <th scope="col" className="px-3 py-2">
-                    Producto
-                  </th>
-                  <th scope="col" className="px-3 py-2 text-right">
-                    Cantidad
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {Object.entries(productsSold)
-                  .sort(([, a], [, b]) => b - a)
-                  .map(([product, quantity]) => (
-                    <tr
-                      key={product}
-                      className="bg-white border-b hover:bg-gray-50"
-                    >
-                      <td className="px-3 py-2 font-medium text-gray-900 whitespace-normal">
-                        {product}
-                      </td>
-                      <td className="px-3 py-2 text-right">{quantity}</td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <p className="text-xs text-gray-500">
-            No hay productos vendidos en este periodo.
-          </p>
-        )}
-      </div>
-
-      <div className="bg-white rounded-xl p-3 border border-[#E2E4E9]/70 mb-3 shadow-sm">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h2 className="text-sm font-semibold text-gray-900">
-              Clientes a Vigilar
-            </h2>
-            <p className="text-xs text-gray-500 mt-1">
-              Insights automáticos basados en comportamiento de compra
-            </p>
-          </div>
-          <span className="inline-flex items-center rounded-full bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-700 ring-1 ring-inset ring-indigo-700/10">
-            Inteligencia
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* At Risk Section */}
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="p-1.5 rounded-md bg-amber-100 text-amber-600">
-                <Clock className="h-4 w-4" />
-              </div>
-              <h3 className="text-xs font-medium text-gray-900 uppercase tracking-wide">
-                Necesitan Atención
-              </h3>
-            </div>
-            <div className="space-y-3">
-              {clientInsights.attentionClients.length > 0 ? (
-                clientInsights.attentionClients.map((client) => (
-                  <div
-                    key={client.client}
-                    className="group flex items-start gap-3 p-3 rounded-lg border border-gray-100 bg-gray-50/50 hover:bg-white hover:border-gray-200 hover:shadow-sm transition-all duration-200"
-                  >
-                    <div className="h-8 w-8 rounded-full bg-white border border-gray-200 flex items-center justify-center text-xs font-bold text-gray-500 shadow-sm shrink-0">
-                      {client.client.substring(0, 2).toUpperCase()}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-gray-900 truncate group-hover:text-indigo-600 transition-colors">
-                        {client.client}
-                      </p>
-                      <p className="text-xs text-amber-600 mt-0.5 flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                        Ausente por {client.daysSinceLastPurchase} días
-                      </p>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="flex flex-col items-center justify-center py-8 text-center border border-dashed border-gray-200 rounded-lg bg-gray-50/30">
-                  <div className="p-2 rounded-full bg-gray-100 mb-2">
-                    <CheckCircle2 className="h-4 w-4 text-gray-400" />
-                  </div>
-                  <p className="text-xs text-gray-500">
-                    Todos los clientes activos
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Growth Section */}
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="p-1.5 rounded-md bg-emerald-100 text-emerald-600">
-                <TrendingUp className="h-4 w-4" />
-              </div>
-              <h3 className="text-xs font-medium text-gray-900 uppercase tracking-wide">
-                En Crecimiento
-              </h3>
-            </div>
-            <div className="space-y-3">
-              {clientInsights.topGrowth.length > 0 ? (
-                clientInsights.topGrowth.map((client) => (
-                  <div
-                    key={client.client}
-                    className="group flex items-start gap-3 p-3 rounded-lg border border-gray-100 bg-gray-50/50 hover:bg-white hover:border-gray-200 hover:shadow-sm transition-all duration-200"
-                  >
-                    <div className="h-8 w-8 rounded-full bg-emerald-50 border border-emerald-100 flex items-center justify-center text-xs font-bold text-emerald-600 shadow-sm shrink-0">
-                      <TrendingUp className="h-3.5 w-3.5" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-gray-900 truncate group-hover:text-emerald-700 transition-colors">
-                        {client.client}
-                      </p>
-                      <p className="text-xs text-emerald-600 mt-0.5 font-medium">
-                        +
-                        {formatCurrency(client.deltaFromPreviousSale as number)}{" "}
-                        vs anterior
-                      </p>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="flex flex-col items-center justify-center py-8 text-center border border-dashed border-gray-200 rounded-lg bg-gray-50/30">
-                  <p className="text-xs text-gray-500">
-                    Sin tendencias de crecimiento
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Decline Section */}
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="p-1.5 rounded-md bg-rose-100 text-rose-600">
-                <TrendingDown className="h-4 w-4" />
-              </div>
-              <h3 className="text-xs font-medium text-gray-900 uppercase tracking-wide">
-                En Riesgo
-              </h3>
-            </div>
-            <div className="space-y-3">
-              {clientInsights.topDecline.length > 0 ? (
-                clientInsights.topDecline.map((client) => (
-                  <div
-                    key={client.client}
-                    className="group flex items-start gap-3 p-3 rounded-lg border border-gray-100 bg-gray-50/50 hover:bg-white hover:border-gray-200 hover:shadow-sm transition-all duration-200"
-                  >
-                    <div className="h-8 w-8 rounded-full bg-rose-50 border border-rose-100 flex items-center justify-center text-xs font-bold text-rose-600 shadow-sm shrink-0">
-                      <TrendingDown className="h-3.5 w-3.5" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-gray-900 truncate group-hover:text-rose-700 transition-colors">
-                        {client.client}
-                      </p>
-                      <p className="text-xs text-rose-600 mt-0.5 font-medium">
-                        {formatCurrency(client.deltaFromPreviousSale as number)}{" "}
-                        vs anterior
-                      </p>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="flex flex-col items-center justify-center py-8 text-center border border-dashed border-gray-200 rounded-lg bg-gray-50/30">
-                  <div className="p-2 rounded-full bg-gray-100 mb-2">
-                    <CheckCircle2 className="h-4 w-4 text-gray-400" />
-                  </div>
-                  <p className="text-xs text-gray-500">
-                    Sin caídas significativas
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="bg-white rounded-lg mb-3 border border-[#E2E4E9]">
-        <div className="p-3 pb-1.5">
-          <div className="flex justify-between items-center">
-            <h2 className="text-gray-700 font-semibold flex items-center text-xs">
-              <Clock className="mr-1.5 h-4 w-4" /> Ventas Recientes
-            </h2>
-            <button
-              className="text-blue-600 text-xs"
-              onClick={() => setShowAllSales(!showAllSales)}
-            >
-              {showAllSales ? "Ver Menos" : "Ver Todas"}
-            </button>
-          </div>
-        </div>
-        <div className="px-3">
-          {filteredSales
-            .slice(0, showAllSales ? undefined : 4)
-            .map((sale, index) => (
-              <div
-                key={index}
-                className="flex items-center justify-between py-2 border-b last:border-b-0 cursor-pointer hover:bg-gray-100"
-                onClick={() => setSelectedSale(sale)}
+        <div className="bg-white rounded-lg mb-3 p-0.5 border border-[#E2E4E9]/70">
+          <div className="inline-flex rounded-md w-full">
+            {periods.map((period) => (
+              <button
+                key={period}
+                className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-all duration-200 ease-in-out ${
+                  selectedPeriod === period
+                    ? "bg-gradient-to-r from-blue-500 to-indigo-500 text-white"
+                    : "bg-transparent text-gray-500 hover:text-gray-700"
+                }`}
+                onClick={() => setSelectedPeriod(period)}
               >
-                <div>
-                  <p className="text-xs font-medium">{sale.clientName}</p>
-                  <p className="text-xxs text-gray-500">{sale.codigo}</p>
-                </div>
-                <div className="flex items-center">
-                  <div className="text-right mr-1.5">
-                    <p className="text-xs font-medium">
-                      ${sale.venta.toFixed(2)}
-                    </p>
-                    <p className="text-xxs text-gray-500">
-                      {sale.fechaSinHora}
-                      {sale.submissionTime ? ` • ${sale.submissionTime}` : ""}
-                    </p>
-                  </div>
-                  <ChevronRight className="h-4 w-3 text-gray-400" />
-                </div>
-              </div>
+                {period}
+              </button>
             ))}
+          </div>
         </div>
-      </div>
 
-      <div className="bg-white rounded-lg border border-[#E2E4E9]">
-        <div className="p-3">
-          <div className="mb-2">
-            <h2 className="text-gray-700 font-semibold flex items-center text-xs">
-              <Clock className="mr-1.5 h-4 w-4" /> Historial De Cliente
-            </h2>
-            {selectedClient && (
+        <div className="bg-white mb-3 overflow-hidden -mx-4">
+          <div className="px-9 pt-5 pb-0">
+            <h2 className="text-gray-500 text-xs mb-0.5">Vendido</h2>
+            <div className="flex items-center">
+              <span className="text-4xl font-bold mr-2">
+                ${totalSales.toFixed(2)}
+              </span>
+              <span
+                className={`text-xs px-1.5 py-0.5 rounded-full ${percentageDifference >= 0 ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}
+              >
+                {percentageDifference >= 0 ? "+" : ""}
+                {percentageDifference.toFixed(2)}%
+              </span>
+            </div>
+            {selectedPeriod === "Mensual" && (
               <p className="text-xs text-gray-500 mt-1">
-                Cliente: {selectedClient}
+                Periodo {getCurrentPeriodInfo().periodNumber}, Semana{" "}
+                {getCurrentPeriodInfo().weekInPeriod}
               </p>
             )}
           </div>
-          <div className="relative">
-            <div className="flex items-center border border-gray-300 rounded-full w-full">
-              <Search className="h-4 w-4 text-gray-400 ml-2" />
-              <input
-                type="text"
-                className="appearance-none bg-transparent py-2 pl-2 pr-8 text-base focus:outline-none w-full"
-                placeholder="Buscar cliente..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                style={{ fontSize: "16px" }} // Ensure minimum font size of 16px
-              />
-            </div>
-            {filteredClientNames.length > 0 && (
-              <div className="absolute z-10 mt-1 left-0 right-0 bg-white border border-gray-300 rounded-md shadow-lg">
-                {filteredClientNames.map((name) => (
-                  <div
-                    key={name}
-                    className="px-4 py-2 text-base hover:bg-gray-100 cursor-pointer"
-                    onClick={() => {
-                      setSelectedClient(name);
-                      setSearchTerm("");
-                    }}
+          <div className="mt-3 h-[180px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart
+                data={chartData}
+                margin={{ top: 0, right: 0, left: 0, bottom: 0 }}
+              >
+                <defs>
+                  <linearGradient id="colorVenta" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <Tooltip
+                  formatter={(value: number) => [
+                    `$${value.toFixed(2)}`,
+                    "Venta",
+                  ]}
+                  labelFormatter={(label) => label}
+                  contentStyle={{
+                    fontSize: "10px",
+                    borderRadius: "8px",
+                    border: "none",
+                    boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
+                  }}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="venta"
+                  stroke="#3b82f6"
+                  fillOpacity={1}
+                  fill="url(#colorVenta)"
+                  strokeWidth={2}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {goalPacing && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-3">
+            <div className="bg-white rounded-xl p-4 border border-[#E2E4E9]/70">
+              <h3 className="text-xs font-semibold text-gray-700 mb-1">
+                Ritmo del Periodo
+              </h3>
+              <p className="text-xxs uppercase tracking-wide text-gray-500 mb-3">
+                Seguimiento de meta mensual
+              </p>
+              <div className="grid grid-cols-2 gap-3 text-xs text-gray-600">
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-gray-500">
+                    Ventas diarias
+                  </p>
+                  <p className="text-sm font-semibold text-blue-600">
+                    {formatCurrency(goalPacing.achievedDaily || 0)}/día
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-gray-500">
+                    Ritmo objetivo
+                  </p>
+                  <p className="text-sm font-semibold text-gray-700">
+                    {formatCurrency(goalPacing.targetDaily || 0)}/día
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-gray-500">
+                    Días transcurridos
+                  </p>
+                  <p className="text-sm font-semibold text-gray-700">
+                    {goalPacing.elapsedDays} / {goalPacing.totalDays}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-gray-500">
+                    Proyección
+                  </p>
+                  <p
+                    className={`text-sm font-semibold ${goalPacing.projectedTotal >= currentGoal ? "text-green-600" : "text-amber-600"}`}
                   >
-                    {name}
+                    {formatCurrency(goalPacing.projectedTotal || 0)}
+                  </p>
+                </div>
+              </div>
+              <div
+                className={`mt-3 border rounded-lg px-3 py-2 text-xs ${goalPacing.paceDifference >= 0 ? "border-green-200 bg-green-50 text-green-700" : "border-amber-200 bg-amber-50 text-amber-700"}`}
+              >
+                {goalPacing.paceDifference >= 0
+                  ? `Vas arriba del ritmo por ${formatCurrency(goalPacing.paceDifference)} por día.`
+                  : `Debes incrementar ${formatCurrency(Math.abs(goalPacing.paceDifference))} por día para recuperar el objetivo.`}
+              </div>
+            </div>
+
+            <div className="bg-white rounded-xl p-4 border border-[#E2E4E9]/70">
+              <h3 className="text-xs font-semibold text-gray-700 mb-1">
+                Hitos de la Meta
+              </h3>
+              <p className="text-xxs uppercase tracking-wide text-gray-500 mb-3">
+                Avance hacia {formatCurrency(currentGoal)}
+              </p>
+              <div className="space-y-2">
+                {goalMilestones.map((milestone) => (
+                  <div
+                    key={milestone.threshold}
+                    className={`flex items-center justify-between border rounded-lg px-3 py-2 text-xs ${milestone.achieved ? "border-green-200 bg-green-50 text-green-700" : "border-gray-200 bg-white text-gray-600"}`}
+                  >
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wide">
+                        {milestone.threshold}% alcanzado
+                      </p>
+                      <p className="text-sm font-semibold">
+                        {formatCurrency(milestone.required)}
+                      </p>
+                    </div>
+                    {!milestone.achieved && (
+                      <span className="text-xxs text-gray-500">
+                        Faltan {formatCurrency(milestone.remaining)}
+                      </span>
+                    )}
                   </div>
                 ))}
               </div>
-            )}
-          </div>
-          <div className="max-h-60 overflow-y-auto mt-2">
-            {selectedClient && searchTerm === "" ? (
-              clientSales.length > 0 ? (
-                clientSales
-                  .sort(
-                    (a, b) =>
-                      new Date(b.fechaSinHora).getTime() -
-                      new Date(a.fechaSinHora).getTime(),
-                  )
-                  .map((sale, index) => (
-                    <div
-                      key={index}
-                      className="flex items-center justify-between py-2 border-b last:border-b-0 cursor-pointer hover:bg-gray-100"
-                      onClick={() => setSelectedSale(sale)}
-                    >
-                      <div className="flex items-center">
-                        <div className="text-left">
-                          <p className="text-xs font-medium">
-                            ${sale.venta.toFixed(2)}
-                          </p>
-                          <p className="text-xxs text-gray-500">
-                            {sale.fechaSinHora}
-                            {sale.submissionTime
-                              ? ` • ${sale.submissionTime}`
-                              : ""}
-                          </p>
-                        </div>
-                      </div>
-                      <ChevronRight className="h-4 w-3 text-gray-400" />
-                    </div>
-                  ))
-              ) : (
-                <p className="text-xs text-gray-500 text-center py-4">
-                  No hay ventas para este cliente.
-                </p>
-              )
-            ) : (
-              <p className="text-xs text-gray-500 text-center py-4">
-                Selecciona un cliente para ver su historial de ventas.
+            </div>
+
+            <div className="bg-white rounded-xl p-4 border border-[#E2E4E9]/70">
+              <h3 className="text-xs font-semibold text-gray-700 mb-1">
+                Semana actual
+              </h3>
+              <p className="text-xxs uppercase tracking-wide text-gray-500 mb-3">
+                Contexto del periodo
               </p>
+              <ul className="text-xs text-gray-600 space-y-2">
+                <li className="flex justify-between">
+                  <span>Semana en el periodo</span>
+                  <span className="font-semibold">
+                    {goalPacing.weekInPeriod} / 4
+                  </span>
+                </li>
+                <li className="flex justify-between">
+                  <span>Día de la semana</span>
+                  <span className="font-semibold">{goalPacing.dayInWeek}</span>
+                </li>
+                <li className="flex justify-between">
+                  <span>Meta restante</span>
+                  <span className="font-semibold">
+                    {formatCurrency(
+                      Math.max(0, currentGoal - currentPeriodSales),
+                    )}
+                  </span>
+                </li>
+                <li className="flex justify-between">
+                  <span>Ventas por lograr/día</span>
+                  <span className="font-semibold">
+                    {formatCurrency(
+                      currentGoal > currentPeriodSales
+                        ? (currentGoal - currentPeriodSales) /
+                            Math.max(
+                              1,
+                              goalPacing.totalDays - goalPacing.elapsedDays,
+                            )
+                        : 0,
+                    )}
+                  </span>
+                </li>
+              </ul>
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-3">
+          <StatisticCard11
+            title="Avance de meta"
+            currentValue={currentPeriodSales}
+            goalValue={currentGoal}
+            periodLabel={selectedPeriod.toLowerCase()}
+            renewsOn={periodInfo.periodEndDate.toLocaleDateString("es-ES", {
+              month: "long",
+              day: "numeric",
+              year: "numeric",
+            })}
+            formatCurrency={formatCurrency}
+            onViewDetails={() => setIsGoalDetailsOpen(true)}
+          />
+
+          <div className="bg-white rounded-xl p-3 border border-[#E2E4E9]/70">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-xs font-semibold text-gray-700">
+                Actividad del Equipo
+              </h2>
+              <span className="text-[10px] uppercase tracking-wide text-purple-500 font-semibold bg-purple-50 px-2 py-0.5 rounded-full">
+                Colaboración
+              </span>
+            </div>
+            {hasLeaderboard ? (
+              <div className="space-y-2">
+                {topPerformers.map((performer, index) => (
+                  <div
+                    key={performer.email}
+                    className={`flex items-center justify-between border rounded-lg px-3 py-2 bg-gradient-to-r ${
+                      index === 0
+                        ? "from-yellow-50 to-amber-100 border-amber-200"
+                        : index === 1
+                          ? "from-slate-50 to-slate-100 border-slate-200"
+                          : "from-orange-50 to-orange-100 border-orange-200"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`text-xs font-bold w-6 h-6 rounded-full flex items-center justify-center ${
+                          index === 0
+                            ? "bg-amber-400 text-white"
+                            : index === 1
+                              ? "bg-gray-400 text-white"
+                              : "bg-orange-400 text-white"
+                        }`}
+                      >
+                        #{index + 1}
+                      </span>
+                      <div>
+                        <p className="text-xs font-semibold text-gray-700">
+                          {performer.label}
+                        </p>
+                        <p className="text-xxs text-gray-500">
+                          {selectedPeriod} •{" "}
+                          {periodInfo.periodNumber
+                            ? `Periodo ${periodInfo.periodNumber}`
+                            : "Tiempo actual"}
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-xs font-semibold text-gray-700">
+                      {performer.goal > 0
+                        ? `${performer.goalProgress.toFixed(1)}%`
+                        : formatCurrency(performer.total)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="h-full flex items-center justify-center text-xs text-gray-500 border border-dashed border-gray-300 rounded-lg py-6">
+                No hay datos del equipo para este periodo.
+              </div>
             )}
           </div>
         </div>
-      </div>
+
+        <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
+          <h2 className="text-gray-700 font-semibold mb-2 flex items-center text-xs">
+            <Users className="mr-1.5 h-4 w-4" /> Visitas
+          </h2>
+          <p className="text-sm">
+            Tus Visitas son <strong>{visitsCount}</strong>
+          </p>
+          <p className="text-xs text-gray-500 mb-1.5">{visitStatus.text}</p>
+          <div className="w-full bg-gray-200 h-1.5 rounded-full">
+            <div
+              className={`${visitStatus.color} h-1.5 rounded-full`}
+              style={{ width: `${visitPercentage}%` }}
+            ></div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
+          <h2 className="text-gray-700 font-semibold mb-2 flex items-center text-xs">
+            <BarChart2 className="mr-1.5 h-4 w-4" /> Ventas por Código
+          </h2>
+          {Object.keys(salesByType).length > 0 ? (
+            <div className="space-y-2">
+              {Object.entries(salesByType)
+                .sort(([, a], [, b]) => b - a)
+                .map(([codigo, venta]) => {
+                  const maxVenta = Math.max(...Object.values(salesByType));
+                  const percentage = (venta / maxVenta) * 100;
+                  return (
+                    <div key={codigo}>
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-xs font-medium text-gray-700">
+                          {codigo}
+                        </p>
+                        <p className="text-xs font-semibold text-gray-900">
+                          ${venta.toFixed(2)}
+                        </p>
+                      </div>
+                      <div className="w-full bg-gray-200 h-1.5 rounded-full">
+                        <div
+                          className="bg-blue-500 h-1.5 rounded-full"
+                          style={{ width: `${percentage}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          ) : (
+            <p className="text-xs text-gray-500">
+              No hay ventas en este periodo.
+            </p>
+          )}
+        </div>
+
+        <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
+          <h2 className="text-gray-700 font-semibold mb-2 flex items-center text-xs">
+            <ShoppingBag className="mr-1.5 h-4 w-4" /> Desglose de productos
+          </h2>
+          {Object.keys(productsSold).length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-xs text-left text-gray-500">
+                <thead className="text-xs text-gray-700 uppercase bg-gray-50">
+                  <tr>
+                    <th scope="col" className="px-3 py-2">
+                      Producto
+                    </th>
+                    <th scope="col" className="px-3 py-2 text-right">
+                      Cantidad
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(productsSold)
+                    .sort(([, a], [, b]) => b - a)
+                    .map(([product, quantity]) => (
+                      <tr
+                        key={product}
+                        className="bg-white border-b hover:bg-gray-50"
+                      >
+                        <td className="px-3 py-2 font-medium text-gray-900 whitespace-normal">
+                          {product}
+                        </td>
+                        <td className="px-3 py-2 text-right">{quantity}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-xs text-gray-500">
+              No hay productos vendidos en este periodo.
+            </p>
+          )}
+        </div>
+
+        <div className="bg-white rounded-xl p-3 border border-[#E2E4E9]/70 mb-3 shadow-sm">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900">
+                Clientes a Vigilar
+              </h2>
+              <p className="text-xs text-gray-500 mt-1">
+                Insights automáticos basados en comportamiento de compra
+              </p>
+            </div>
+            <span className="inline-flex items-center rounded-full bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-700 ring-1 ring-inset ring-indigo-700/10">
+              Inteligencia
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* At Risk Section */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="p-1.5 rounded-md bg-amber-100 text-amber-600">
+                  <Clock className="h-4 w-4" />
+                </div>
+                <h3 className="text-xs font-medium text-gray-900 uppercase tracking-wide">
+                  Necesitan Atención
+                </h3>
+              </div>
+              <div className="space-y-3">
+                {clientInsights.attentionClients.length > 0 ? (
+                  clientInsights.attentionClients.map((client) => (
+                    <div
+                      key={client.client}
+                      className="group flex items-start gap-3 p-3 rounded-lg border border-gray-100 bg-gray-50/50 hover:bg-white hover:border-gray-200 hover:shadow-sm transition-all duration-200"
+                    >
+                      <div className="h-8 w-8 rounded-full bg-white border border-gray-200 flex items-center justify-center text-xs font-bold text-gray-500 shadow-sm shrink-0">
+                        {client.client.substring(0, 2).toUpperCase()}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-gray-900 truncate group-hover:text-indigo-600 transition-colors">
+                          {client.client}
+                        </p>
+                        <p className="text-xs text-amber-600 mt-0.5 flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                          Ausente por {client.daysSinceLastPurchase} días
+                        </p>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-8 text-center border border-dashed border-gray-200 rounded-lg bg-gray-50/30">
+                    <div className="p-2 rounded-full bg-gray-100 mb-2">
+                      <CheckCircle2 className="h-4 w-4 text-gray-400" />
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      Todos los clientes activos
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Growth Section */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="p-1.5 rounded-md bg-emerald-100 text-emerald-600">
+                  <TrendingUp className="h-4 w-4" />
+                </div>
+                <h3 className="text-xs font-medium text-gray-900 uppercase tracking-wide">
+                  En Crecimiento
+                </h3>
+              </div>
+              <div className="space-y-3">
+                {clientInsights.topGrowth.length > 0 ? (
+                  clientInsights.topGrowth.map((client) => (
+                    <div
+                      key={client.client}
+                      className="group flex items-start gap-3 p-3 rounded-lg border border-gray-100 bg-gray-50/50 hover:bg-white hover:border-gray-200 hover:shadow-sm transition-all duration-200"
+                    >
+                      <div className="h-8 w-8 rounded-full bg-emerald-50 border border-emerald-100 flex items-center justify-center text-xs font-bold text-emerald-600 shadow-sm shrink-0">
+                        <TrendingUp className="h-3.5 w-3.5" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-gray-900 truncate group-hover:text-emerald-700 transition-colors">
+                          {client.client}
+                        </p>
+                        <p className="text-xs text-emerald-600 mt-0.5 font-medium">
+                          +
+                          {formatCurrency(
+                            client.deltaFromPreviousSale as number,
+                          )}{" "}
+                          vs anterior
+                        </p>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-8 text-center border border-dashed border-gray-200 rounded-lg bg-gray-50/30">
+                    <p className="text-xs text-gray-500">
+                      Sin tendencias de crecimiento
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Decline Section */}
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="p-1.5 rounded-md bg-rose-100 text-rose-600">
+                  <TrendingDown className="h-4 w-4" />
+                </div>
+                <h3 className="text-xs font-medium text-gray-900 uppercase tracking-wide">
+                  En Riesgo
+                </h3>
+              </div>
+              <div className="space-y-3">
+                {clientInsights.topDecline.length > 0 ? (
+                  clientInsights.topDecline.map((client) => (
+                    <div
+                      key={client.client}
+                      className="group flex items-start gap-3 p-3 rounded-lg border border-gray-100 bg-gray-50/50 hover:bg-white hover:border-gray-200 hover:shadow-sm transition-all duration-200"
+                    >
+                      <div className="h-8 w-8 rounded-full bg-rose-50 border border-rose-100 flex items-center justify-center text-xs font-bold text-rose-600 shadow-sm shrink-0">
+                        <TrendingDown className="h-3.5 w-3.5" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-gray-900 truncate group-hover:text-rose-700 transition-colors">
+                          {client.client}
+                        </p>
+                        <p className="text-xs text-rose-600 mt-0.5 font-medium">
+                          {formatCurrency(
+                            client.deltaFromPreviousSale as number,
+                          )}{" "}
+                          vs anterior
+                        </p>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-8 text-center border border-dashed border-gray-200 rounded-lg bg-gray-50/30">
+                    <div className="p-2 rounded-full bg-gray-100 mb-2">
+                      <CheckCircle2 className="h-4 w-4 text-gray-400" />
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      Sin caídas significativas
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg mb-3 border border-[#E2E4E9]">
+          <div className="p-3 pb-1.5">
+            <div className="flex justify-between items-center">
+              <h2 className="text-gray-700 font-semibold flex items-center text-xs">
+                <Clock className="mr-1.5 h-4 w-4" /> Ventas Recientes
+              </h2>
+              <button
+                className="text-blue-600 text-xs"
+                onClick={() => setShowAllSales(!showAllSales)}
+              >
+                {showAllSales ? "Ver Menos" : "Ver Todas"}
+              </button>
+            </div>
+          </div>
+          <div className="px-3">
+            {filteredSales
+              .slice(0, showAllSales ? undefined : 4)
+              .map((sale, index) => (
+                <div
+                  key={index}
+                  className="flex items-center justify-between py-2 border-b last:border-b-0 cursor-pointer hover:bg-gray-100"
+                  onClick={() => setSelectedSale(sale)}
+                >
+                  <div>
+                    <p className="text-xs font-medium">{sale.clientName}</p>
+                    <p className="text-xxs text-gray-500">{sale.codigo}</p>
+                  </div>
+                  <div className="flex items-center">
+                    <div className="text-right mr-1.5">
+                      <p className="text-xs font-medium">
+                        ${sale.venta.toFixed(2)}
+                      </p>
+                      <p className="text-xxs text-gray-500">
+                        {sale.fechaSinHora}
+                        {sale.submissionTime ? ` • ${sale.submissionTime}` : ""}
+                      </p>
+                    </div>
+                    <ChevronRight className="h-4 w-3 text-gray-400" />
+                  </div>
+                </div>
+              ))}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg border border-[#E2E4E9]">
+          <div className="p-3">
+            <div className="mb-2">
+              <h2 className="text-gray-700 font-semibold flex items-center text-xs">
+                <Clock className="mr-1.5 h-4 w-4" /> Historial De Cliente
+              </h2>
+              {selectedClient && (
+                <p className="text-xs text-gray-500 mt-1">
+                  Cliente: {selectedClient}
+                </p>
+              )}
+            </div>
+            <div className="relative">
+              <div className="flex items-center border border-gray-300 rounded-full w-full">
+                <Search className="h-4 w-4 text-gray-400 ml-2" />
+                <input
+                  type="text"
+                  className="appearance-none bg-transparent py-2 pl-2 pr-8 text-base focus:outline-none w-full"
+                  placeholder="Buscar cliente..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  style={{ fontSize: "16px" }} // Ensure minimum font size of 16px
+                />
+              </div>
+              {filteredClientNames.length > 0 && (
+                <div className="absolute z-10 mt-1 left-0 right-0 bg-white border border-gray-300 rounded-md shadow-lg">
+                  {filteredClientNames.map((name) => (
+                    <div
+                      key={name}
+                      className="px-4 py-2 text-base hover:bg-gray-100 cursor-pointer"
+                      onClick={() => {
+                        setSelectedClient(name);
+                        setSearchTerm("");
+                      }}
+                    >
+                      {name}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="max-h-60 overflow-y-auto mt-2">
+              {selectedClient && searchTerm === "" ? (
+                clientSales.length > 0 ? (
+                  clientSales
+                    .sort(
+                      (a, b) =>
+                        new Date(b.fechaSinHora).getTime() -
+                        new Date(a.fechaSinHora).getTime(),
+                    )
+                    .map((sale, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center justify-between py-2 border-b last:border-b-0 cursor-pointer hover:bg-gray-100"
+                        onClick={() => setSelectedSale(sale)}
+                      >
+                        <div className="flex items-center">
+                          <div className="text-left">
+                            <p className="text-xs font-medium">
+                              ${sale.venta.toFixed(2)}
+                            </p>
+                            <p className="text-xxs text-gray-500">
+                              {sale.fechaSinHora}
+                              {sale.submissionTime
+                                ? ` • ${sale.submissionTime}`
+                                : ""}
+                            </p>
+                          </div>
+                        </div>
+                        <ChevronRight className="h-4 w-3 text-gray-400" />
+                      </div>
+                    ))
+                ) : (
+                  <p className="text-xs text-gray-500 text-center py-4">
+                    No hay ventas para este cliente.
+                  </p>
+                )
+              ) : (
+                <p className="text-xs text-gray-500 text-center py-4">
+                  Selecciona un cliente para ver su historial de ventas.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
       </main>
 
       {selectedSale && (

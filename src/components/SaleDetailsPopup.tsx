@@ -2,7 +2,7 @@ import React from "react";
 import { X } from "lucide-react";
 
 const EMAIL_TO_SELLER: Record<string, string> = {
-  "ventas1productoselrey@gmail.com": "Ernesto",
+  "ventas1productoselrey@gmail.com": "Christian",
   "ventas2productoselrey@gmail.com": "Roel",
   "ventas3productoselrey@gmail.com": "Lidia",
   "ventasmztproductoselrey.com@gmail.com": "Mazatlan",

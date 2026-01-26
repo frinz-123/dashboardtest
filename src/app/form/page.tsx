@@ -41,7 +41,7 @@ const OVERRIDE_EMAILS =
 
 // Email labels for vendor selection (matching dashboard labels)
 const EMAIL_LABELS: Record<string, string> = {
-  "ventas1productoselrey@gmail.com": "Ernesto",
+  "ventas1productoselrey@gmail.com": "Christian",
   "ventas2productoselrey@gmail.com": "Roel",
   "ventas3productoselrey@gmail.com": "Lidia",
   "ventasmztproductoselrey.com@gmail.com": "Mazatlan",

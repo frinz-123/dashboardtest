@@ -15,7 +15,7 @@ export const isMasterAccount = (email: string | null | undefined): boolean => {
 
 // Email to vendor label mapping for master account switching
 export const EMAIL_TO_VENDOR_LABELS: Record<string, string> = {
-  "ventas1productoselrey@gmail.com": "Ernesto",
+  "ventas1productoselrey@gmail.com": "Christian",
   "ventas2productoselrey@gmail.com": "Roel",
   "ventas3productoselrey@gmail.com": "Lidia",
   "ventas4productoselrey@gmail.com": "Reyna",

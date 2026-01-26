@@ -66,7 +66,7 @@ export default function AdminPage() {
   const periods: TimePeriod[] = ["Diario", "Semanal", "Mensual", "Anual"];
 
   const sellerEmails = {
-    "ventas1productoselrey@gmail.com": "Ernesto",
+    "ventas1productoselrey@gmail.com": "Christian",
     "ventas2productoselrey@gmail.com": "Roel",
     "ventas3productoselrey@gmail.com": "Lidia",
     "promotoriaelrey@gmail.com": "Brenda",
@@ -509,208 +509,223 @@ export default function AdminPage() {
     >
       <AppHeader title="Admin" icon={BarChart2} />
       <main className="px-4 py-4 max-w-2xl mx-auto">
-
-      <div className="bg-gray-100 rounded-lg mb-3 p-0.5">
-        <div className="inline-flex rounded-md w-full">
-          {periods.map((period) => (
-            <button
-              key={period}
-              className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-colors duration-200 ease-in-out ${
-                selectedPeriod === period
-                  ? "bg-white text-gray-900"
-                  : "bg-gray-100 text-gray-500 hover:text-gray-700"
-              }`}
-              onClick={() => setSelectedPeriod(period)}
-            >
-              {period}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
-        <h2 className="text-gray-500 text-xs mb-0.5 flex items-center">
-          <DollarSign className="h-4 w-4 mr-1" />
-          Total Ventas
-        </h2>
-        <div className="flex items-center">
-          <span className="text-2xl font-bold mr-2">
-            ${totalSales.toFixed(2)}
-          </span>
-          <span
-            className={`text-xs px-1.5 py-0.5 rounded-full ${percentageDifference >= 0 ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}
-          >
-            {percentageDifference >= 0 ? "+" : ""}
-            {percentageDifference.toFixed(2)}%
-          </span>
-        </div>
-        {selectedPeriod === "Mensual" && (
-          <p className="text-xs text-gray-500 mt-1">
-            Periodo {getCurrentPeriodInfo().periodNumber}, Semana{" "}
-            {getCurrentPeriodInfo().weekInPeriod}
-          </p>
-        )}
-        <div className="mt-3 h-[160px] w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={chartData}>
-              <XAxis
-                dataKey="x"
-                tickFormatter={(value) => value}
-                tick={{ fontSize: 8 }}
-              />
-              <YAxis hide />
-              <Tooltip
-                formatter={(value: number) => [`$${value.toFixed(2)}`, "Venta"]}
-                labelFormatter={(label) => label}
-                contentStyle={{ fontSize: "10px" }}
-              />
-              <Line
-                type="monotone"
-                dataKey="venta"
-                stroke="#3b82f6"
-                strokeWidth={1.5}
-                dot={false}
-              />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
-        <h2 className="text-gray-700 font-semibold mb-2 flex items-center text-xs">
-          <BarChart2 className="mr-1.5 h-4 w-4" /> Productos Más Vendidos
-        </h2>
-        <div className="mt-3 h-[300px] w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie
-                data={productStats}
-                cx="50%"
-                cy="50%"
-                outerRadius={100}
-                fill="#8884d8"
-                dataKey="value"
-                labelLine={true}
-                label={({ name, percent, x, y, cx }) => {
-                  return (
-                    <text
-                      x={x}
-                      y={y}
-                      fill="#666"
-                      textAnchor={x > cx ? "start" : "end"}
-                      dominantBaseline="central"
-                      fontSize={11}
-                    >
-                      {`${(percent * 100).toFixed(0)}%`}
-                    </text>
-                  );
-                }}
+        <div className="bg-gray-100 rounded-lg mb-3 p-0.5">
+          <div className="inline-flex rounded-md w-full">
+            {periods.map((period) => (
+              <button
+                key={period}
+                className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-md transition-colors duration-200 ease-in-out ${
+                  selectedPeriod === period
+                    ? "bg-white text-gray-900"
+                    : "bg-gray-100 text-gray-500 hover:text-gray-700"
+                }`}
+                onClick={() => setSelectedPeriod(period)}
               >
-                {productStats.map((entry, index) => (
-                  <Cell
-                    key={`cell-${index}`}
-                    fill={COLORS[index % COLORS.length]}
-                  />
-                ))}
-              </Pie>
-              <Tooltip
-                formatter={(value: number) => [`${value} unidades`, "Cantidad"]}
-                contentStyle={{ fontSize: "12px" }}
-              />
-            </PieChart>
-          </ResponsiveContainer>
+                {period}
+              </button>
+            ))}
+          </div>
         </div>
-        <div className="mt-4 space-y-2">
-          {productStats.map((product, index) => (
-            <div
-              key={index}
-              className="flex items-center justify-between text-xs"
-            >
-              <div className="flex items-center">
-                <div
-                  className="w-3 h-3 rounded-full mr-2"
-                  style={{ backgroundColor: COLORS[index % COLORS.length] }}
-                />
-                <span>{product.name}</span>
-              </div>
-              <span className="font-medium">{product.value} unidades</span>
-            </div>
-          ))}
-        </div>
-      </div>
 
-      <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
-        <div className="flex justify-between items-center mb-2">
-          <h2 className="text-gray-700 font-semibold flex items-center text-xs">
-            <BarChart2 className="mr-1.5 h-4 w-4" /> Tiendas Estrella
+        <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
+          <h2 className="text-gray-500 text-xs mb-0.5 flex items-center">
+            <DollarSign className="h-4 w-4 mr-1" />
+            Total Ventas
           </h2>
-          <button
-            onClick={() => setIsStoresExpanded(!isStoresExpanded)}
-            className="text-xs text-blue-600 hover:text-blue-700 font-medium"
-          >
-            {isStoresExpanded ? "Ver Menos" : "Ver Más"}
-          </button>
-        </div>
-        <div className="space-y-3">
-          {topStores.slice(0, isStoresExpanded ? 25 : 5).map((store, index) => (
-            <div key={index} className="relative">
-              <div className="flex justify-between items-center mb-1 text-xs">
-                <span
-                  className="font-medium truncate pr-2"
-                  style={{ maxWidth: "70%" }}
-                >
-                  {store.name}
-                </span>
-                <span className="text-gray-600">${store.value.toFixed(2)}</span>
-              </div>
-              <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
-                <div
-                  className="h-full rounded-full"
-                  style={{
-                    width: `${(store.value / topStores[0].value) * 100}%`,
-                    backgroundColor: STORE_COLORS[index % STORE_COLORS.length],
-                  }}
-                />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
-        <h2 className="text-gray-700 font-semibold mb-2 flex items-center text-xs">
-          <BarChart2 className="mr-1.5 h-4 w-4" /> Comparativa Vendedores
-        </h2>
-        <div className="mt-3 h-[200px] w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={sellerComparison}>
-              <XAxis dataKey="name" tick={{ fontSize: 10 }} />
-              <YAxis
-                tick={{ fontSize: 10 }}
-                tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
-              />
-              <Tooltip
-                formatter={(value: number) => [`$${value.toFixed(2)}`, "Venta"]}
-                contentStyle={{ fontSize: "12px" }}
-              />
-              <Bar dataKey="venta" fill="#3b82f6" />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-        <div className="mt-4 space-y-2">
-          {sellerComparison.map((seller, index) => (
-            <div
-              key={index}
-              className="flex items-center justify-between text-xs"
+          <div className="flex items-center">
+            <span className="text-2xl font-bold mr-2">
+              ${totalSales.toFixed(2)}
+            </span>
+            <span
+              className={`text-xs px-1.5 py-0.5 rounded-full ${percentageDifference >= 0 ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}
             >
-              <span className="font-medium">{seller.name}</span>
-              <span className="text-gray-600">${seller.venta.toFixed(2)}</span>
-            </div>
-          ))}
+              {percentageDifference >= 0 ? "+" : ""}
+              {percentageDifference.toFixed(2)}%
+            </span>
+          </div>
+          {selectedPeriod === "Mensual" && (
+            <p className="text-xs text-gray-500 mt-1">
+              Periodo {getCurrentPeriodInfo().periodNumber}, Semana{" "}
+              {getCurrentPeriodInfo().weekInPeriod}
+            </p>
+          )}
+          <div className="mt-3 h-[160px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={chartData}>
+                <XAxis
+                  dataKey="x"
+                  tickFormatter={(value) => value}
+                  tick={{ fontSize: 8 }}
+                />
+                <YAxis hide />
+                <Tooltip
+                  formatter={(value: number) => [
+                    `$${value.toFixed(2)}`,
+                    "Venta",
+                  ]}
+                  labelFormatter={(label) => label}
+                  contentStyle={{ fontSize: "10px" }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="venta"
+                  stroke="#3b82f6"
+                  strokeWidth={1.5}
+                  dot={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
         </div>
-      </div>
 
-      {/* More admin content can be added here */}
+        <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
+          <h2 className="text-gray-700 font-semibold mb-2 flex items-center text-xs">
+            <BarChart2 className="mr-1.5 h-4 w-4" /> Productos Más Vendidos
+          </h2>
+          <div className="mt-3 h-[300px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={productStats}
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={100}
+                  fill="#8884d8"
+                  dataKey="value"
+                  labelLine={true}
+                  label={({ name, percent, x, y, cx }) => {
+                    return (
+                      <text
+                        x={x}
+                        y={y}
+                        fill="#666"
+                        textAnchor={x > cx ? "start" : "end"}
+                        dominantBaseline="central"
+                        fontSize={11}
+                      >
+                        {`${(percent * 100).toFixed(0)}%`}
+                      </text>
+                    );
+                  }}
+                >
+                  {productStats.map((entry, index) => (
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={COLORS[index % COLORS.length]}
+                    />
+                  ))}
+                </Pie>
+                <Tooltip
+                  formatter={(value: number) => [
+                    `${value} unidades`,
+                    "Cantidad",
+                  ]}
+                  contentStyle={{ fontSize: "12px" }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="mt-4 space-y-2">
+            {productStats.map((product, index) => (
+              <div
+                key={index}
+                className="flex items-center justify-between text-xs"
+              >
+                <div className="flex items-center">
+                  <div
+                    className="w-3 h-3 rounded-full mr-2"
+                    style={{ backgroundColor: COLORS[index % COLORS.length] }}
+                  />
+                  <span>{product.name}</span>
+                </div>
+                <span className="font-medium">{product.value} unidades</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
+          <div className="flex justify-between items-center mb-2">
+            <h2 className="text-gray-700 font-semibold flex items-center text-xs">
+              <BarChart2 className="mr-1.5 h-4 w-4" /> Tiendas Estrella
+            </h2>
+            <button
+              onClick={() => setIsStoresExpanded(!isStoresExpanded)}
+              className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+            >
+              {isStoresExpanded ? "Ver Menos" : "Ver Más"}
+            </button>
+          </div>
+          <div className="space-y-3">
+            {topStores
+              .slice(0, isStoresExpanded ? 25 : 5)
+              .map((store, index) => (
+                <div key={index} className="relative">
+                  <div className="flex justify-between items-center mb-1 text-xs">
+                    <span
+                      className="font-medium truncate pr-2"
+                      style={{ maxWidth: "70%" }}
+                    >
+                      {store.name}
+                    </span>
+                    <span className="text-gray-600">
+                      ${store.value.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full"
+                      style={{
+                        width: `${(store.value / topStores[0].value) * 100}%`,
+                        backgroundColor:
+                          STORE_COLORS[index % STORE_COLORS.length],
+                      }}
+                    />
+                  </div>
+                </div>
+              ))}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
+          <h2 className="text-gray-700 font-semibold mb-2 flex items-center text-xs">
+            <BarChart2 className="mr-1.5 h-4 w-4" /> Comparativa Vendedores
+          </h2>
+          <div className="mt-3 h-[200px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={sellerComparison}>
+                <XAxis dataKey="name" tick={{ fontSize: 10 }} />
+                <YAxis
+                  tick={{ fontSize: 10 }}
+                  tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
+                />
+                <Tooltip
+                  formatter={(value: number) => [
+                    `$${value.toFixed(2)}`,
+                    "Venta",
+                  ]}
+                  contentStyle={{ fontSize: "12px" }}
+                />
+                <Bar dataKey="venta" fill="#3b82f6" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="mt-4 space-y-2">
+            {sellerComparison.map((seller, index) => (
+              <div
+                key={index}
+                className="flex items-center justify-between text-xs"
+              >
+                <span className="font-medium">{seller.name}</span>
+                <span className="text-gray-600">
+                  ${seller.venta.toFixed(2)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* More admin content can be added here */}
       </main>
     </div>
   );

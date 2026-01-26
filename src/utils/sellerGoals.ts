@@ -37,7 +37,7 @@ interface SellerGoals {
 
 const sellerGoals: SellerGoals = {
   "ventas1productoselrey@gmail.com": {
-    // Ernesto
+    // Christian
     11: 205826.71,
     12: 234314.28,
     13: 250245.79,
