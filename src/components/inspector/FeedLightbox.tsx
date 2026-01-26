@@ -32,6 +32,10 @@ type FeedLightboxProps = {
     review: FeedReview | null;
     onMarkReviewed: (note?: string) => Promise<void>;
     isSubmittingReview: boolean;
+    isReadOnly?: boolean;
+    isSeen?: boolean;
+    onMarkSeen?: () => Promise<void> | void;
+    isMarkingSeen?: boolean;
 };
 
 const CODE_COLORS: Record<string, string> = {
@@ -52,6 +56,10 @@ export default function FeedLightbox({
     review,
     onMarkReviewed,
     isSubmittingReview,
+    isReadOnly = false,
+    isSeen = false,
+    onMarkSeen,
+    isMarkingSeen = false,
 }: FeedLightboxProps) {
     const [currentIndex, setCurrentIndex] = useState(initialPhotoIndex);
     const [showNoteInput, setShowNoteInput] = useState(false);
@@ -72,6 +80,10 @@ export default function FeedLightbox({
         month: "long",
     });
     const timeStr = sale.submissionTime?.split(" ")[1]?.slice(0, 5) || "";
+    const reviewerName = review?.reviewedBy
+        ? EMAIL_TO_VENDOR_LABELS[review.reviewedBy] ||
+          review.reviewedBy.split("@")[0]
+        : null;
 
     const goToPrevious = useCallback(() => {
         setCurrentIndex((prev) =>
@@ -131,6 +143,7 @@ export default function FeedLightbox({
                     </div>
                 </div>
                 <button
+                    type="button"
                     onClick={onClose}
                     className="p-2 rounded-full hover:bg-white/10 transition-colors"
                 >
@@ -146,12 +159,14 @@ export default function FeedLightbox({
                     {sale.photoUrls.length > 1 && (
                         <>
                             <button
+                                type="button"
                                 onClick={goToPrevious}
                                 className="absolute left-4 p-2 rounded-full bg-black/50 hover:bg-black/70 text-white transition-colors z-10"
                             >
                                 <ChevronLeft className="w-6 h-6" />
                             </button>
                             <button
+                                type="button"
                                 onClick={goToNext}
                                 className="absolute right-4 p-2 rounded-full bg-black/50 hover:bg-black/70 text-white transition-colors z-10"
                             >
@@ -170,9 +185,10 @@ export default function FeedLightbox({
                     {/* Photo Counter */}
                     {sale.photoUrls.length > 1 && (
                         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2">
-                            {sale.photoUrls.map((_, idx) => (
+                            {sale.photoUrls.map((url, idx) => (
                                 <button
-                                    key={idx}
+                                    type="button"
+                                    key={`${sale.email}-${sale.fechaSinHora}-${url}`}
                                     onClick={() => setCurrentIndex(idx)}
                                     className={`w-2 h-2 rounded-full transition-colors ${
                                         idx === currentIndex
@@ -257,12 +273,38 @@ export default function FeedLightbox({
                                             }
                                         )}
                                     </p>
+                                    {isReadOnly && reviewerName && (
+                                        <p className="text-xs text-gray-500">
+                                            Comentario de {reviewerName}
+                                        </p>
+                                    )}
                                     {review.note && (
                                         <div className="bg-gray-50 rounded-lg p-3 text-sm text-gray-700">
                                             {review.note}
                                         </div>
                                     )}
+                                    {isReadOnly && onMarkSeen ? (
+                                        isSeen ? (
+                                            <div className="flex items-center gap-1 text-xs text-gray-500">
+                                                <Check className="w-3 h-3" />
+                                                Visto
+                                            </div>
+                                        ) : (
+                                            <button
+                                                type="button"
+                                                onClick={onMarkSeen}
+                                                disabled={isMarkingSeen}
+                                                className="px-3 py-2 text-xs font-semibold rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                                            >
+                                                {isMarkingSeen ? "Guardando..." : "Marcar visto"}
+                                            </button>
+                                        )
+                                    ) : null}
                                 </div>
+                            ) : isReadOnly ? (
+                                <p className="text-xs text-gray-500">
+                                    Sin comentarios
+                                </p>
                             ) : (
                                 <div className="space-y-3">
                                     {showNoteInput ? (
@@ -273,10 +315,10 @@ export default function FeedLightbox({
                                                 placeholder="Agregar nota (opcional)..."
                                                 className="w-full p-3 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
                                                 rows={3}
-                                                autoFocus
                                             />
                                             <div className="flex gap-2">
                                                 <button
+                                                    type="button"
                                                     onClick={() => {
                                                         setShowNoteInput(false);
                                                         setNoteText("");
@@ -286,6 +328,7 @@ export default function FeedLightbox({
                                                     Cancelar
                                                 </button>
                                                 <button
+                                                    type="button"
                                                     onClick={handleMarkReviewed}
                                                     disabled={isSubmittingReview}
                                                     className="flex-1 px-3 py-2 text-sm bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
@@ -304,6 +347,7 @@ export default function FeedLightbox({
                                     ) : (
                                         <div className="flex gap-2">
                                             <button
+                                                type="button"
                                                 onClick={handleMarkReviewed}
                                                 disabled={isSubmittingReview}
                                                 className="flex-1 px-3 py-2.5 text-sm bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
@@ -318,6 +362,7 @@ export default function FeedLightbox({
                                                 )}
                                             </button>
                                             <button
+                                                type="button"
                                                 onClick={() => setShowNoteInput(true)}
                                                 className="px-3 py-2.5 text-sm border border-gray-200 text-gray-600 rounded-lg hover:bg-gray-50 transition-colors"
                                                 title="Agregar nota"
@@ -339,7 +384,8 @@ export default function FeedLightbox({
                                 <div className="flex gap-2 overflow-x-auto pb-2">
                                     {sale.photoUrls.map((url, idx) => (
                                         <button
-                                            key={idx}
+                                            type="button"
+                                            key={`${sale.email}-${sale.fechaSinHora}-${url}`}
                                             onClick={() => setCurrentIndex(idx)}
                                             className={`w-14 h-14 rounded-lg overflow-hidden flex-shrink-0 border-2 transition-colors ${
                                                 idx === currentIndex

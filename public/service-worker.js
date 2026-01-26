@@ -3,7 +3,7 @@
  *
  * This service worker handles:
  * 1. Background Sync - Process queued orders when connection is restored
- * 2. Push Notifications - Show notifications for order status
+ * 2. Background tools for offline support
  *
  * Note: Workbox (next-pwa) handles runtime caching.
  */
@@ -44,40 +44,6 @@ self.addEventListener("periodicsync", (event) => {
     }
 });
 
-// Push notification event
-self.addEventListener("push", (event) => {
-    const data = event.data?.json() || {
-        title: "El Rey",
-        body: "Notificacion",
-    };
-    const options = {
-        body: data.body,
-        icon: "/icons/icon-192x192.png",
-        badge: "/icons/icon-192x192.png",
-        vibrate: [100, 50, 100],
-        data: data.data || {},
-        actions: data.actions || [],
-    };
-
-    event.waitUntil(self.registration.showNotification(data.title, options));
-});
-
-// Notification click event
-self.addEventListener("notificationclick", (event) => {
-    event.notification.close();
-
-    event.waitUntil(
-        self.clients.matchAll({ type: "window" }).then((clients) => {
-            // Focus existing window or open new one
-            for (const client of clients) {
-                if (client.url.includes("/form") && "focus" in client) {
-                    return client.focus();
-                }
-            }
-            return self.clients.openWindow("/form");
-        }),
-    );
-});
 
 // Message event - handle messages from main thread
 self.addEventListener("message", (event) => {
@@ -159,7 +125,9 @@ async function deletePhotoRecords(ids) {
         const transaction = db.transaction([PHOTO_STORE_NAME], "readwrite");
         const store = transaction.objectStore(PHOTO_STORE_NAME);
 
-        ids.forEach((id) => store.delete(id));
+        ids.forEach((id) => {
+            store.delete(id);
+        });
 
         transaction.oncomplete = () => resolve();
         transaction.onerror = () => reject(transaction.error);
