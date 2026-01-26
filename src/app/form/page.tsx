@@ -1,12 +1,12 @@
 "use client";
 
 import { ShoppingCart } from "lucide-react";
-import AppHeader from "@/components/AppHeader";
+import dynamic from "next/dynamic";
 import { useSession } from "next-auth/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import dynamic from "next/dynamic";
+import AppHeader from "@/components/AppHeader";
 import CleyPhotoCapture, {
-  CleyPhotoPreview,
+  type CleyPhotoPreview,
 } from "@/components/CleyPhotoCapture";
 import CleyOrderQuestion from "@/components/comp-166";
 import BlurIn from "@/components/ui/blur-in";
@@ -899,6 +899,7 @@ export default function FormPage() {
     addToQueue,
     retryItem,
     removeItem,
+    clearQueue,
     refreshStaleLocation,
   } = useSubmissionQueue();
 
@@ -1002,7 +1003,9 @@ export default function FormPage() {
   }, [cleyPhotos]);
 
   const revokeCleyPhotoPreviews = useCallback((photos: CleyPhotoPreview[]) => {
-    photos.forEach((photo) => URL.revokeObjectURL(photo.previewUrl));
+    photos.forEach((photo) => {
+      URL.revokeObjectURL(photo.previewUrl);
+    });
   }, []);
 
   const resetCleyPhotoUi = useCallback(() => {
@@ -1323,6 +1326,21 @@ export default function FormPage() {
     // The Map component will trigger handleLocationUpdate with fresh location
     // We set a flag so that when location updates, we know to refresh the queue item
   }, []);
+
+  const handleClearQueue = useCallback(async () => {
+    if (queueState.pendingCount === 0) return;
+    try {
+      await clearQueue();
+      success(
+        "Pendientes limpiados",
+        "Se eliminaron los pedidos en cola.",
+        3000,
+      );
+    } catch (err) {
+      console.error("Error clearing queue:", err);
+      error("No se pudo limpiar", "Intenta de nuevo.", 3000);
+    }
+  }, [clearQueue, queueState.pendingCount, success, error]);
 
   useEffect(() => {
     try {
@@ -1782,6 +1800,7 @@ export default function FormPage() {
         onRefreshLocation={handleRefreshLocationForQueue}
         onRetry={retryItem}
         onRemove={removeItem}
+        onClearQueue={handleClearQueue}
         isRefreshingLocation={isRefreshingLocation}
       />
 
@@ -2083,7 +2102,10 @@ export default function FormPage() {
         {Object.values(quantities).some((q) => q > 0) && (
           <div
             className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 p-4 z-40 animate-in slide-in-from-bottom duration-300"
-            style={{ boxShadow: '0 -1px 2px rgba(0,0,0,0.03), 0 -2px 4px rgba(0,0,0,0.03), 0 -4px 8px rgba(0,0,0,0.03), 0 -8px 16px rgba(0,0,0,0.03), 0 -16px 32px rgba(0,0,0,0.02)' }}
+            style={{
+              boxShadow:
+                "0 -1px 2px rgba(0,0,0,0.03), 0 -2px 4px rgba(0,0,0,0.03), 0 -4px 8px rgba(0,0,0,0.03), 0 -8px 16px rgba(0,0,0,0.03), 0 -16px 32px rgba(0,0,0,0.02)",
+            }}
           >
             <div className="max-w-md mx-auto">
               <div className="flex items-center justify-between mb-3">

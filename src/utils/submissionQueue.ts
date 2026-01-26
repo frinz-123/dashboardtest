@@ -75,8 +75,8 @@ class SubmissionQueue {
   }
 
   /**
-     * Clean up old fingerprints periodically
-     */
+   * Clean up old fingerprints periodically
+   */
   private cleanupFingerprints() {
     if (typeof window === "undefined") return;
 
@@ -94,16 +94,15 @@ class SubmissionQueue {
   }
 
   /**
-     * Generate a fingerprint for a submission payload to detect duplicates
-     * Uses client name, products, and a time window
-     */
+   * Generate a fingerprint for a submission payload to detect duplicates
+   * Uses client name, products, and a time window
+   */
   private generateFingerprint(payload: QueuedSubmission["payload"]): string {
     // Create a deterministic string from the key fields
     const productKeys = Object.keys(payload.products).sort();
     const productString = productKeys
       .map(
-        (k) =>
-          `${k}:${payload.products[k as keyof typeof payload.products]}`,
+        (k) => `${k}:${payload.products[k as keyof typeof payload.products]}`,
       )
       .join("|");
     const photoCount =
@@ -118,8 +117,8 @@ class SubmissionQueue {
   }
 
   /**
-     * Check if a submission is a duplicate based on content fingerprint
-     */
+   * Check if a submission is a duplicate based on content fingerprint
+   */
   async isDuplicate(
     payload: QueuedSubmission["payload"],
   ): Promise<{ isDuplicate: boolean; existingId?: string }> {
@@ -127,10 +126,7 @@ class SubmissionQueue {
 
     // Check in-memory cache first
     if (this.recentFingerprints.has(fingerprint)) {
-      console.warn(
-        "🔄 DUPLICATE DETECTED (fingerprint match):",
-        fingerprint,
-      );
+      console.warn("🔄 DUPLICATE DETECTED (fingerprint match):", fingerprint);
       return { isDuplicate: true };
     }
 
@@ -152,9 +148,9 @@ class SubmissionQueue {
   }
 
   /**
-     * Request Background Sync to process the queue
-     * Falls back to manual processing if Background Sync is not supported
-     */
+   * Request Background Sync to process the queue
+   * Falls back to manual processing if Background Sync is not supported
+   */
   async requestBackgroundSync(): Promise<boolean> {
     if (typeof window === "undefined" || !("serviceWorker" in navigator)) {
       console.log("Background Sync not available: no service worker");
@@ -219,29 +215,27 @@ class SubmissionQueue {
   }
 
   private notifyListeners() {
-    this.listeners.forEach((listener) => listener());
+    this.listeners.forEach((listener) => {
+      listener();
+    });
   }
 
   /**
-     * Subscribe to queue changes
-     */
+   * Subscribe to queue changes
+   */
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
   }
 
   /**
-     * Add a submission to the queue
-     * Returns the queued submission, or throws if it's a duplicate
-     */
+   * Add a submission to the queue
+   * Returns the queued submission, or throws if it's a duplicate
+   */
   async add(
     submission: Omit<
       QueuedSubmission,
-      | "status"
-      | "createdAt"
-      | "lastAttemptAt"
-      | "retryCount"
-      | "errorMessage"
+      "status" | "createdAt" | "lastAttemptAt" | "retryCount" | "errorMessage"
     >,
   ): Promise<QueuedSubmission> {
     await this.dbReady;
@@ -275,10 +269,7 @@ class SubmissionQueue {
 
     if (this.db) {
       return new Promise((resolve, reject) => {
-        const transaction = this.db!.transaction(
-          [STORE_NAME],
-          "readwrite",
-        );
+        const transaction = this.db!.transaction([STORE_NAME], "readwrite");
         const store = transaction.objectStore(STORE_NAME);
         const request = store.add(queuedSubmission);
 
@@ -288,10 +279,7 @@ class SubmissionQueue {
 
           // Request Background Sync to process when online
           this.requestBackgroundSync().catch((err) => {
-            console.log(
-              "Background Sync not triggered:",
-              err.message,
-            );
+            console.log("Background Sync not triggered:", err.message);
           });
 
           resolve(queuedSubmission);
@@ -319,17 +307,14 @@ class SubmissionQueue {
   }
 
   /**
-     * Get all pending submissions
-     */
+   * Get all pending submissions
+   */
   async getPending(): Promise<QueuedSubmission[]> {
     await this.dbReady;
 
     if (this.db) {
       return new Promise((resolve, reject) => {
-        const transaction = this.db!.transaction(
-          [STORE_NAME],
-          "readonly",
-        );
+        const transaction = this.db!.transaction([STORE_NAME], "readonly");
         const store = transaction.objectStore(STORE_NAME);
         const request = store.getAll();
 
@@ -346,26 +331,18 @@ class SubmissionQueue {
       });
     }
 
-    return this.getLocalStorageQueue().filter(
-      (s) => s.status !== "completed",
-    );
+    return this.getLocalStorageQueue().filter((s) => s.status !== "completed");
   }
 
   /**
-     * Update a submission's status
-     */
-  async update(
-    id: string,
-    updates: Partial<QueuedSubmission>,
-  ): Promise<void> {
+   * Update a submission's status
+   */
+  async update(id: string, updates: Partial<QueuedSubmission>): Promise<void> {
     await this.dbReady;
 
     if (this.db) {
       return new Promise((resolve, reject) => {
-        const transaction = this.db!.transaction(
-          [STORE_NAME],
-          "readwrite",
-        );
+        const transaction = this.db!.transaction([STORE_NAME], "readwrite");
         const store = transaction.objectStore(STORE_NAME);
         const getRequest = store.get(id);
 
@@ -402,17 +379,14 @@ class SubmissionQueue {
   }
 
   /**
-     * Remove a submission from the queue
-     */
+   * Remove a submission from the queue
+   */
   async remove(id: string): Promise<void> {
     await this.dbReady;
 
     if (this.db) {
       return new Promise((resolve, reject) => {
-        const transaction = this.db!.transaction(
-          [STORE_NAME],
-          "readwrite",
-        );
+        const transaction = this.db!.transaction([STORE_NAME], "readwrite");
         const store = transaction.objectStore(STORE_NAME);
         const request = store.delete(id);
 
@@ -432,8 +406,8 @@ class SubmissionQueue {
   }
 
   /**
-     * Update location for a queued submission
-     */
+   * Update location for a queued submission
+   */
   async updateLocation(
     id: string,
     location: QueuedSubmission["payload"]["location"],
@@ -449,17 +423,14 @@ class SubmissionQueue {
   }
 
   /**
-     * Get a specific submission by ID
-     */
+   * Get a specific submission by ID
+   */
   async getById(id: string): Promise<QueuedSubmission | null> {
     await this.dbReady;
 
     if (this.db) {
       return new Promise((resolve, reject) => {
-        const transaction = this.db!.transaction(
-          [STORE_NAME],
-          "readonly",
-        );
+        const transaction = this.db!.transaction([STORE_NAME], "readonly");
         const store = transaction.objectStore(STORE_NAME);
         const request = store.get(id);
 
@@ -473,8 +444,8 @@ class SubmissionQueue {
   }
 
   /**
-     * Check if a location is still valid (not stale)
-     */
+   * Check if a location is still valid (not stale)
+   */
   isLocationValid(submission: QueuedSubmission): boolean {
     // Admins bypass location checks
     if (submission.isAdmin) return true;
@@ -487,16 +458,16 @@ class SubmissionQueue {
   }
 
   /**
-     * Get the count of pending submissions
-     */
+   * Get the count of pending submissions
+   */
   async getCount(): Promise<number> {
     const pending = await this.getPending();
     return pending.length;
   }
 
   /**
-     * Clear all completed submissions (cleanup)
-     */
+   * Clear all completed submissions (cleanup)
+   */
   async clearCompleted(): Promise<void> {
     await this.dbReady;
 
@@ -507,9 +478,11 @@ class SubmissionQueue {
 
       request.onsuccess = () => {
         const all = request.result as QueuedSubmission[];
-        all.filter((s) => s.status === "completed").forEach((s) => {
-          store.delete(s.id);
-        });
+        all
+          .filter((s) => s.status === "completed")
+          .forEach((s) => {
+            store.delete(s.id);
+          });
         this.notifyListeners();
       };
       return;
@@ -519,6 +492,33 @@ class SubmissionQueue {
       (s) => s.status !== "completed",
     );
     localStorage.setItem("pending-submissions", JSON.stringify(queue));
+    this.notifyListeners();
+  }
+
+  /**
+   * Clear all submissions (pending/failed/sending)
+   */
+  async clearAll(): Promise<void> {
+    await this.dbReady;
+
+    if (this.db) {
+      return new Promise((resolve, reject) => {
+        const transaction = this.db!.transaction([STORE_NAME], "readwrite");
+        const store = transaction.objectStore(STORE_NAME);
+        const request = store.clear();
+
+        request.onsuccess = () => {
+          this.recentFingerprints.clear();
+          this.notifyListeners();
+          resolve();
+        };
+
+        request.onerror = () => reject(request.error);
+      });
+    }
+
+    localStorage.removeItem("pending-submissions");
+    this.recentFingerprints.clear();
     this.notifyListeners();
   }
 
