@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Bell, MessageSquare } from "lucide-react";
+import { MessageSquare } from "lucide-react";
 import { useSession } from "next-auth/react";
 import AppHeader from "@/components/AppHeader";
 import FeedLightbox from "@/components/inspector/FeedLightbox";
@@ -12,7 +12,6 @@ import { triggerBuzonRefresh } from "@/hooks/useBuzonNotifications";
 const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY;
 const spreadsheetId = process.env.NEXT_PUBLIC_SPREADSHEET_ID;
 const sheetName = process.env.NEXT_PUBLIC_SHEET_NAME;
-const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
 
 const ITEMS_PER_PAGE = 15;
 
@@ -169,15 +168,6 @@ const formatCurrency = (value: number) => {
   })}`;
 };
 
-const urlBase64ToUint8Array = (base64String: string) => {
-  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding)
-    .replace(/-/g, "+")
-    .replace(/_/g, "/");
-  const rawData = window.atob(base64);
-  return Uint8Array.from([...rawData].map((char) => char.charCodeAt(0)));
-};
-
 const parseSeenBy = (value?: string): Set<string> => {
   if (!value) return new Set();
   return new Set(
@@ -203,12 +193,6 @@ export default function BuzonPage() {
   const [selectedEntry, setSelectedEntry] = useState<BuzonEntry | null>(null);
   const [visibleCount, setVisibleCount] = useState(ITEMS_PER_PAGE);
   const [markingSaleId, setMarkingSaleId] = useState<string | null>(null);
-  const [pushPermission, setPushPermission] =
-    useState<NotificationPermission>("default");
-  const [isPushSupported, setIsPushSupported] = useState(false);
-  const [isSubscribing, setIsSubscribing] = useState(false);
-  const [isSubscribed, setIsSubscribed] = useState(false);
-  const [pushError, setPushError] = useState<string | null>(null);
 
   const isAdmin = useMemo(
     () => isMasterAccount(session?.user?.email),
@@ -351,80 +335,6 @@ export default function BuzonPage() {
     setVisibleCount(ITEMS_PER_PAGE);
   }, [entries.length]);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const supported =
-      "serviceWorker" in navigator &&
-      "PushManager" in window &&
-      "Notification" in window;
-
-    setIsPushSupported(supported);
-    if (!supported) return;
-
-    setPushPermission(Notification.permission);
-    const loadSubscription = async () => {
-      try {
-        const registration = await navigator.serviceWorker.ready;
-        const subscription = await registration.pushManager.getSubscription();
-        setIsSubscribed(Boolean(subscription));
-      } catch {
-        setIsSubscribed(false);
-      }
-    };
-
-    loadSubscription();
-  }, []);
-
-  const handleEnableNotifications = async () => {
-    if (!isPushSupported) return;
-    if (!vapidPublicKey) {
-      setPushError("Falta la llave publica para notificaciones.");
-      return;
-    }
-
-    setIsSubscribing(true);
-    setPushError(null);
-
-    try {
-      const permission = await Notification.requestPermission();
-      setPushPermission(permission);
-      if (permission !== "granted") {
-        return;
-      }
-
-      const registration = await navigator.serviceWorker.ready;
-      const existingSubscription =
-        await registration.pushManager.getSubscription();
-      const subscription =
-        existingSubscription ||
-        (await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
-        }));
-
-      const payload =
-        typeof subscription.toJSON === "function"
-          ? subscription.toJSON()
-          : subscription;
-
-      const response = await fetch("/api/push-subscriptions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ subscription: payload }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Subscription failed");
-      }
-
-      setIsSubscribed(true);
-    } catch (error) {
-      console.error("Error enabling notifications:", error);
-      setPushError("No se pudo activar notificaciones.");
-    } finally {
-      setIsSubscribing(false);
-    }
-  };
 
   const handleMarkSeen = async (entry: BuzonEntry) => {
     if (!sessionEmail) return;
@@ -504,45 +414,6 @@ export default function BuzonPage() {
       />
 
       <main className="px-4 py-4 max-w-2xl mx-auto">
-        {isPushSupported && (
-          <div className="mb-4 bg-white border border-slate-200/70 rounded-xl p-4 flex items-start gap-3">
-            <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center">
-              <Bell className="w-5 h-5" />
-            </div>
-            <div className="flex-1">
-              <p className="text-sm font-semibold text-slate-900">
-                Notificaciones del buzon
-              </p>
-              <p className="text-xs text-slate-500 mt-1">
-                Recibe una alerta cuando dejen comentarios nuevos.
-              </p>
-              {pushPermission === "denied" && (
-                <p className="text-xs text-rose-600 mt-2">
-                  Las notificaciones estan bloqueadas en este navegador.
-                </p>
-              )}
-              {pushError && (
-                <p className="text-xs text-rose-600 mt-2">{pushError}</p>
-              )}
-            </div>
-            <div className="shrink-0">
-              {pushPermission === "granted" && isSubscribed ? (
-                <span className="inline-flex items-center px-3 py-1.5 rounded-full bg-emerald-50 text-emerald-700 text-xs font-semibold">
-                  Activas
-                </span>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleEnableNotifications}
-                  disabled={isSubscribing || pushPermission === "denied"}
-                  className="px-4 py-2 text-xs font-semibold rounded-full bg-slate-900 text-white hover:bg-slate-800 transition disabled:opacity-50"
-                >
-                  {isSubscribing ? "Activando..." : "Activar"}
-                </button>
-              )}
-            </div>
-          </div>
-        )}
         <div className="flex items-center justify-between mb-3">
           <div>
             <h2 className="text-sm font-semibold text-slate-900">

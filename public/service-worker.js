@@ -3,7 +3,7 @@
  *
  * This service worker handles:
  * 1. Background Sync - Process queued orders when connection is restored
- * 2. Push Notifications - Show notifications for order status
+ * 2. Background tools for offline support
  *
  * Note: Workbox (next-pwa) handles runtime caching.
  */
@@ -44,52 +44,6 @@ self.addEventListener("periodicsync", (event) => {
     }
 });
 
-// Push notification event
-self.addEventListener("push", (event) => {
-    let data = {
-        title: "El Rey",
-        body: "Notificacion",
-        data: { url: "/form" },
-    };
-
-    if (event.data) {
-        try {
-            data = { ...data, ...event.data.json() };
-        } catch {
-            // Ignore invalid payloads.
-        }
-    }
-
-    const options = {
-        body: data.body,
-        icon: "/icons/icon-192x192.png",
-        badge: "/icons/icon-192x192.png",
-        vibrate: [100, 50, 100],
-        data: data.data || {},
-        actions: data.actions || [],
-    };
-
-    event.waitUntil(self.registration.showNotification(data.title, options));
-});
-
-// Notification click event
-self.addEventListener("notificationclick", (event) => {
-    event.notification.close();
-
-    const targetPath = event.notification?.data?.url || "/form";
-    const targetUrl = new URL(targetPath, self.location.origin).href;
-
-    event.waitUntil(
-        self.clients.matchAll({ type: "window" }).then((clients) => {
-            for (const client of clients) {
-                if (client.url.startsWith(targetUrl) && "focus" in client) {
-                    return client.focus();
-                }
-            }
-            return self.clients.openWindow(targetUrl);
-        }),
-    );
-});
 
 // Message event - handle messages from main thread
 self.addEventListener("message", (event) => {
