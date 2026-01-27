@@ -561,6 +561,8 @@ export async function GET(req: Request) {
         yearlyEntries.map((entry) => entry.clientName),
       ).size;
 
+      const clientVisitDates: Record<string, string[]> = {};
+
       // Client statistics - Track ALL visits but separate sales metrics
       const clientStats: Record<
         string,
@@ -571,6 +573,7 @@ export async function GET(req: Request) {
           avgOrder: number;
           lastVisit: string; // Last visit of any kind
           lastSaleVisit: string; // Last visit with actual sale
+          avgDaysBetweenVisits: number | null;
         }
       > = {};
 
@@ -584,7 +587,15 @@ export async function GET(req: Request) {
             avgOrder: 0,
             lastVisit: "",
             lastSaleVisit: "",
+            avgDaysBetweenVisits: null,
           };
+        }
+
+        if (!clientVisitDates[entry.clientName]) {
+          clientVisitDates[entry.clientName] = [];
+        }
+        if (entry.date) {
+          clientVisitDates[entry.clientName].push(entry.date);
         }
 
         // Count every visit
@@ -618,9 +629,12 @@ export async function GET(req: Request) {
       });
 
       // Calculate average order based only on visits with sales (exclude $0 visits)
-      Object.values(clientStats).forEach((stats) => {
+      Object.entries(clientStats).forEach(([clientName, stats]) => {
         stats.avgOrder =
           stats.salesEntries > 0 ? stats.totalSales / stats.salesEntries : 0;
+        stats.avgDaysBetweenVisits = computeAverageDaysBetweenVisits(
+          clientVisitDates[clientName] || [],
+        );
       });
 
       console.log(
@@ -1496,6 +1510,36 @@ function calculatePeakPerformance(sales: any[]) {
     bestVisitsDayCount: bestDayVisits ? bestDayVisits[1].visits : 0,
     dayPerformance,
   };
+}
+
+function computeAverageDaysBetweenVisits(dates: string[]): number | null {
+  if (!dates || dates.length < 2) return null;
+
+  const parsedDates = dates
+    .filter(Boolean)
+    .map((date) => new Date(date))
+    .filter((date) => !Number.isNaN(date.getTime()))
+    .sort((a, b) => b.getTime() - a.getTime());
+
+  const uniqueDates: Date[] = [];
+  const seen = new Set<string>();
+  parsedDates.forEach((date) => {
+    const key = date.toISOString().slice(0, 10);
+    if (!seen.has(key)) {
+      seen.add(key);
+      uniqueDates.push(date);
+    }
+  });
+
+  if (uniqueDates.length < 2) return null;
+
+  const totalDays = uniqueDates.slice(0, -1).reduce((sum, date, index) => {
+    const next = uniqueDates[index + 1];
+    const diffDays = (date.getTime() - next.getTime()) / (1000 * 60 * 60 * 24);
+    return sum + diffDays;
+  }, 0);
+
+  return Math.round(totalDays / (uniqueDates.length - 1));
 }
 
 function columnToIndex(column: string): number {
