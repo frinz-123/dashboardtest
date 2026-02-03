@@ -494,7 +494,7 @@ export default function InspectorPeriodosPage() {
     setExpandedPhotoUrl(null);
     setShowNoteInput(false);
     setNoteText("");
-  }, []);
+  }, [selectedSale]);
 
   // Fetch reviews on mount
   useEffect(() => {
