@@ -9,6 +9,7 @@ import CleyPhotoCapture, {
   type CleyPhotoPreview,
 } from "@/components/CleyPhotoCapture";
 import CleyOrderQuestion from "@/components/comp-166";
+import BlurIn from "@/components/ui/blur-in";
 import LabelNumbers from "@/components/ui/labelnumbers";
 import PendingOrdersBanner from "@/components/ui/PendingOrdersBanner";
 import SearchInput from "@/components/ui/SearchInput";
