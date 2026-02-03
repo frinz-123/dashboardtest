@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import mapboxgl from "mapbox-gl";
 import { RefreshCw } from "lucide-react";
+import mapboxgl from "mapbox-gl";
+import { useEffect, useRef, useState } from "react";
 import "mapbox-gl/dist/mapbox-gl.css";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
@@ -323,7 +323,7 @@ export default function Map({ onLocationUpdate, clientLocation }: MapProps) {
       isComponentUnmounted.current = true;
       stopWatchingLocation();
     };
-  }, []);
+  }, [getCurrentLocation, stopWatchingLocation]);
 
   useEffect(() => {
     if (location && mapContainer.current && !map.current) {
@@ -345,7 +345,7 @@ export default function Map({ onLocationUpdate, clientLocation }: MapProps) {
         .setLngLat([location.lng, location.lat])
         .addTo(map.current);
     }
-  }, [location]);
+  }, [location, createLabeledMarker]);
 
   // Update the client location marker effect to respect movement threshold
   useEffect(() => {
@@ -375,7 +375,7 @@ export default function Map({ onLocationUpdate, clientLocation }: MapProps) {
         });
       }
     }
-  }, [clientLocation, location]);
+  }, [clientLocation, location, createLabeledMarker]);
 
   // Modify the auto-update interval
   useEffect(() => {
@@ -390,7 +390,7 @@ export default function Map({ onLocationUpdate, clientLocation }: MapProps) {
     return () => {
       clearInterval(intervalId);
     };
-  }, [isAutoUpdating, isRefreshing]);
+  }, [isAutoUpdating, isRefreshing, getCurrentLocation]);
 
   return (
     <div className="relative">

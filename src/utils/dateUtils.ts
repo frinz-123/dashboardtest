@@ -257,14 +257,12 @@ export function debounce<T extends (...args: any[]) => any>(
   let timeout: NodeJS.Timeout | null = null;
 
   return function (this: any, ...args: Parameters<T>) {
-    const context = this;
-
     if (timeout) {
       clearTimeout(timeout);
     }
 
     timeout = setTimeout(() => {
-      func.apply(context, args);
+      func.apply(this, args);
     }, wait);
   };
 }

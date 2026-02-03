@@ -1,4 +1,4 @@
-import { CountingNumber } from '@/components/ui/counting-number';
+import { CountingNumber } from "@/components/ui/counting-number";
 
 export default function Component() {
   return (

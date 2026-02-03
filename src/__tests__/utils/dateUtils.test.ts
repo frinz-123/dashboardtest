@@ -1,8 +1,8 @@
 import {
   getCurrentPeriodInfo,
+  getCurrentPeriodNumber,
   getWeekDates,
   isDateInPeriod,
-  getCurrentPeriodNumber,
 } from "@/utils/dateUtils";
 
 describe("dateUtils", () => {

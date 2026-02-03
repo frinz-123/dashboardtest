@@ -3,7 +3,6 @@
 import { useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { Suspense } from "react";
-import React from "react";
 
 function ErrorContent() {
   const searchParams = useSearchParams();

@@ -56,7 +56,7 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const action = searchParams.get("action");
     const clientName = searchParams.get("client");
-    const limit = parseInt(searchParams.get("limit") || "50");
+    const limit = parseInt(searchParams.get("limit") || "50", 10);
 
     const sheets = google.sheets({ version: "v4", auth });
 
@@ -115,8 +115,8 @@ export async function GET(req: Request) {
           const products: Record<string, number> = {};
           Object.entries(PRODUCT_COLUMNS).forEach(([col, productName]) => {
             const colIndex = columnToIndex(col);
-            if (row[colIndex] && parseInt(row[colIndex]) > 0) {
-              products[productName] = parseInt(row[colIndex]);
+            if (row[colIndex] && parseInt(row[colIndex], 10) > 0) {
+              products[productName] = parseInt(row[colIndex], 10);
             }
           });
 
@@ -267,7 +267,7 @@ export async function GET(req: Request) {
           (acc, [col, productName]) => {
             const colIndex = columnToIndex(col);
             const quantity = row[colIndex];
-            const parsedQuantity = parseInt(quantity || "0");
+            const parsedQuantity = parseInt(quantity || "0", 10);
             if (quantity && parsedQuantity > 0) {
               acc[productName] = parsedQuantity;
             }
@@ -428,7 +428,7 @@ export async function GET(req: Request) {
         console.log("🔍 Sheet headers (first 15):", headerRow.slice(0, 15));
         console.log("🔍 Total columns:", headerRow.length);
         console.log("🔍 Column indices for products:");
-        Object.entries(PRODUCT_COLUMNS).forEach(([col, productName]) => {
+        Object.entries(PRODUCT_COLUMNS).forEach(([col, _productName]) => {
           const colIndex = columnToIndex(col);
           console.log(
             `  ${col} -> Index ${colIndex} -> Header: ${headerRow[colIndex] || "MISSING"}`,
@@ -459,7 +459,7 @@ export async function GET(req: Request) {
             (acc, [col, productName]) => {
               const colIndex = columnToIndex(col);
               const quantity = row[colIndex];
-              const parsedQuantity = parseInt(quantity || "0");
+              const parsedQuantity = parseInt(quantity || "0", 10);
 
               if (quantity && parsedQuantity > 0) {
                 acc[productName] = parsedQuantity;
@@ -921,11 +921,7 @@ function generateSellerAnalytics(entries: any[]) {
           acc[clientName].dates.push(sale.date);
 
           // Store location data if available
-          if (
-            sale.location &&
-            sale.location.clientLat &&
-            sale.location.clientLng
-          ) {
+          if (sale.location?.clientLat && sale.location.clientLng) {
             acc[clientName].locations.push({
               lat: parseFloat(sale.location.clientLat),
               lng: parseFloat(sale.location.clientLng),
@@ -1086,7 +1082,7 @@ function generateSellerMonthlyTrends(sales: any[]) {
 // 🎯 1. TERRITORY COVERAGE ANALYSIS
 function generateTerritoryAnalysis(
   clientStats: Record<string, any>,
-  sales: any[],
+  _sales: any[],
 ) {
   console.log(
     "🗺️ Territory Analysis - Total clients:",
@@ -1120,10 +1116,10 @@ function generateTerritoryAnalysis(
   // Calculate territory boundaries (bounding box)
   const lats = clientsWithLocations
     .map((client) => client.avgLocation.lat)
-    .filter((lat) => !isNaN(lat));
+    .filter((lat) => !Number.isNaN(lat));
   const lngs = clientsWithLocations
     .map((client) => client.avgLocation.lng)
-    .filter((lng) => !isNaN(lng));
+    .filter((lng) => !Number.isNaN(lng));
 
   const territoryBounds =
     lats.length > 0
@@ -1149,7 +1145,7 @@ function generateTerritoryAnalysis(
       Math.abs(
         (territoryBounds.east - territoryBounds.west) *
           111 *
-          Math.cos((territoryCenter!.lat * Math.PI) / 180),
+          Math.cos((territoryCenter?.lat * Math.PI) / 180),
       )
     : 0;
 
@@ -1199,7 +1195,7 @@ function generateSalesVelocityAnalysis(
   clientStats: Record<string, any>,
   sales: any[],
 ) {
-  const now = new Date();
+  const _now = new Date();
 
   // Calculate time between visits for repeat clients
   const visitIntervals: number[] = [];
@@ -1267,7 +1263,7 @@ function generateSalesVelocityAnalysis(
 // 🎖️ 3. CLIENT RETENTION & LOYALTY ANALYSIS
 function generateRetentionAnalysis(
   clientStats: Record<string, any>,
-  sales: any[],
+  _sales: any[],
   totalSales: number,
 ) {
   const now = new Date();
@@ -1554,7 +1550,7 @@ function columnToIndex(column: string): number {
   return index - 1;
 }
 
-function indexToColumn(index: number): string {
+function _indexToColumn(index: number): string {
   let column = "";
   while (index >= 0) {
     column = String.fromCharCode(65 + (index % 26)) + column;
@@ -1573,7 +1569,7 @@ function generateSalesTrend(
     const date = new Date();
     date.setMonth(date.getMonth() - i);
     const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-    const monthName = date.toLocaleDateString("es-ES", {
+    const _monthName = date.toLocaleDateString("es-ES", {
       month: "short",
       year: "numeric",
     });
@@ -1605,9 +1601,12 @@ function generateMonthlyTrend(
   const currentYear = new Date().getFullYear();
   for (let month = 0; month < 12; month++) {
     const monthKey = `${currentYear}-${String(month + 1).padStart(2, "0")}`;
-    const monthName = new Date(currentYear, month).toLocaleDateString("es-ES", {
-      month: "short",
-    });
+    const _monthName = new Date(currentYear, month).toLocaleDateString(
+      "es-ES",
+      {
+        month: "short",
+      },
+    );
     months[monthKey] = { sales: 0, clients: new Set() };
   }
 

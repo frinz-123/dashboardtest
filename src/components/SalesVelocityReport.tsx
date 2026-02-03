@@ -1,12 +1,12 @@
 "use client";
 
 import {
-  Zap,
-  Clock,
-  TrendingUp,
-  Calendar,
   BarChart3,
+  Calendar,
+  Clock,
   Target,
+  TrendingUp,
+  Zap,
 } from "lucide-react";
 
 interface MonthlyVelocity {
@@ -80,7 +80,7 @@ export default function SalesVelocityReport({
         b.salesVelocity.avgTimeBetweenVisits,
     )
     .slice(0, 5);
-  const highestFrequency = [...sellers]
+  const _highestFrequency = [...sellers]
     .sort(
       (a, b) => b.salesVelocity.visitFrequency - a.salesVelocity.visitFrequency,
     )
@@ -373,7 +373,7 @@ export default function SalesVelocityReport({
         </h3>
         <div className="space-y-3">
           {monthlyAvgs.map((month) => {
-            const monthName = new Date(month.month + "-01").toLocaleDateString(
+            const monthName = new Date(`${month.month}-01`).toLocaleDateString(
               "es-ES",
               {
                 month: "long",

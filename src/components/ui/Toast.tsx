@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
 import { Check, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 type ToastType = "success" | "error" | "info";
 
@@ -52,7 +52,7 @@ export default function Toast({
     return () => {
       clearTimers();
     };
-  }, [isVisible, duration, onClose]);
+  }, [isVisible, duration, onClose, clearTimers]);
 
   const handleClose = () => {
     clearTimers();

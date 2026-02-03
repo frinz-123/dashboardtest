@@ -269,7 +269,7 @@ class SubmissionQueue {
 
     if (this.db) {
       return new Promise((resolve, reject) => {
-        const transaction = this.db!.transaction([STORE_NAME], "readwrite");
+        const transaction = this.db?.transaction([STORE_NAME], "readwrite");
         const store = transaction.objectStore(STORE_NAME);
         const request = store.add(queuedSubmission);
 
@@ -314,7 +314,7 @@ class SubmissionQueue {
 
     if (this.db) {
       return new Promise((resolve, reject) => {
-        const transaction = this.db!.transaction([STORE_NAME], "readonly");
+        const transaction = this.db?.transaction([STORE_NAME], "readonly");
         const store = transaction.objectStore(STORE_NAME);
         const request = store.getAll();
 
@@ -342,7 +342,7 @@ class SubmissionQueue {
 
     if (this.db) {
       return new Promise((resolve, reject) => {
-        const transaction = this.db!.transaction([STORE_NAME], "readwrite");
+        const transaction = this.db?.transaction([STORE_NAME], "readwrite");
         const store = transaction.objectStore(STORE_NAME);
         const getRequest = store.get(id);
 
@@ -386,7 +386,7 @@ class SubmissionQueue {
 
     if (this.db) {
       return new Promise((resolve, reject) => {
-        const transaction = this.db!.transaction([STORE_NAME], "readwrite");
+        const transaction = this.db?.transaction([STORE_NAME], "readwrite");
         const store = transaction.objectStore(STORE_NAME);
         const request = store.delete(id);
 
@@ -430,7 +430,7 @@ class SubmissionQueue {
 
     if (this.db) {
       return new Promise((resolve, reject) => {
-        const transaction = this.db!.transaction([STORE_NAME], "readonly");
+        const transaction = this.db?.transaction([STORE_NAME], "readonly");
         const store = transaction.objectStore(STORE_NAME);
         const request = store.get(id);
 
@@ -503,7 +503,7 @@ class SubmissionQueue {
 
     if (this.db) {
       return new Promise((resolve, reject) => {
-        const transaction = this.db!.transaction([STORE_NAME], "readwrite");
+        const transaction = this.db?.transaction([STORE_NAME], "readwrite");
         const store = transaction.objectStore(STORE_NAME);
         const request = store.clear();
 

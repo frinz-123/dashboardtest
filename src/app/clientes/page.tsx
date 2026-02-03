@@ -4,27 +4,20 @@ import {
   Activity,
   AlertTriangle,
   ArrowRight,
-  Award,
   BarChart3,
   Calendar,
   Clock,
   DollarSign,
   Filter,
   Hash,
-  Heart,
   Lightbulb,
-  Map,
-  MapPin,
   Package,
-  PieChart,
   Printer,
-  Shield,
   Target,
   TrendingUp,
   Trophy,
   UserCheck,
   Users,
-  Zap,
 } from "lucide-react";
 import { useSession } from "next-auth/react";
 import type React from "react";
@@ -33,7 +26,6 @@ import { createPortal } from "react-dom";
 import AppHeader from "@/components/AppHeader";
 import ProductsAreaChart from "@/components/ProductsAreaChart";
 import ErrorToast from "@/components/ui/ErrorToast";
-import InputGray from "@/components/ui/InputGray";
 import SearchInput from "@/components/ui/SearchInput";
 import VendedoresSection, {
   type VendedoresAnalyticsData,
@@ -324,15 +316,15 @@ function getPastMonthsOfCurrentYear<T extends { month: string }>(
 
   const parsed = items.filter((i) => {
     if (!i?.month) return false;
-    const d = new Date(i.month + "-01");
-    if (isNaN(d.getTime())) return false;
+    const d = new Date(`${i.month}-01`);
+    if (Number.isNaN(d.getTime())) return false;
     return d.getFullYear() === currentYear && d.getMonth() < currentMonthIndex;
   });
 
   // Sort ascending by month within the year
   return parsed.sort((a, b) => {
-    const da = new Date(a.month + "-01").getTime();
-    const db = new Date(b.month + "-01").getTime();
+    const da = new Date(`${a.month}-01`).getTime();
+    const db = new Date(`${b.month}-01`).getTime();
     return da - db;
   });
 }
@@ -381,7 +373,7 @@ function computeAverageDaysBetweenVisits(
 function daysSince(dateString?: string): number {
   if (!dateString) return Number.POSITIVE_INFINITY;
   const d = new Date(dateString);
-  if (isNaN(d.getTime())) return Number.POSITIVE_INFINITY;
+  if (Number.isNaN(d.getTime())) return Number.POSITIVE_INFINITY;
   const ms = Date.now() - d.getTime();
   return Math.floor(ms / (1000 * 60 * 60 * 24));
 }
@@ -518,7 +510,7 @@ function ClientesDesatendidos({
       ? rows.filter(
           (r) =>
             r.client.toLowerCase().includes(query.toLowerCase()) ||
-            (r.code && r.code.toLowerCase().includes(query.toLowerCase())),
+            r.code?.toLowerCase().includes(query.toLowerCase()),
         )
       : rows;
 
@@ -598,11 +590,11 @@ function ClientesDesatendidos({
       case "custom": {
         if (customDateFrom) {
           const parsedFrom = new Date(`${customDateFrom}T00:00:00`);
-          if (!isNaN(parsedFrom.getTime())) startDate = parsedFrom;
+          if (!Number.isNaN(parsedFrom.getTime())) startDate = parsedFrom;
         }
         if (customDateTo) {
           const parsedTo = new Date(`${customDateTo}T00:00:00`);
-          if (!isNaN(parsedTo.getTime())) endDate = parsedTo;
+          if (!Number.isNaN(parsedTo.getTime())) endDate = parsedTo;
         }
         break;
       }
@@ -610,7 +602,7 @@ function ClientesDesatendidos({
         startDate = new Date(now.getFullYear(), 0, 1);
     }
 
-    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+    if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
       return "Rango no disponible";
     }
 
@@ -677,6 +669,7 @@ function ClientesDesatendidos({
     selectedCodes,
     selectedVendedores,
     query,
+    thresholdOnly,
   ]);
 
   const limit = showMore ? 50 : 10;
@@ -1298,12 +1291,10 @@ function ProductosPorCodigo({
           r.code,
           r.product,
           String(r.quantity),
-          (r.percentOfCode * 100).toFixed(2) + "%",
+          `${(r.percentOfCode * 100).toFixed(2)}%`,
         ];
         // Escape commas and quotes
-        const escaped = row.map(
-          (v) => '"' + String(v).replace(/"/g, '""') + '"',
-        );
+        const escaped = row.map((v) => `"${String(v).replace(/"/g, '""')}"`);
         lines.push(escaped.join(","));
       });
       const csvContent = lines.join("\n");
@@ -1791,8 +1782,8 @@ export default function ClientesPage() {
     setClientesDesatendidosCustomDateTo,
   ] = useState<string>("");
 
-  const throttledLocationUpdate = useRef(
-    throttle((location: { lat: number; lng: number }) => {
+  const _throttledLocationUpdate = useRef(
+    throttle((_location: { lat: number; lng: number }) => {
       // Handle location updates if needed
     }, 1000),
   ).current;
@@ -1813,7 +1804,13 @@ export default function ClientesPage() {
     fetchClientNames();
     fetchAnalyticsData();
     fetchSellerAnalyticsData();
-  }, [isAllowed, status]);
+  }, [
+    isAllowed,
+    status,
+    fetchAnalyticsData,
+    fetchClientNames,
+    fetchSellerAnalyticsData,
+  ]);
 
   // Fetch top clients data when date filter changes (including initial load)
   useEffect(() => {
@@ -1828,13 +1825,7 @@ export default function ClientesPage() {
       dateTo,
     });
     fetchTopClientsData(dateFrom, dateTo);
-  }, [
-    topClientsDateFilter,
-    topClientsCustomDateFrom,
-    topClientsCustomDateTo,
-    isAllowed,
-    status,
-  ]);
+  }, [isAllowed, status, fetchTopClientsData, getTopClientsDateRange]);
 
   // Fetch top products data when date filter changes (including initial load)
   useEffect(() => {
@@ -1849,13 +1840,7 @@ export default function ClientesPage() {
       dateTo,
     });
     fetchTopProductsData(dateFrom, dateTo);
-  }, [
-    topProductsDateFilter,
-    topProductsCustomDateFrom,
-    topProductsCustomDateTo,
-    isAllowed,
-    status,
-  ]);
+  }, [isAllowed, status, fetchTopProductsData, getTopProductsDateRange]);
 
   // Fetch top codigos data when date filter changes (including initial load)
   useEffect(() => {
@@ -1870,13 +1855,7 @@ export default function ClientesPage() {
       dateTo,
     });
     fetchTopCodigosData(dateFrom, dateTo);
-  }, [
-    topCodigosDateFilter,
-    topCodigosCustomDateFrom,
-    topCodigosCustomDateTo,
-    isAllowed,
-    status,
-  ]);
+  }, [isAllowed, status, fetchTopCodigosData, getTopCodigosDateRange]);
 
   // Fetch productos por codigo data when date filter changes (including initial load)
   useEffect(() => {
@@ -1892,11 +1871,10 @@ export default function ClientesPage() {
     });
     fetchProductosPorCodigoData(dateFrom, dateTo);
   }, [
-    productosPorCodigoDateFilter,
-    productosPorCodigoCustomDateFrom,
-    productosPorCodigoCustomDateTo,
     isAllowed,
     status,
+    fetchProductosPorCodigoData,
+    getProductosPorCodigoDateRange,
   ]);
 
   // Fetch clientes desatendidos data when date filter changes (including initial load)
@@ -1913,11 +1891,10 @@ export default function ClientesPage() {
     });
     fetchClientesDesatendidosData(dateFrom, dateTo);
   }, [
-    clientesDesatendidosDateFilter,
-    clientesDesatendidosCustomDateFrom,
-    clientesDesatendidosCustomDateTo,
     isAllowed,
     status,
+    fetchClientesDesatendidosData,
+    getClientesDesatendidosDateRange,
   ]);
 
   useEffect(() => {
@@ -1926,7 +1903,7 @@ export default function ClientesPage() {
       const MAX_RESULTS = 20;
 
       const filtered = clientNames
-        .filter((name) => name && name.toLowerCase().includes(searchLower))
+        .filter((name) => name?.toLowerCase().includes(searchLower))
         .slice(0, MAX_RESULTS);
 
       setFilteredClients(filtered);
@@ -1944,7 +1921,7 @@ export default function ClientesPage() {
       setViewMode("dashboard");
       setActiveTab("dashboard");
     }
-  }, [selectedClient]);
+  }, [selectedClient, fetchClientData]);
 
   const fetchClientNames = async () => {
     try {
@@ -3388,7 +3365,7 @@ export default function ClientesPage() {
                     >
                       <div>
                         <p className="font-medium text-sm">
-                          {new Date(month.month + "-01").toLocaleDateString(
+                          {new Date(`${month.month}-01`).toLocaleDateString(
                             "es-ES",
                             {
                               month: "long",
@@ -3801,7 +3778,7 @@ export default function ClientesPage() {
                       >
                         <div>
                           <p className="font-medium text-sm">
-                            {new Date(month.month + "-01").toLocaleDateString(
+                            {new Date(`${month.month}-01`).toLocaleDateString(
                               "es-ES",
                               {
                                 month: "long",

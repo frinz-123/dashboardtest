@@ -2,11 +2,11 @@
 
 import {
   AlertTriangle,
-  Users,
   Clock,
-  TrendingDown,
   Shield,
   Target,
+  TrendingDown,
+  Users,
 } from "lucide-react";
 
 interface ChurnRiskClient {

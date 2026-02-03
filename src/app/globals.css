@@ -368,13 +368,13 @@ select,
     body.print-mode {
         background: #fff;
         color: #111827;
-        position: static !important;
-        height: auto !important;
-        overflow: visible !important;
+        position: static;
+        height: auto;
+        overflow: visible;
     }
 
     body.print-mode > *:not(.print-root) {
-        display: none !important;
+        display: none;
     }
 
     body.print-mode .print-root {

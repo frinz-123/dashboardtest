@@ -1,6 +1,6 @@
 "use client";
 
-import { Map, MapPin, Users, BarChart3, Target } from "lucide-react";
+import { BarChart3, Map, MapPin, Target, Users } from "lucide-react";
 
 interface TerritoryAnalysis {
   totalClients: number;

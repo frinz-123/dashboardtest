@@ -2,7 +2,6 @@
 
 import {
   ArrowLeft,
-  BarChart2,
   BarChart3,
   Calendar,
   Camera,
@@ -17,14 +16,12 @@ import {
   Send,
   ShoppingBag,
   Target,
-  TrendingDown,
   TrendingUp,
   Users,
-  X,
 } from "lucide-react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -206,7 +203,7 @@ const normalizePhotoUrls = (value: unknown): string[] => {
             .replace(/^["'""'']+|["'""'']+$/g, "")
             .trim(),
         )
-        .filter((url) => url && url.includes("http"));
+        .filter((url) => url?.includes("http"));
       if (urls.length > 0) return urls;
     }
 
@@ -219,7 +216,7 @@ const normalizePhotoUrls = (value: unknown): string[] => {
           .replace(/^["'""'']+|["'""'']+$/g, "")
           .trim(),
       )
-      .filter((url) => url && url.includes("http"));
+      .filter((url) => url?.includes("http"));
 
     return urls;
   }
@@ -386,25 +383,25 @@ export default function InspectorPeriodosPage() {
   useEffect(() => {
     setSelectedWeek(null);
     setSelectedDay(null);
-  }, [selectedPeriod]);
+  }, []);
 
   // Reset day selection when week changes
   useEffect(() => {
     setSelectedDay(null);
-  }, [selectedWeek]);
+  }, []);
 
   // Fetch sales data
   useEffect(() => {
     if (isAdmin) {
       fetchData();
     }
-  }, [isAdmin]);
+  }, [isAdmin, fetchData]);
 
   useEffect(() => {
     setExpandedPhotoUrl(null);
     setShowNoteInput(false);
     setNoteText("");
-  }, [selectedSale]);
+  }, []);
 
   // Fetch reviews on mount
   useEffect(() => {
@@ -2081,7 +2078,7 @@ export default function InspectorPeriodosPage() {
                           }}
                         />
                         <Bar dataKey="totalSales" radius={[0, 4, 4, 0]}>
-                          {visibleSellerStats.map((entry, index) => (
+                          {visibleSellerStats.map((_entry, index) => (
                             <Cell
                               key={`cell-${index}`}
                               fill={COLORS[index % COLORS.length]}
@@ -2877,7 +2874,6 @@ export default function InspectorPeriodosPage() {
                           placeholder="Agregar nota (opcional)..."
                           className="w-full p-3 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
                           rows={3}
-                          autoFocus
                         />
                         <div className="flex gap-2">
                           <button

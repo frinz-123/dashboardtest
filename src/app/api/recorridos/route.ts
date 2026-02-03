@@ -1,10 +1,10 @@
 import { google } from "googleapis";
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 
 // Force dynamic rendering for this API route
 export const dynamic = "force-dynamic";
 
-const SHEET_IDS = {
+const _SHEET_IDS = {
   clientes: "1292284175",
   performance: "2073545797",
   programacion: "1620884655",
@@ -132,7 +132,7 @@ export async function GET(request: NextRequest) {
             if (header === "Latitude" || header === "Longitud") {
               item[header] = parseFloat(row[index]) || 0;
             } else if (header === "Frecuencia") {
-              item[header] = parseInt(row[index]) || 1;
+              item[header] = parseInt(row[index], 10) || 1;
             } else {
               item[header] = row[index];
             }
@@ -142,11 +142,8 @@ export async function GET(request: NextRequest) {
       });
 
       // Import master account utilities
-      const {
-        isMasterAccount,
-        getVendorIdentifiers,
-        normalizeVendorValue,
-      } = await import("../../../utils/auth");
+      const { isMasterAccount, getVendorIdentifiers, normalizeVendorValue } =
+        await import("../../../utils/auth");
 
       // Check if this is a master account request
       const isMaster = isMasterAccount(email);
@@ -164,7 +161,10 @@ export async function GET(request: NextRequest) {
 
       const matchesVendor = (value: any) => {
         if (isAllRoutesRequest) return true;
-        return vendorIdentifiers?.has(normalizeVendorValue(String(value || ""))) || false;
+        return (
+          vendorIdentifiers?.has(normalizeVendorValue(String(value || ""))) ||
+          false
+        );
       };
 
       console.log(

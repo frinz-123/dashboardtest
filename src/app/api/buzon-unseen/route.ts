@@ -2,8 +2,8 @@ import { google } from "googleapis";
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
-import { sheetsAuth } from "@/utils/googleAuth";
 import { isMasterAccount } from "@/utils/auth";
+import { sheetsAuth } from "@/utils/googleAuth";
 
 const SPREADSHEET_ID = "1a0jZVdKFNWTHDsM-68LT5_OLPMGejAKs9wfCxYqqe_g";
 const SHEET_NAME = "FeedReviews";
@@ -39,7 +39,8 @@ export async function GET() {
     });
 
     const rows = response.data.values || [];
-    const dataRows = rows.length > 0 && rows[0][0] === "saleId" ? rows.slice(1) : rows;
+    const dataRows =
+      rows.length > 0 && rows[0][0] === "saleId" ? rows.slice(1) : rows;
 
     let count = 0;
 

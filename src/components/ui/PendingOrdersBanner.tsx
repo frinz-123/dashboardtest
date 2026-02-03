@@ -2,7 +2,6 @@
 
 import {
   AlertTriangle,
-  CheckCircle,
   Clock,
   MapPin,
   RefreshCw,
@@ -10,7 +9,6 @@ import {
   WifiOff,
   X,
 } from "lucide-react";
-import React from "react";
 import type { QueueState } from "@/hooks/useSubmissionQueue";
 import type { QueuedSubmission } from "@/utils/submissionQueue";
 

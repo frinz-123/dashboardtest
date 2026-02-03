@@ -1,46 +1,70 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardFooter,
-} from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import {
+  AlertCircle,
   Bell,
+  Box,
+  ChevronRight,
+  Clock,
+  DollarSign,
+  LayoutGrid,
+  Menu,
+  Minus,
+  Package,
   Plus,
   Search,
   Settings,
-  Package,
-  ChevronRight,
-  LayoutGrid,
   TableIcon,
-  Box,
   Tag,
-  DollarSign,
-  Clock,
-  AlertCircle,
-  Minus,
   TrendingUp,
-  Menu,
-  Pencil,
-  Trash2,
 } from "lucide-react";
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  LabelList,
+  Bar as RechartsBar,
+  BarChart as RechartsBarChart,
+  XAxis as RechartsXAxis,
+  YAxis as RechartsYAxis,
+} from "recharts";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  type ChartConfig,
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "@/components/ui/chart";
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-  DialogFooter,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { SearchableSelect } from "@/components/ui/searchable-select-v2";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -49,32 +73,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Label } from "@/components/ui/label";
-import {
-  ChartConfig,
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-} from "@/components/ui/chart";
-import {
-  CartesianGrid,
-  LabelList,
-  BarChart as RechartsBarChart,
-  Bar as RechartsBar,
-  XAxis as RechartsXAxis,
-  YAxis as RechartsYAxis,
-  Area,
-  AreaChart,
-} from "recharts";
-import Link from "next/link";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { SearchableSelect } from "@/components/ui/searchable-select-v2";
 
 const spreadsheetId = process.env.NEXT_PUBLIC_SPREADSHEET_ID;
 
@@ -185,7 +183,7 @@ async function fetchEntradas(): Promise<
       if (!row[0]) return;
 
       const nombre = row[0];
-      const cantidad = parseInt(row[2]) || 0;
+      const cantidad = parseInt(row[2], 10) || 0;
       const peso = parseFloat(row[3]) || 0;
       const fecha = row[5] || new Date().toISOString().split("T")[0];
 
@@ -252,8 +250,8 @@ async function agregarEntrada(entrada: Entrada) {
   }
 }
 
-const TOTAL_LINEAS = 20; // Puedes ajustar este número para cambiar el total de líneas
-const GROSOR_LINEA = 2; // Puedes ajustar este número para cambiar el grosor de las líneas
+const _TOTAL_LINEAS = 20; // Puedes ajustar este número para cambiar el total de líneas
+const _GROSOR_LINEA = 2; // Puedes ajustar este número para cambiar el grosor de las líneas
 
 const obtenerColorCategoria = (categoria: string) => {
   const categoriaLower = categoria.toLowerCase();
@@ -587,7 +585,7 @@ function DialogoAgregarEntrada({
       source: "Produccion", // Default value
     },
   ]);
-  const [error, setError] = useState<string | null>(null);
+  const [_error, setError] = useState<string | null>(null);
 
   const addNewEntry = () => {
     setEntries([
@@ -613,13 +611,13 @@ function DialogoAgregarEntrada({
       for (const entry of entries) {
         if (entry.productId && entry.cantidad) {
           const producto = articulos.find(
-            (p) => p.id === parseInt(entry.productId),
+            (p) => p.id === parseInt(entry.productId, 10),
           );
           if (producto) {
             const entrada: Entrada = {
               nombre: producto.nombre,
               categoria: producto.categoria,
-              cantidad: parseInt(entry.cantidad),
+              cantidad: parseInt(entry.cantidad, 10),
               peso:
                 producto.categoria.toLowerCase() === "costal"
                   ? parseFloat(entry.peso) || 0
@@ -641,10 +639,10 @@ function DialogoAgregarEntrada({
               producto.nombre === "Hab50g" ||
               producto.nombre === "Hab20g" ||
               producto.nombre === "E30g" ||
-                producto.nombre === "Molinillo" ||
-                producto.nombre === "Tira E" ||
-                producto.nombre === "Bt 500 gr ent" ||
-                producto.nombre === "Ba 500 gr ent" ||
+              producto.nombre === "Molinillo" ||
+              producto.nombre === "Tira E" ||
+              producto.nombre === "Bt 500 gr ent" ||
+              producto.nombre === "Ba 500 gr ent" ||
               producto.nombre === "4 Onzas / 115 g"
             ) {
               // Add debug log
@@ -676,25 +674,25 @@ function DialogoAgregarEntrada({
                   producto.nombre === "Chiltepin Molido 50 g" ||
                   producto.nombre === "Hab50g"
                 ) {
-                  deduction = 0.05 * Math.abs(parseInt(entry.cantidad)); // 50g = 0.05kg
+                  deduction = 0.05 * Math.abs(parseInt(entry.cantidad, 10)); // 50g = 0.05kg
                 } else if (producto.nombre === "500gr MOL") {
-                  deduction = 0.5 * Math.abs(parseInt(entry.cantidad)); // 500g = 0.5kg from Costal MOL
+                  deduction = 0.5 * Math.abs(parseInt(entry.cantidad, 10)); // 500g = 0.5kg from Costal MOL
                   console.log("500gr MOL deduction calculated:", deduction); // Debug log
                 } else if (
                   producto.nombre === "20g" ||
                   producto.nombre === "Hab20g"
                 ) {
-                  deduction = 0.02 * Math.abs(parseInt(entry.cantidad)); // 20g = 0.02kg
+                  deduction = 0.02 * Math.abs(parseInt(entry.cantidad, 10)); // 20g = 0.02kg
                 } else if (
                   ["E30g", "Molinillo", "Tira E"].includes(producto.nombre)
                 ) {
-                  deduction = 0.03 * Math.abs(parseInt(entry.cantidad)); // 30g = 0.03kg
+                  deduction = 0.03 * Math.abs(parseInt(entry.cantidad, 10)); // 30g = 0.03kg
                 } else if (
                   ["Bt 500 gr ent", "Ba 500 gr ent"].includes(producto.nombre)
                 ) {
-                  deduction = 0.5 * Math.abs(parseInt(entry.cantidad)); // 500g = 0.5kg
+                  deduction = 0.5 * Math.abs(parseInt(entry.cantidad, 10)); // 500g = 0.5kg
                 } else if (producto.nombre === "4 Onzas / 115 g") {
-                  deduction = 0.115 * Math.abs(parseInt(entry.cantidad)); // 115g = 0.115kg
+                  deduction = 0.115 * Math.abs(parseInt(entry.cantidad, 10)); // 115g = 0.115kg
                 }
 
                 // Create deduction entry for the corresponding costal
@@ -913,7 +911,7 @@ function DialogoNuevaSalida({
       comentario: "", // Add this line
     },
   ]);
-  const [error, setError] = useState<string | null>(null);
+  const [_error, setError] = useState<string | null>(null);
 
   const addNewEntry = () => {
     setEntries([
@@ -939,16 +937,16 @@ function DialogoNuevaSalida({
   };
 
   const handleSubmit = async () => {
-    const cantidades: Cantidades = {};
+    const _cantidades: Cantidades = {};
 
     try {
       for (const entry of entries) {
         if (entry.productId && entry.cantidad) {
           const producto = articulos.find(
-            (p) => p.id === parseInt(entry.productId),
+            (p) => p.id === parseInt(entry.productId, 10),
           );
           if (producto) {
-            const entryQuantity = parseInt(entry.cantidad);
+            const entryQuantity = parseInt(entry.cantidad, 10);
             const salida: Entrada = {
               nombre: producto.nombre,
               categoria: producto.categoria,
@@ -1254,8 +1252,7 @@ const PRODUCT_THRESHOLDS: ProductThresholdsMap = {
 
 // Then modify the getEstado function (add this new function)
 function getEstado(nombre: string, cantidad: number): string {
-  const thresholds =
-    PRODUCT_THRESHOLDS[nombre] || PRODUCT_THRESHOLDS["DEFAULT"];
+  const thresholds = PRODUCT_THRESHOLDS[nombre] || PRODUCT_THRESHOLDS.DEFAULT;
 
   if (cantidad <= 0) return "Sin Stock";
   if (cantidad <= thresholds.LOW) return "Bajo Stock";
@@ -1418,7 +1415,7 @@ function InventoryAreaChart({ articulos }: { articulos: Articulo[] }) {
               const dayKey = date.toLocaleDateString("es-ES", {
                 weekday: "short",
               });
-              const cantidad = parseInt(row[2]) || 0;
+              const cantidad = parseInt(row[2], 10) || 0;
 
               if (initialData[dayKey]) {
                 if (cantidad > 0) {
@@ -1571,22 +1568,19 @@ function InventoryAreaChart({ articulos }: { articulos: Articulo[] }) {
         <div className="flex w-full items-start gap-2 text-sm">
           <div className="grid gap-2">
             <div className="flex items-center gap-2 font-medium leading-none">
-              {chartData.length > 0 && (
-                <>
-                  {chartData[chartData.length - 1].entradas >
-                  chartData[chartData.length - 1].salidas ? (
-                    <>
-                      Más entradas que salidas hoy{" "}
-                      <TrendingUp className="h-4 w-4 text-green-500" />
-                    </>
-                  ) : (
-                    <>
-                      Más salidas que entradas hoy{" "}
-                      <TrendingUp className="h-4 w-4 text-amber-500 rotate-180" />
-                    </>
-                  )}
-                </>
-              )}
+              {chartData.length > 0 &&
+                (chartData[chartData.length - 1].entradas >
+                chartData[chartData.length - 1].salidas ? (
+                  <>
+                    Más entradas que salidas hoy{" "}
+                    <TrendingUp className="h-4 w-4 text-green-500" />
+                  </>
+                ) : (
+                  <>
+                    Más salidas que entradas hoy{" "}
+                    <TrendingUp className="h-4 w-4 text-amber-500 rotate-180" />
+                  </>
+                ))}
             </div>
             <div className="flex items-center gap-2 leading-none text-muted-foreground">
               Últimos 7 días
@@ -1599,7 +1593,7 @@ function InventoryAreaChart({ articulos }: { articulos: Articulo[] }) {
 }
 
 // Helper function to get week number
-function getWeekNumber(date: Date): number {
+function _getWeekNumber(date: Date): number {
   const d = new Date(
     Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()),
   );
@@ -1623,12 +1617,12 @@ interface RecentEntry {
 function RecentEntriesTable() {
   const [recentEntries, setRecentEntries] = useState<RecentEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [editingEntry, setEditingEntry] = useState<RecentEntry | null>(null);
-  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [_editingEntry, setEditingEntry] = useState<RecentEntry | null>(null);
+  const [_isEditDialogOpen, setIsEditDialogOpen] = useState(false);
 
   useEffect(() => {
     fetchRecentEntries();
-  }, []);
+  }, [fetchRecentEntries]);
 
   const fetchRecentEntries = async () => {
     try {
@@ -1679,7 +1673,7 @@ function RecentEntriesTable() {
     }
   };
 
-  const handleEdit = async (updatedEntry: RecentEntry) => {
+  const _handleEdit = async (updatedEntry: RecentEntry) => {
     try {
       const response = await fetch("/api/inventory/update-entrada", {
         method: "PUT",
@@ -1699,7 +1693,7 @@ function RecentEntriesTable() {
     }
   };
 
-  const handleDelete = async (entryId: string) => {
+  const _handleDelete = async (entryId: string) => {
     if (!confirm("¿Estás seguro de que quieres eliminar esta entrada?")) return;
 
     try {
@@ -1875,7 +1869,9 @@ export function PanelDeInventarioComponent() {
     try {
       for (const [productoId, cantidad] of Object.entries(nuevasCantidades)) {
         if (cantidad > 0) {
-          const producto = articulos.find((p) => p.id === parseInt(productoId));
+          const producto = articulos.find(
+            (p) => p.id === parseInt(productoId, 10),
+          );
           if (producto) {
             const entrada: Entrada = {
               nombre: producto.nombre,
@@ -1959,7 +1955,9 @@ export function PanelDeInventarioComponent() {
     try {
       for (const [productoId, cantidad] of Object.entries(nuevasCantidades)) {
         if (cantidad < 0) {
-          const producto = articulos.find((p) => p.id === parseInt(productoId));
+          const producto = articulos.find(
+            (p) => p.id === parseInt(productoId, 10),
+          );
           if (producto) {
             const salida: Entrada = {
               nombre: producto.nombre,
@@ -1985,10 +1983,10 @@ export function PanelDeInventarioComponent() {
               producto.nombre === "Hab50g" ||
               producto.nombre === "Hab20g" ||
               producto.nombre === "E30g" ||
-                producto.nombre === "Molinillo" ||
-                producto.nombre === "Tira E" ||
-                producto.nombre === "Bt 500 gr ent" ||
-                producto.nombre === "Ba 500 gr ent" ||
+              producto.nombre === "Molinillo" ||
+              producto.nombre === "Tira E" ||
+              producto.nombre === "Bt 500 gr ent" ||
+              producto.nombre === "Ba 500 gr ent" ||
               producto.nombre === "4 Onzas / 115 g"
             ) {
               // Add debug log
@@ -2135,11 +2133,13 @@ export function PanelDeInventarioComponent() {
     (suma, articulo) => suma + articulo.precio * articulo.cantidad,
     0,
   );
-  const conteoEnStock = articulos.filter((a) => a.estado === "En Stock").length;
-  const conteoBajoStock = articulos.filter(
+  const _conteoEnStock = articulos.filter(
+    (a) => a.estado === "En Stock",
+  ).length;
+  const _conteoBajoStock = articulos.filter(
     (a) => a.estado === "Bajo Stock",
   ).length;
-  const conteoSinStock = articulos.filter(
+  const _conteoSinStock = articulos.filter(
     (a) => a.estado === "Sin Stock",
   ).length;
 
@@ -2285,13 +2285,13 @@ export function PanelDeInventarioComponent() {
                   const bajoStock = articulos.filter((a) => {
                     const threshold =
                       PRODUCT_THRESHOLDS[a.nombre] ||
-                      PRODUCT_THRESHOLDS["DEFAULT"];
+                      PRODUCT_THRESHOLDS.DEFAULT;
                     return a.cantidad > 0 && a.cantidad <= threshold.LOW;
                   }).length;
                   const sobreStock = articulos.filter((a) => {
                     const threshold =
                       PRODUCT_THRESHOLDS[a.nombre] ||
-                      PRODUCT_THRESHOLDS["DEFAULT"];
+                      PRODUCT_THRESHOLDS.DEFAULT;
                     return a.cantidad > threshold.HIGH;
                   }).length;
 
@@ -2332,7 +2332,7 @@ export function PanelDeInventarioComponent() {
                       articulos.filter((a) => {
                         const threshold =
                           PRODUCT_THRESHOLDS[a.nombre] ||
-                          PRODUCT_THRESHOLDS["DEFAULT"];
+                          PRODUCT_THRESHOLDS.DEFAULT;
                         return (
                           a.cantidad > threshold.LOW &&
                           a.cantidad <= threshold.HIGH
@@ -2349,7 +2349,7 @@ export function PanelDeInventarioComponent() {
                       articulos.filter((a) => {
                         const threshold =
                           PRODUCT_THRESHOLDS[a.nombre] ||
-                          PRODUCT_THRESHOLDS["DEFAULT"];
+                          PRODUCT_THRESHOLDS.DEFAULT;
                         return a.cantidad > 0 && a.cantidad <= threshold.LOW;
                       }).length
                     }
@@ -2370,7 +2370,7 @@ export function PanelDeInventarioComponent() {
                       articulos.filter((a) => {
                         const threshold =
                           PRODUCT_THRESHOLDS[a.nombre] ||
-                          PRODUCT_THRESHOLDS["DEFAULT"];
+                          PRODUCT_THRESHOLDS.DEFAULT;
                         return a.cantidad > threshold.HIGH;
                       }).length
                     }
@@ -2453,7 +2453,7 @@ export function PanelDeInventarioComponent() {
         setEstaAbierto={setEstaAgregarEntradaAbierto}
         articulos={articulos}
         alGuardar={manejarAgregarEntrada}
-        setArticulos={function (articulos: Articulo[]): void {
+        setArticulos={(_articulos: Articulo[]): void => {
           throw new Error("Function not implemented.");
         }}
       />

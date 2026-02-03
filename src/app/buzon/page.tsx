@@ -1,13 +1,13 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { MessageSquare } from "lucide-react";
+import Link from "next/link";
 import { useSession } from "next-auth/react";
+import { useEffect, useMemo, useState } from "react";
 import AppHeader from "@/components/AppHeader";
 import FeedLightbox from "@/components/inspector/FeedLightbox";
-import { EMAIL_TO_VENDOR_LABELS, isMasterAccount } from "@/utils/auth";
 import { triggerBuzonRefresh } from "@/hooks/useBuzonNotifications";
+import { EMAIL_TO_VENDOR_LABELS, isMasterAccount } from "@/utils/auth";
 
 const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY;
 const spreadsheetId = process.env.NEXT_PUBLIC_SPREADSHEET_ID;
@@ -78,7 +78,7 @@ const normalizePhotoUrls = (value: unknown): string[] => {
             .replace(/^["'""'']+|["'""'']+$/g, "")
             .trim(),
         )
-        .filter((url) => url && url.includes("http"));
+        .filter((url) => url?.includes("http"));
       if (urls.length > 0) return urls;
     }
 
@@ -90,7 +90,7 @@ const normalizePhotoUrls = (value: unknown): string[] => {
           .replace(/^["'""'']+|["'""'']+$/g, "")
           .trim(),
       )
-      .filter((url) => url && url.includes("http"));
+      .filter((url) => url?.includes("http"));
   }
 
   return [];
@@ -333,8 +333,7 @@ export default function BuzonPage() {
 
   useEffect(() => {
     setVisibleCount(ITEMS_PER_PAGE);
-  }, [entries.length]);
-
+  }, []);
 
   const handleMarkSeen = async (entry: BuzonEntry) => {
     if (!sessionEmail) return;
@@ -408,9 +407,7 @@ export default function BuzonPage() {
       <AppHeader
         title="Buzon"
         icon={MessageSquare}
-        subtitle={
-          isAdmin ? "Comentarios del equipo" : "Comentarios para ti"
-        }
+        subtitle={isAdmin ? "Comentarios del equipo" : "Comentarios para ti"}
       />
 
       <main className="px-4 py-4 max-w-2xl mx-auto">

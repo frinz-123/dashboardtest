@@ -1,13 +1,17 @@
 "use client";
 
-import React, { useEffect, useState, useRef, useMemo } from "react";
-import dynamic from "next/dynamic";
-import SearchInput from "@/components/ui/SearchInput";
-import NavegarMap, { Client as NavegarClient, RouteInfo } from "./NavegarMap";
-import { Navigation, RefreshCw, MapPin, X } from "lucide-react";
 import debounce from "lodash.debounce";
+import { MapPin, Navigation, X } from "lucide-react";
+import dynamic from "next/dynamic";
+import type React from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import SearchInput from "@/components/ui/SearchInput";
+import NavegarMap, {
+  type Client as NavegarClient,
+  type RouteInfo,
+} from "./NavegarMap";
 
-const Map = dynamic(() => import("@/components/ui/Map"), { ssr: false });
+const _Map = dynamic(() => import("@/components/ui/Map"), { ssr: false });
 
 const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY;
 const spreadsheetId = process.env.NEXT_PUBLIC_SPREADSHEET_ID;
@@ -27,9 +31,9 @@ export default function NavegarPage() {
     () => debounce(setDebouncedSearchTerm, 300),
     [],
   );
-  const [filteredClients, setFilteredClients] = useState<string[]>([]);
+  const [_filteredClients, setFilteredClients] = useState<string[]>([]);
   const [selectedClient, setSelectedClient] = useState<string>("");
-  const [isLoading, setIsLoading] = useState(true);
+  const [_isLoading, setIsLoading] = useState(true);
   const mapRef = useRef<any>(null);
   const [routeInfo, setRouteInfo] = useState<RouteInfo | null>(null);
   const [routeMode, setRouteMode] = useState(false);
@@ -55,8 +59,8 @@ export default function NavegarPage() {
   const [sinVisitarFilter, setSinVisitarFilter] = useState(false);
   const [sheetRows, setSheetRows] = useState<any[]>([]);
   const [sheetHeaders, setSheetHeaders] = useState<string[]>([]);
-  const [fetchError, setFetchError] = useState<string | null>(null);
-  const [isSheetLoading, setIsSheetLoading] = useState(true);
+  const [_fetchError, setFetchError] = useState<string | null>(null);
+  const [_isSheetLoading, setIsSheetLoading] = useState(true);
 
   // Date filter state
   const [dateFilter, setDateFilter] = useState<{
@@ -67,7 +71,9 @@ export default function NavegarPage() {
   } | null>(null);
   const [dateDropdownOpen, setDateDropdownOpen] = useState(false);
   const dateChipRef = useRef<HTMLDivElement>(null);
-  const [dateFilterMode, setDateFilterMode] = useState<"single" | "range">("single");
+  const [_dateFilterMode, _setDateFilterMode] = useState<"single" | "range">(
+    "single",
+  );
 
   // Email filter state
   const [emailFilter, setEmailFilter] = useState<string | null>(null);
@@ -90,7 +96,7 @@ export default function NavegarPage() {
         const data = await response.json();
         setSheetHeaders(data.values[0]);
         setSheetRows(data.values.slice(1));
-      } catch (e) {
+      } catch (_e) {
         setFetchError("Error al cargar los datos de Google Sheets");
         setSheetRows([]);
       } finally {
@@ -173,7 +179,7 @@ export default function NavegarPage() {
       }
     }
     return vendedorMap;
-  }, [sheetRows, sheetHeaders]);
+  }, [sheetRows]);
 
   const uniqueCodes = useMemo(
     () => Array.from(new Set(allClientCodes.map((c) => c.code))),
@@ -225,8 +231,7 @@ export default function NavegarPage() {
     const results = clientNames
       .filter(
         (name) =>
-          name &&
-          name.toLowerCase().includes(searchLower) &&
+          name?.toLowerCase().includes(searchLower) &&
           !name.includes("**ARCHIVADO NO USAR**"),
       )
       .slice(0, MAX_RESULTS);
@@ -286,7 +291,7 @@ export default function NavegarPage() {
         const cleanNames = Array.from(new Set(names.filter(Boolean)));
         setClientNames(cleanNames as string[]);
         setClientLocations(clients);
-      } catch (error) {
+      } catch (_error) {
         // TODO: handle error UI
         setClientNames([]);
         setClientLocations({});
@@ -303,7 +308,9 @@ export default function NavegarPage() {
       setSelectedClientCode(null);
       return;
     }
-    const clientCode = allClientCodes.find((c) => c.name === selectedClient)?.code;
+    const clientCode = allClientCodes.find(
+      (c) => c.name === selectedClient,
+    )?.code;
     setSelectedClientCode(clientCode || null);
   }, [selectedClient, allClientCodes]);
 
@@ -314,7 +321,10 @@ export default function NavegarPage() {
       if (codigoChipRef.current && !codigoChipRef.current.contains(target)) {
         setCodigoDropdownOpen(false);
       }
-      if (vendedorChipRef.current && !vendedorChipRef.current.contains(target)) {
+      if (
+        vendedorChipRef.current &&
+        !vendedorChipRef.current.contains(target)
+      ) {
         setVendedorDropdownOpen(false);
       }
       if (dateChipRef.current && !dateChipRef.current.contains(target)) {
@@ -324,7 +334,11 @@ export default function NavegarPage() {
         setEmailDropdownOpen(false);
       }
     }
-    const anyOpen = codigoDropdownOpen || vendedorDropdownOpen || dateDropdownOpen || emailDropdownOpen;
+    const anyOpen =
+      codigoDropdownOpen ||
+      vendedorDropdownOpen ||
+      dateDropdownOpen ||
+      emailDropdownOpen;
     if (anyOpen) {
       document.addEventListener("mousedown", handleClickOutside);
     } else {
@@ -333,11 +347,22 @@ export default function NavegarPage() {
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [codigoDropdownOpen, vendedorDropdownOpen, dateDropdownOpen, emailDropdownOpen]);
+  }, [
+    codigoDropdownOpen,
+    vendedorDropdownOpen,
+    dateDropdownOpen,
+    emailDropdownOpen,
+  ]);
 
   // Single-pass filtering with Set operations (optimized)
   const filteredNames = useMemo(() => {
-    if (!codigoFilter && !vendedorFilter && !sinVisitarFilter && !dateFilter && !emailFilter) {
+    if (
+      !codigoFilter &&
+      !vendedorFilter &&
+      !sinVisitarFilter &&
+      !dateFilter &&
+      !emailFilter
+    ) {
       return null;
     }
 
@@ -366,7 +391,8 @@ export default function NavegarPage() {
             const now = new Date();
             lastDate.setHours(0, 0, 0, 0);
             now.setHours(0, 0, 0, 0);
-            const diffDays = (now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24);
+            const diffDays =
+              (now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24);
             if (diffDays <= DAYS_WITHOUT_VISIT) matches = false;
           } else {
             matches = false;
@@ -390,13 +416,23 @@ export default function NavegarPage() {
               matches = false;
             } else if (dateFilter.type === "single" && dateFilter.date) {
               const filterDate = isoToDate(dateFilter.date);
-              if (!filterDate || clientDate.getTime() !== filterDate.getTime()) {
+              if (
+                !filterDate ||
+                clientDate.getTime() !== filterDate.getTime()
+              ) {
                 matches = false;
               }
             } else if (dateFilter.type === "range") {
-              const startDate = dateFilter.startDate ? isoToDate(dateFilter.startDate) : null;
-              const endDate = dateFilter.endDate ? isoToDate(dateFilter.endDate) : null;
-              if ((startDate && clientDate < startDate) || (endDate && clientDate > endDate)) {
+              const startDate = dateFilter.startDate
+                ? isoToDate(dateFilter.startDate)
+                : null;
+              const endDate = dateFilter.endDate
+                ? isoToDate(dateFilter.endDate)
+                : null;
+              if (
+                (startDate && clientDate < startDate) ||
+                (endDate && clientDate > endDate)
+              ) {
                 matches = false;
               }
             }
@@ -425,34 +461,36 @@ export default function NavegarPage() {
     clientVendedorMapping,
     clientLastVisitMap,
     clientLastEmailMap,
+    isoToDate,
+    sheetDateToISO,
   ]);
 
   // Client counts for filter chips (calculated after filteredNames)
-  const codigoClientCount = codigoFilter && filteredNames ? filteredNames.length : 0;
-  const vendedorClientCount = vendedorFilter && filteredNames ? filteredNames.length : 0;
-  const sinVisitarClientCount = sinVisitarFilter && filteredNames ? filteredNames.length : 0;
-  const dateClientCount = dateFilter && filteredNames ? filteredNames.length : 0;
-  const emailClientCount = emailFilter && filteredNames ? filteredNames.length : 0;
+  const codigoClientCount =
+    codigoFilter && filteredNames ? filteredNames.length : 0;
+  const vendedorClientCount =
+    vendedorFilter && filteredNames ? filteredNames.length : 0;
+  const sinVisitarClientCount =
+    sinVisitarFilter && filteredNames ? filteredNames.length : 0;
+  const dateClientCount =
+    dateFilter && filteredNames ? filteredNames.length : 0;
+  const emailClientCount =
+    emailFilter && filteredNames ? filteredNames.length : 0;
 
   // Debounce filtering state to avoid flashing unfiltered results
   useEffect(() => {
     setIsFiltering(true);
     const handler = setTimeout(() => setIsFiltering(false), 350);
     return () => clearTimeout(handler);
-  }, [
-    filteredNames,
-    searchTerm,
-    sinVisitarFilter,
-    codigoFilter,
-    vendedorFilter,
-    dateFilter,
-    emailFilter,
-    clientNames,
-  ]);
+  }, []);
 
   // Check if any filters are active
   const hasActiveFilters = Boolean(
-    codigoFilter || vendedorFilter || sinVisitarFilter || dateFilter || emailFilter,
+    codigoFilter ||
+      vendedorFilter ||
+      sinVisitarFilter ||
+      dateFilter ||
+      emailFilter,
   );
 
   // Get the final filtered client list with visit dates
@@ -479,7 +517,7 @@ export default function NavegarPage() {
       });
 
     return result;
-  }, [filteredNames, hasActiveFilters, clientLastVisitMap, clientNames]);
+  }, [filteredNames, hasActiveFilters, getLastVisitDate, isSinVisitar]);
 
   // Format date for display
   const formatVisitDate = (dateStr: string | null) => {
@@ -488,7 +526,7 @@ export default function NavegarPage() {
     try {
       // Parse as MM/DD/YYYY format (month/day/year)
       const [month, day, year] = dateStr.split("/").map(Number);
-      const date = new Date(year, month - 1, day);
+      const _date = new Date(year, month - 1, day);
 
       // Format as "15 Mar 2024"
       const monthNames = [
@@ -514,7 +552,8 @@ export default function NavegarPage() {
 
   // Prepare client list for map (memoized to avoid remapping on every render)
   const clientList: NavegarClient[] = useMemo(() => {
-    const names = filteredNames || (searchTerm ? filteredClientsBySearch : clientNames);
+    const names =
+      filteredNames || (searchTerm ? filteredClientsBySearch : clientNames);
     return names
       .map((name) => {
         const clientCode = allClientCodes.find((c) => c.name === name)?.code;
@@ -526,7 +565,14 @@ export default function NavegarPage() {
         };
       })
       .filter((c) => c.lat && c.lng);
-  }, [filteredNames, searchTerm, filteredClientsBySearch, clientNames, allClientCodes, clientLocations]);
+  }, [
+    filteredNames,
+    searchTerm,
+    filteredClientsBySearch,
+    clientNames,
+    allClientCodes,
+    clientLocations,
+  ]);
 
   // Only show selected client if it is in the filtered list
   const selectedClientLocation =
@@ -537,8 +583,8 @@ export default function NavegarPage() {
       : null;
 
   // Handle refresh location
-  const handleRefreshLocation = async () => {
-    if (mapRef.current && mapRef.current.refreshLocation) {
+  const _handleRefreshLocation = async () => {
+    if (mapRef.current?.refreshLocation) {
       setIsLocating(true);
       await mapRef.current.refreshLocation();
       setIsLocating(false);
@@ -586,7 +632,7 @@ export default function NavegarPage() {
   const handleCloseRoute = () => {
     setRouteInfo(null);
     setRouteMode(false);
-    if (mapRef.current && mapRef.current.clearRoute) {
+    if (mapRef.current?.clearRoute) {
       mapRef.current.clearRoute();
     }
   };
@@ -635,7 +681,10 @@ export default function NavegarPage() {
               count={codigoClientCount}
               isOpen={codigoDropdownOpen}
               onToggle={() => setCodigoDropdownOpen((open) => !open)}
-              onClear={() => { setCodigoFilter(null); setCodigoDropdownOpen(false); }}
+              onClear={() => {
+                setCodigoFilter(null);
+                setCodigoDropdownOpen(false);
+              }}
               icon={<Hash className="w-3.5 h-3.5" />}
             />
             {/* Vendedor filter */}
@@ -646,13 +695,18 @@ export default function NavegarPage() {
               count={vendedorClientCount}
               isOpen={vendedorDropdownOpen}
               onToggle={() => setVendedorDropdownOpen((open) => !open)}
-              onClear={() => { setVendedorFilter(null); setVendedorDropdownOpen(false); }}
+              onClear={() => {
+                setVendedorFilter(null);
+                setVendedorDropdownOpen(false);
+              }}
               icon={<User className="w-3.5 h-3.5" />}
             />
             {/* Sin Visitar filter */}
             <FilterChip
               label="Sin visitar"
-              value={sinVisitarFilter ? `${sinVisitarClientCount} clientes` : null}
+              value={
+                sinVisitarFilter ? `${sinVisitarClientCount} clientes` : null
+              }
               count={sinVisitarClientCount}
               isOpen={false}
               onToggle={() => setSinVisitarFilter((f) => !f)}
@@ -667,7 +721,10 @@ export default function NavegarPage() {
               count={dateClientCount}
               isOpen={dateDropdownOpen}
               onToggle={() => setDateDropdownOpen((open) => !open)}
-              onClear={() => { setDateFilter(null); setDateDropdownOpen(false); }}
+              onClear={() => {
+                setDateFilter(null);
+                setDateDropdownOpen(false);
+              }}
               icon={<Calendar className="w-3.5 h-3.5" />}
             />
             {/* Email filter */}
@@ -678,7 +735,10 @@ export default function NavegarPage() {
               count={emailClientCount}
               isOpen={emailDropdownOpen}
               onToggle={() => setEmailDropdownOpen((open) => !open)}
-              onClear={() => { setEmailFilter(null); setEmailDropdownOpen(false); }}
+              onClear={() => {
+                setEmailFilter(null);
+                setEmailDropdownOpen(false);
+              }}
               icon={<Mail className="w-3.5 h-3.5" />}
             />
           </div>
@@ -695,7 +755,10 @@ export default function NavegarPage() {
                 uniqueCodes.map((code) => (
                   <button
                     key={code}
-                    onClick={() => { setCodigoFilter(code); setCodigoDropdownOpen(false); }}
+                    onClick={() => {
+                      setCodigoFilter(code);
+                      setCodigoDropdownOpen(false);
+                    }}
                     className={`w-full px-3 py-2 text-left text-sm flex items-center justify-between transition-colors ${
                       codigoFilter === code
                         ? "bg-blue-50 text-blue-700"
@@ -725,7 +788,10 @@ export default function NavegarPage() {
                 uniqueVendedorNames.map((name) => (
                   <button
                     key={name}
-                    onClick={() => { setVendedorFilter(name); setVendedorDropdownOpen(false); }}
+                    onClick={() => {
+                      setVendedorFilter(name);
+                      setVendedorDropdownOpen(false);
+                    }}
                     className={`w-full px-3 py-2 text-left text-sm flex items-center justify-between transition-colors ${
                       vendedorFilter === name
                         ? "bg-blue-50 text-blue-700"
@@ -733,7 +799,9 @@ export default function NavegarPage() {
                     }`}
                   >
                     <span className="truncate">{name}</span>
-                    {vendedorFilter === name && <Check className="w-4 h-4 flex-shrink-0" />}
+                    {vendedorFilter === name && (
+                      <Check className="w-4 h-4 flex-shrink-0" />
+                    )}
                   </button>
                 ))
               ) : (
@@ -784,7 +852,10 @@ export default function NavegarPage() {
                 </div>
               </div>
               <button
-                onClick={() => { setDateFilter(null); setDateDropdownOpen(false); }}
+                onClick={() => {
+                  setDateFilter(null);
+                  setDateDropdownOpen(false);
+                }}
                 className="w-full px-2 py-1.5 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded-md transition-colors"
               >
                 Limpiar filtro
@@ -803,7 +874,10 @@ export default function NavegarPage() {
                 uniqueEmails.map((email) => (
                   <button
                     key={email}
-                    onClick={() => { setEmailFilter(email); setEmailDropdownOpen(false); }}
+                    onClick={() => {
+                      setEmailFilter(email);
+                      setEmailDropdownOpen(false);
+                    }}
                     className={`w-full px-3 py-2 text-left text-sm flex items-center justify-between transition-colors ${
                       emailFilter === email
                         ? "bg-blue-50 text-blue-700"
@@ -811,7 +885,9 @@ export default function NavegarPage() {
                     }`}
                   >
                     <span className="truncate">{email}</span>
-                    {emailFilter === email && <Check className="w-4 h-4 flex-shrink-0" />}
+                    {emailFilter === email && (
+                      <Check className="w-4 h-4 flex-shrink-0" />
+                    )}
                   </button>
                 ))
               ) : (
@@ -825,7 +901,10 @@ export default function NavegarPage() {
         {/* Main content card */}
         <div className="bg-white rounded-t-2xl shadow-[0_-4px_20px_rgba(0,0,0,0.08)] w-full max-w-md mx-auto p-4 border-t border-gray-100">
           {/* Route Mode UI */}
-          {routeMode && selectedClient && selectedClientLocation && routeInfo ? (
+          {routeMode &&
+          selectedClient &&
+          selectedClientLocation &&
+          routeInfo ? (
             <div className="flex flex-col items-center py-2">
               <div className="flex items-center gap-2 mb-2">
                 <div className="p-2 bg-blue-100 rounded-full">
@@ -860,7 +939,9 @@ export default function NavegarPage() {
                   <MapPin className="h-5 w-5 text-green-600" />
                 </div>
                 <div className="text-sm">
-                  <div className="font-medium text-gray-900">Confirmar ubicación</div>
+                  <div className="font-medium text-gray-900">
+                    Confirmar ubicación
+                  </div>
                   <div className="text-gray-500">
                     {userLocation.lat.toFixed(5)}, {userLocation.lng.toFixed(5)}
                   </div>
@@ -902,7 +983,8 @@ export default function NavegarPage() {
                   <div className="flex items-center gap-2">
                     <Filter className="w-4 h-4 text-gray-400" />
                     <span className="text-xs text-gray-500">
-                      {filteredClientsWithDates.length} resultado{filteredClientsWithDates.length !== 1 ? "s" : ""}
+                      {filteredClientsWithDates.length} resultado
+                      {filteredClientsWithDates.length !== 1 ? "s" : ""}
                     </span>
                   </div>
                   <button
@@ -939,14 +1021,18 @@ export default function NavegarPage() {
                           }`}
                         >
                           <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium truncate pr-2">{client.name}</span>
-                            <span className={`text-xs flex-shrink-0 ${
-                              selectedClient === client.name
-                                ? "text-gray-400"
-                                : client.isSinVisitar
-                                  ? "text-amber-500"
-                                  : "text-gray-400"
-                            }`}>
+                            <span className="text-sm font-medium truncate pr-2">
+                              {client.name}
+                            </span>
+                            <span
+                              className={`text-xs flex-shrink-0 ${
+                                selectedClient === client.name
+                                  ? "text-gray-400"
+                                  : client.isSinVisitar
+                                    ? "text-amber-500"
+                                    : "text-gray-400"
+                              }`}
+                            >
                               {formatVisitDate(client.lastVisitDate)}
                             </span>
                           </div>
@@ -955,8 +1041,12 @@ export default function NavegarPage() {
                     ) : (
                       <div className="py-8 text-center">
                         <SearchX className="w-8 h-8 mx-auto text-gray-300 mb-2" />
-                        <p className="text-sm text-gray-500">No se encontraron clientes</p>
-                        <p className="text-xs text-gray-400 mt-1">Intenta ajustar los filtros</p>
+                        <p className="text-sm text-gray-500">
+                          No se encontraron clientes
+                        </p>
+                        <p className="text-xs text-gray-400 mt-1">
+                          Intenta ajustar los filtros
+                        </p>
                       </div>
                     )}
                   </div>
@@ -987,14 +1077,18 @@ export default function NavegarPage() {
                           }`}
                         >
                           <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium truncate pr-2">{name}</span>
-                            <span className={`text-xs flex-shrink-0 ${
-                              selectedClient === name
-                                ? "text-gray-400"
-                                : isSinVisitar(name)
-                                  ? "text-amber-500"
-                                  : "text-gray-400"
-                            }`}>
+                            <span className="text-sm font-medium truncate pr-2">
+                              {name}
+                            </span>
+                            <span
+                              className={`text-xs flex-shrink-0 ${
+                                selectedClient === name
+                                  ? "text-gray-400"
+                                  : isSinVisitar(name)
+                                    ? "text-amber-500"
+                                    : "text-gray-400"
+                              }`}
+                            >
                               {formatVisitDate(getLastVisitDate(name))}
                             </span>
                           </div>
@@ -1010,13 +1104,17 @@ export default function NavegarPage() {
                     <div className="py-8 text-center">
                       <SearchX className="w-8 h-8 mx-auto text-gray-300 mb-2" />
                       <p className="text-sm text-gray-500">Sin resultados</p>
-                      <p className="text-xs text-gray-400 mt-1">Verifica la ortografía</p>
+                      <p className="text-xs text-gray-400 mt-1">
+                        Verifica la ortografía
+                      </p>
                     </div>
                   ) : (
                     <div className="py-8 text-center">
                       <MapPin className="w-8 h-8 mx-auto text-gray-300 mb-2" />
                       <p className="text-sm text-gray-500">Busca un cliente</p>
-                      <p className="text-xs text-gray-400 mt-1">Selecciona uno para ver opciones</p>
+                      <p className="text-xs text-gray-400 mt-1">
+                        Selecciona uno para ver opciones
+                      </p>
                     </div>
                   )}
                 </div>
@@ -1049,7 +1147,8 @@ export default function NavegarPage() {
                           </div>
                         )}
                         <div className="text-xs text-gray-400 mt-0.5">
-                          {selectedClientLocation.lat.toFixed(5)}, {selectedClientLocation.lng.toFixed(5)}
+                          {selectedClientLocation.lat.toFixed(5)},{" "}
+                          {selectedClientLocation.lng.toFixed(5)}
                         </div>
                       </div>
                     </div>
@@ -1057,7 +1156,9 @@ export default function NavegarPage() {
                       <div className="mt-3 flex items-center gap-3 text-sm">
                         <div className="flex items-center gap-1 text-gray-600">
                           <ArrowRight className="w-4 h-4" />
-                          <span>{(routeInfo.distance / 1000).toFixed(1)} km</span>
+                          <span>
+                            {(routeInfo.distance / 1000).toFixed(1)} km
+                          </span>
                         </div>
                         <div className="flex items-center gap-1 text-gray-600">
                           <Clock className="w-4 h-4" />
@@ -1134,9 +1235,10 @@ function FilterChip({
       className={`
         flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-medium
         transition-all duration-200 whitespace-nowrap flex-shrink-0
-        ${hasValue
-          ? "bg-gray-900 text-white"
-          : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+        ${
+          hasValue
+            ? "bg-gray-900 text-white"
+            : "bg-gray-100 text-gray-600 hover:bg-gray-200"
         }
         ${isOpen ? "ring-2 ring-offset-1 ring-gray-300" : ""}
       `}
@@ -1146,13 +1248,18 @@ function FilterChip({
       </span>
       <span className="truncate max-w-[80px]">{label}</span>
       {count > 0 && (
-        <span className={`text-xs ${hasValue ? "text-white/70" : "text-gray-400"}`}>
+        <span
+          className={`text-xs ${hasValue ? "text-white/70" : "text-gray-400"}`}
+        >
           ({count})
         </span>
       )}
       {hasValue && (
         <button
-          onClick={(e) => { e.stopPropagation(); onClear(); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onClear();
+          }}
           className="ml-0.5 p-0.5 rounded-full hover:bg-white/20 transition-colors"
         >
           <X className="w-3 h-3" />
@@ -1167,8 +1274,18 @@ function formatISODate(isoDate: string): string {
   if (!isoDate) return "";
   const [year, month, day] = isoDate.split("-").map(Number);
   const monthNames = [
-    "Ene", "Feb", "Mar", "Abr", "May", "Jun",
-    "Jul", "Ago", "Sep", "Oct", "Nov", "Dic",
+    "Ene",
+    "Feb",
+    "Mar",
+    "Abr",
+    "May",
+    "Jun",
+    "Jul",
+    "Ago",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dic",
   ];
   return `${day} ${monthNames[month - 1]} ${year}`;
 }
@@ -1186,7 +1303,10 @@ function Dropdown({
 }) {
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (anchorRef.current && !anchorRef.current.contains(event.target as Node)) {
+      if (
+        anchorRef.current &&
+        !anchorRef.current.contains(event.target as Node)
+      ) {
         onClose();
       }
     };
@@ -1196,24 +1316,30 @@ function Dropdown({
 
   return (
     <div className="absolute bottom-full mb-2 z-30">
-      <div className={`
+      <div
+        className={`
         bg-white rounded-xl shadow-lg border border-gray-100
         min-w-[200px] max-h-[280px] overflow-y-auto
         animate-in slide-in-from-bottom-2 fade-in duration-200
         ${align === "right" ? "right-0" : "left-0"}
-      `}>
+      `}
+      >
         {children}
       </div>
     </div>
   );
 }
 
-function formatDateFilterValue(dateFilter: NonNullable<typeof dateFilter>): string {
+function formatDateFilterValue(
+  dateFilter: NonNullable<typeof dateFilter>,
+): string {
   if (dateFilter.type === "single" && dateFilter.date) {
     return formatISODate(dateFilter.date);
   }
   if (dateFilter.type === "range") {
-    const start = dateFilter.startDate ? formatISODate(dateFilter.startDate) : "...";
+    const start = dateFilter.startDate
+      ? formatISODate(dateFilter.startDate)
+      : "...";
     const end = dateFilter.endDate ? formatISODate(dateFilter.endDate) : "...";
     return `${start} → ${end}`;
   }
@@ -1221,4 +1347,15 @@ function formatDateFilterValue(dateFilter: NonNullable<typeof dateFilter>): stri
 }
 
 // Icon imports
-import { Hash, User, Clock, Calendar, Mail, Check, Filter, SearchX, ArrowRight, ExternalLink } from "lucide-react";
+import {
+  ArrowRight,
+  Calendar,
+  Check,
+  Clock,
+  ExternalLink,
+  Filter,
+  Hash,
+  Mail,
+  SearchX,
+  User,
+} from "lucide-react";

@@ -1,34 +1,56 @@
-import { createHash } from "crypto";
-import { google } from "googleapis";
+import { createHash } from "node:crypto";
+import {
+  HeadObjectCommand,
+  PutObjectCommand,
+  S3Client,
+} from "@aws-sdk/client-s3";
 import { NextResponse } from "next/server";
-import { Readable } from "stream";
-import { driveAuth } from "@/utils/googleAuth";
 
 // Force Node.js runtime (not Edge) for stream and crypto compatibility
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
+const r2AccountId = process.env.R2_ACCOUNT_ID;
+const r2AccessKeyId = process.env.R2_ACCESS_KEY_ID;
+const r2SecretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
+const r2BucketName = process.env.R2_BUCKET;
+const r2PublicBaseUrl = process.env.R2_PUBLIC_BASE_URL;
+
+const r2Client =
+  r2AccountId && r2AccessKeyId && r2SecretAccessKey
+    ? new S3Client({
+        region: "auto",
+        endpoint: `https://${r2AccountId}.r2.cloudflarestorage.com`,
+        credentials: {
+          accessKeyId: r2AccessKeyId,
+          secretAccessKey: r2SecretAccessKey,
+        },
+      })
+    : null;
+
+const getPublicUrl = (key: string): string => {
+  if (!r2PublicBaseUrl) return key;
+  const base = r2PublicBaseUrl.endsWith("/")
+    ? r2PublicBaseUrl.slice(0, -1)
+    : r2PublicBaseUrl;
+  return `${base}/${key}`;
+};
 
 export async function POST(req: Request) {
-  if (!folderId) {
-    console.error("Missing GOOGLE_DRIVE_FOLDER_ID");
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Falta configurar GOOGLE_DRIVE_FOLDER_ID",
-      },
-      { status: 500 },
-    );
-  }
+  const missingEnv = [
+    !r2AccountId && "R2_ACCOUNT_ID",
+    !r2AccessKeyId && "R2_ACCESS_KEY_ID",
+    !r2SecretAccessKey && "R2_SECRET_ACCESS_KEY",
+    !r2BucketName && "R2_BUCKET",
+    !r2PublicBaseUrl && "R2_PUBLIC_BASE_URL",
+  ].filter(Boolean) as string[];
 
-  // Verify auth is available
-  if (!driveAuth) {
-    console.error("Drive auth not configured");
+  if (missingEnv.length > 0 || !r2Client || !r2BucketName || !r2PublicBaseUrl) {
+    console.error("R2 env not configured", { missingEnv });
     return NextResponse.json(
       {
         success: false,
-        error: "Drive authentication not configured",
+        error: `Falta configurar: ${missingEnv.join(", ")}`,
       },
       { status: 500 },
     );
@@ -64,61 +86,40 @@ export async function POST(req: Request) {
     const blob = file as Blob;
     const mimeType = blob.type || "application/octet-stream";
     const extension = mimeType.includes("png") ? "png" : "jpg";
-    const filename = `cley-${submissionId}-${photoId}.${extension}`;
-
     const buffer = Buffer.from(await blob.arrayBuffer());
     const photoHash = createHash("sha256").update(buffer).digest("hex");
-
-    stage = "driveInit";
-    const drive = google.drive({ version: "v3", auth: driveAuth });
+    const objectKey = `photos/${photoHash}.${extension}`;
 
     stage = "checkDuplicate";
-    const existing = await drive.files.list({
-      q: `'${folderId}' in parents and trashed = false and appProperties has { key='photoHash' and value='${photoHash}' }`,
-      fields: "files(id, name, appProperties, webViewLink, webContentLink)",
-      supportsAllDrives: true,
-      includeItemsFromAllDrives: true,
-      pageSize: 1,
-    });
-    const existingFile = existing.data.files?.[0];
-    if (existingFile?.id) {
-      const appProps = existingFile.appProperties || {};
-      const expectedName = `cley-${submissionId}-${photoId}.${extension}`;
+    let existingMetadata: Record<string, string> | undefined;
+    try {
+      const head = await r2Client.send(
+        new HeadObjectCommand({
+          Bucket: r2BucketName,
+          Key: objectKey,
+        }),
+      );
+      existingMetadata = head.Metadata;
+    } catch (error: unknown) {
+      const statusCode = (error as { $metadata?: { httpStatusCode?: number } })
+        ?.$metadata?.httpStatusCode;
+      const name = (error as { name?: string })?.name;
+      if (statusCode !== 404 && name !== "NotFound") {
+        throw error;
+      }
+    }
+
+    if (existingMetadata) {
       const isSameSubmission =
-        (appProps.submissionId === submissionId &&
-          appProps.photoId === photoId) ||
-        existingFile.name === expectedName;
+        existingMetadata.submissionid === submissionId &&
+        existingMetadata.photoid === photoId;
 
       if (isSameSubmission) {
-        let existingUrl =
-          existingFile.webViewLink || existingFile.webContentLink;
-
-        if (!existingUrl) {
-          await drive.permissions.create({
-            fileId: existingFile.id,
-            requestBody: {
-              role: "reader",
-              type: "anyone",
-            },
-            supportsAllDrives: true,
-          });
-          const fileResponse = await drive.files.get({
-            fileId: existingFile.id,
-            fields: "webViewLink, webContentLink",
-            supportsAllDrives: true,
-          });
-          existingUrl =
-            fileResponse.data.webViewLink || fileResponse.data.webContentLink;
-        }
-
-        if (existingUrl) {
-          return NextResponse.json({
-            success: true,
-            url: existingUrl,
-            fileId: existingFile.id,
-            duplicate: true,
-          });
-        }
+        return NextResponse.json({
+          success: true,
+          url: getPublicUrl(objectKey),
+          duplicate: true,
+        });
       }
 
       return NextResponse.json(
@@ -132,62 +133,23 @@ export async function POST(req: Request) {
     }
 
     stage = "upload";
-    const createResponse = await drive.files.create({
-      requestBody: {
-        name: filename,
-        parents: [folderId],
-        appProperties: {
-          photoHash,
-          submissionId,
-          photoId,
+    await r2Client.send(
+      new PutObjectCommand({
+        Bucket: r2BucketName,
+        Key: objectKey,
+        Body: buffer,
+        ContentType: mimeType,
+        Metadata: {
+          submissionid: submissionId,
+          photoid: photoId,
+          photohash: photoHash,
         },
-      },
-      media: {
-        mimeType,
-        body: Readable.from(buffer),
-      },
-      fields: "id",
-      supportsAllDrives: true,
-    });
+      }),
+    );
 
-    const fileId = createResponse.data.id;
-    if (!fileId) {
-      return NextResponse.json(
-        { success: false, error: "No se pudo crear el archivo" },
-        { status: 500 },
-      );
-    }
-
-    stage = "permissions";
-    await drive.permissions.create({
-      fileId,
-      requestBody: {
-        role: "reader",
-        type: "anyone",
-      },
-      supportsAllDrives: true,
-    });
-
-    stage = "getLink";
-    const fileResponse = await drive.files.get({
-      fileId,
-      fields: "webViewLink, webContentLink",
-      supportsAllDrives: true,
-    });
-
-    const url =
-      fileResponse.data.webViewLink || fileResponse.data.webContentLink;
-
-    if (!url) {
-      return NextResponse.json(
-        { success: false, error: "No se pudo obtener el enlace" },
-        { status: 500 },
-      );
-    }
-
-    return NextResponse.json({ success: true, url, fileId });
+    return NextResponse.json({ success: true, url: getPublicUrl(objectKey) });
   } catch (error: unknown) {
-    console.error("Drive upload error at stage:", stage, error);
+    console.error("R2 upload error at stage:", stage, error);
 
     // Extract error details from various error formats
     let errorMessage = "Unknown error";
@@ -195,14 +157,15 @@ export async function POST(req: Request) {
 
     if (error instanceof Error) {
       errorMessage = error.message;
-      // Google API errors often have additional properties
-      const gError = error as Error & {
-        code?: number | string;
-        errors?: Array<{ message: string; reason: string }>;
+      const r2Error = error as Error & {
+        name?: string;
+        $metadata?: { httpStatusCode?: number };
       };
-      if (gError.code) errorCode = String(gError.code);
-      if (gError.errors?.[0]) {
-        errorMessage = `${gError.errors[0].reason}: ${gError.errors[0].message}`;
+      if (r2Error.$metadata?.httpStatusCode) {
+        errorCode = String(r2Error.$metadata.httpStatusCode);
+      }
+      if (r2Error.name) {
+        errorMessage = `${r2Error.name}: ${errorMessage}`;
       }
     } else if (typeof error === "object" && error !== null) {
       errorMessage = JSON.stringify(error);

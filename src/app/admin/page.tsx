@@ -1,21 +1,22 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { Lock, DollarSign, BarChart2 } from "lucide-react";
-import AppHeader from "@/components/AppHeader";
+import { BarChart2, DollarSign, Lock } from "lucide-react";
+import type React from "react";
+import { useEffect, useState } from "react";
 import {
-  LineChart,
+  Bar,
+  BarChart,
+  Cell,
   Line,
+  LineChart,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
   XAxis,
   YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  BarChart,
-  Bar,
 } from "recharts";
+import AppHeader from "@/components/AppHeader";
 import {
   getCurrentPeriodInfo,
   getWeekDates,
@@ -180,7 +181,7 @@ export default function AdminPage() {
 
     const currentTotal = filteredSales.reduce((sum, sale) => {
       const saleAmount = parseFloat(sale.venta.toString());
-      return sum + (isNaN(saleAmount) ? 0 : saleAmount);
+      return sum + (Number.isNaN(saleAmount) ? 0 : saleAmount);
     }, 0);
 
     setTotalSales(currentTotal);
@@ -191,7 +192,7 @@ export default function AdminPage() {
     );
     const previousTotal = previousPeriodSales.reduce((sum, sale) => {
       const saleAmount = parseFloat(sale.venta.toString());
-      return sum + (isNaN(saleAmount) ? 0 : saleAmount);
+      return sum + (Number.isNaN(saleAmount) ? 0 : saleAmount);
     }, 0);
 
     const difference =
@@ -213,7 +214,7 @@ export default function AdminPage() {
     if (isAuthenticated) {
       fetchData();
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, fetchData]);
 
   useEffect(() => {
     if (salesData.length > 0) {
@@ -222,7 +223,13 @@ export default function AdminPage() {
       updateTopStores(salesData);
       updateSellerComparison(salesData);
     }
-  }, [selectedPeriod, salesData]);
+  }, [
+    salesData,
+    updateChartData,
+    updateProductStats,
+    updateSellerComparison,
+    updateTopStores,
+  ]);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -273,7 +280,7 @@ export default function AdminPage() {
       ];
 
       productMappings.forEach(({ col, name }) => {
-        const quantity = parseInt(row[col]) || 0;
+        const quantity = parseInt(row[col], 10) || 0;
         if (quantity > 0) {
           products[name] = quantity;
         }
@@ -293,7 +300,7 @@ export default function AdminPage() {
     updateSellerComparison(sales);
   };
 
-  const getProductNameFromIndex = (index: number): string => {
+  const _getProductNameFromIndex = (index: number): string => {
     const products = [
       "Chiltepin Molido 50 g",
       "Chiltepin Molido 20 g",
@@ -378,7 +385,7 @@ export default function AdminPage() {
         })
         .reduce((sum, sale) => {
           const amount = parseFloat(sale.venta.toString());
-          return sum + (isNaN(amount) ? 0 : amount);
+          return sum + (Number.isNaN(amount) ? 0 : amount);
         }, 0);
 
       return {
@@ -608,7 +615,7 @@ export default function AdminPage() {
                     );
                   }}
                 >
-                  {productStats.map((entry, index) => (
+                  {productStats.map((_entry, index) => (
                     <Cell
                       key={`cell-${index}`}
                       fill={COLORS[index % COLORS.length]}

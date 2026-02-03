@@ -1,17 +1,17 @@
 "use client";
 
-import { useMemo, useState } from "react";
 import {
-  User,
+  AlertTriangle,
   Calendar,
   MapPin,
+  Package,
   Target,
   TrendingUp,
+  User,
   Users,
-  AlertTriangle,
   Zap,
-  Package,
 } from "lucide-react";
+import { useMemo, useState } from "react";
 
 interface SingleSellerData {
   vendedor: string;
@@ -691,7 +691,7 @@ export default function SingleSellerReport({
             <div className="space-y-2">
               {seller.salesVelocity.monthlyVelocity.map((month) => {
                 const monthName = new Date(
-                  month.month + "-01",
+                  `${month.month}-01`,
                 ).toLocaleDateString("es-ES", { month: "long" });
                 return (
                   <div

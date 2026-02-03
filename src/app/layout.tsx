@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { Agentation } from "agentation";
+import ClientDataPrefetcher from "@/components/ClientDataPrefetcher";
 import AuthProvider from "@/components/providers/AuthProvider";
 import { ZoomPrevention } from "@/components/ZoomPrevention";
-import ClientDataPrefetcher from "@/components/ClientDataPrefetcher";
-import { Agentation } from "agentation";
 
 export const metadata: Metadata = {
   title: "Dashboard El rey",
