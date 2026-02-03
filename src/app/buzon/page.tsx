@@ -1,13 +1,13 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { MessageSquare } from "lucide-react";
+import Link from "next/link";
 import { useSession } from "next-auth/react";
+import React, { useEffect, useMemo, useState } from "react";
 import AppHeader from "@/components/AppHeader";
 import FeedLightbox from "@/components/inspector/FeedLightbox";
-import { EMAIL_TO_VENDOR_LABELS, isMasterAccount } from "@/utils/auth";
 import { triggerBuzonRefresh } from "@/hooks/useBuzonNotifications";
+import { EMAIL_TO_VENDOR_LABELS, isMasterAccount } from "@/utils/auth";
 
 const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY;
 const spreadsheetId = process.env.NEXT_PUBLIC_SPREADSHEET_ID;
@@ -39,8 +39,22 @@ type BuzonEntry = {
   review: FeedReview;
 };
 
-const getSaleId = (sale: Sale): string => {
+const getSubmissionTimeKey = (submissionTime?: string): string => {
+  if (!submissionTime) return "";
+  const timePart = submissionTime.includes(" ")
+    ? submissionTime.split(" ")[1]
+    : submissionTime;
+  return timePart?.slice(0, 8) || "";
+};
+
+const getLegacySaleId = (sale: Sale): string => {
   return `${sale.email}|${sale.fechaSinHora}|${sale.clientName}`;
+};
+
+const getSaleId = (sale: Sale): string => {
+  const baseId = getLegacySaleId(sale);
+  const timeKey = getSubmissionTimeKey(sale.submissionTime);
+  return timeKey ? `${baseId}|${timeKey}` : baseId;
 };
 
 const normalizePhotoUrls = (value: unknown): string[] => {
@@ -312,6 +326,7 @@ export default function BuzonPage() {
     const saleMap = new Map<string, Sale>();
     salesData.forEach((sale) => {
       saleMap.set(getSaleId(sale), sale);
+      saleMap.set(getLegacySaleId(sale), sale);
     });
 
     const result: BuzonEntry[] = [];
@@ -334,7 +349,6 @@ export default function BuzonPage() {
   useEffect(() => {
     setVisibleCount(ITEMS_PER_PAGE);
   }, [entries.length]);
-
 
   const handleMarkSeen = async (entry: BuzonEntry) => {
     if (!sessionEmail) return;
@@ -408,9 +422,7 @@ export default function BuzonPage() {
       <AppHeader
         title="Buzon"
         icon={MessageSquare}
-        subtitle={
-          isAdmin ? "Comentarios del equipo" : "Comentarios para ti"
-        }
+        subtitle={isAdmin ? "Comentarios del equipo" : "Comentarios para ti"}
       />
 
       <main className="px-4 py-4 max-w-2xl mx-auto">

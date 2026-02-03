@@ -103,9 +103,34 @@ type FeedReview = {
   note: string;
 };
 
+const getSubmissionTimeKey = (submissionTime?: string): string => {
+  if (!submissionTime) return "";
+  const timePart = submissionTime.includes(" ")
+    ? submissionTime.split(" ")[1]
+    : submissionTime;
+  return timePart?.slice(0, 8) || "";
+};
+
+const getLegacySaleId = (sale: Sale): string => {
+  return `${sale.email}|${sale.fechaSinHora}|${sale.clientName}`;
+};
+
 // Generate a unique ID for a sale (must match FeedTab's getSaleId)
 const getSaleId = (sale: Sale): string => {
-  return `${sale.email}|${sale.fechaSinHora}|${sale.clientName}`;
+  const baseId = getLegacySaleId(sale);
+  const timeKey = getSubmissionTimeKey(sale.submissionTime);
+  return timeKey ? `${baseId}|${timeKey}` : baseId;
+};
+
+const getReviewForSale = (
+  sale: Sale,
+  reviewMap: Map<string, FeedReview>,
+): FeedReview | null => {
+  return (
+    reviewMap.get(getSaleId(sale)) ||
+    reviewMap.get(getLegacySaleId(sale)) ||
+    null
+  );
 };
 
 const getSaleTimestampInfo = (
@@ -933,7 +958,7 @@ export default function InspectorPeriodosPage() {
 
   // Get current sale's review
   const currentSaleReview = selectedSale
-    ? reviews.get(getSaleId(selectedSale))
+    ? getReviewForSale(selectedSale, reviews)
     : null;
 
   const clientHistory = useMemo(() => {

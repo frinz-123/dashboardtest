@@ -39,9 +39,34 @@ type ActiveFilter = "none" | "seller" | "client" | "date" | "period";
 
 const ITEMS_PER_PAGE = 20;
 
+const getSubmissionTimeKey = (submissionTime?: string): string => {
+  if (!submissionTime) return "";
+  const timePart = submissionTime.includes(" ")
+    ? submissionTime.split(" ")[1]
+    : submissionTime;
+  return timePart?.slice(0, 8) || "";
+};
+
+const getLegacySaleId = (sale: FeedSale): string => {
+  return `${sale.email}|${sale.fechaSinHora}|${sale.clientName}`;
+};
+
 // Generate a unique ID for a sale
 const getSaleId = (sale: FeedSale): string => {
-  return `${sale.email}|${sale.fechaSinHora}|${sale.clientName}`;
+  const baseId = getLegacySaleId(sale);
+  const timeKey = getSubmissionTimeKey(sale.submissionTime);
+  return timeKey ? `${baseId}|${timeKey}` : baseId;
+};
+
+const getReviewForSale = (
+  sale: FeedSale,
+  reviewMap: Map<string, FeedReview>,
+): FeedReview | null => {
+  return (
+    reviewMap.get(getSaleId(sale)) ||
+    reviewMap.get(getLegacySaleId(sale)) ||
+    null
+  );
 };
 
 // Get time-based label for a date
@@ -229,7 +254,7 @@ export default function FeedTab({
     }
 
     if (showOnlyUnreviewed) {
-      result = result.filter((sale) => !reviews.has(getSaleId(sale)));
+      result = result.filter((sale) => !getReviewForSale(sale, reviews));
     }
 
     return result;
@@ -282,7 +307,7 @@ export default function FeedTab({
 
   // Count unreviewed
   const unreviewedCount = useMemo(() => {
-    return salesWithPhotos.filter((sale) => !reviews.has(getSaleId(sale)))
+    return salesWithPhotos.filter((sale) => !getReviewForSale(sale, reviews))
       .length;
   }, [salesWithPhotos, reviews]);
 
@@ -681,7 +706,8 @@ export default function FeedTab({
 
             {group.sales.map((sale, index) => {
               const saleId = getSaleId(sale);
-              const isReviewed = reviews.has(saleId);
+              const review = getReviewForSale(sale, reviews);
+              const isReviewed = !!review;
 
               return (
                 <div key={`${saleId}-${index}`}>
@@ -690,7 +716,7 @@ export default function FeedTab({
                     onPostClick={handlePostClick}
                     getDisplayableImageUrl={getDisplayableImageUrl}
                     formatCurrency={formatCurrency}
-                    reviewNote={reviews.get(saleId)?.note}
+                    reviewNote={review?.note}
                     isReviewed={isReviewed}
                   />
                 </div>
@@ -749,7 +775,7 @@ export default function FeedTab({
           onClose={() => setLightboxSale(null)}
           getDisplayableImageUrl={getDisplayableImageUrl}
           formatCurrency={formatCurrency}
-          review={reviews.get(getSaleId(lightboxSale)) || null}
+          review={getReviewForSale(lightboxSale, reviews)}
           onMarkReviewed={handleMarkReviewed}
           isSubmittingReview={isSubmittingReview}
         />
