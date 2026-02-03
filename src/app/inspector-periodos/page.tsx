@@ -108,6 +108,40 @@ const getSaleId = (sale: Sale): string => {
   return `${sale.email}|${sale.fechaSinHora}|${sale.clientName}`;
 };
 
+const getSaleTimestampInfo = (
+  sale: Sale,
+): { timestamp: number; hasTime: boolean } => {
+  if (sale.submissionTime) {
+    const parsed = new Date(sale.submissionTime);
+    if (!Number.isNaN(parsed.getTime())) {
+      return { timestamp: parsed.getTime(), hasTime: true };
+    }
+
+    const timePart = sale.submissionTime.split(" ")[1] || sale.submissionTime;
+    if (timePart && sale.fechaSinHora) {
+      const combined = new Date(`${sale.fechaSinHora} ${timePart}`);
+      if (!Number.isNaN(combined.getTime())) {
+        return { timestamp: combined.getTime(), hasTime: true };
+      }
+    }
+  }
+
+  const dateOnly = new Date(sale.fechaSinHora);
+  if (!Number.isNaN(dateOnly.getTime())) {
+    return { timestamp: dateOnly.getTime(), hasTime: false };
+  }
+
+  return { timestamp: 0, hasTime: false };
+};
+
+const getSaleDateKey = (sale: Sale): string => {
+  const parsed = new Date(sale.fechaSinHora);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toISOString().split("T")[0];
+  }
+  return sale.fechaSinHora || "";
+};
+
 const COLORS = [
   "#3b82f6",
   "#10b981",
@@ -908,20 +942,31 @@ export default function InspectorPeriodosPage() {
     }
 
     const selectedSaleId = getSaleId(selectedSale);
-    const selectedSaleTime = new Date(selectedSale.fechaSinHora).getTime();
+    const selectedSaleInfo = getSaleTimestampInfo(selectedSale);
+    const selectedSaleDateKey = getSaleDateKey(selectedSale);
 
     const previousSales = salesData
       .filter((sale) => {
         if (sale.clientName !== selectedSale.clientName) return false;
         if (getSaleId(sale) === selectedSaleId) return false;
 
-        const saleTime = new Date(sale.fechaSinHora).getTime();
-        return saleTime < selectedSaleTime;
+        const saleInfo = getSaleTimestampInfo(sale);
+        const saleDateKey = getSaleDateKey(sale);
+        const isSameDate = !!saleDateKey && saleDateKey === selectedSaleDateKey;
+
+        if (selectedSaleInfo.hasTime && saleInfo.hasTime) {
+          return saleInfo.timestamp < selectedSaleInfo.timestamp;
+        }
+
+        if (isSameDate) {
+          return true;
+        }
+
+        return saleInfo.timestamp < selectedSaleInfo.timestamp;
       })
       .sort(
         (a, b) =>
-          new Date(b.fechaSinHora).getTime() -
-          new Date(a.fechaSinHora).getTime(),
+          getSaleTimestampInfo(b).timestamp - getSaleTimestampInfo(a).timestamp,
       );
 
     const totalSales = previousSales.reduce((sum, sale) => sum + sale.venta, 0);
