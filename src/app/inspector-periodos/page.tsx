@@ -1,53 +1,59 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
-import Link from "next/link";
-import { useSession } from "next-auth/react";
 import {
-  ChevronDown,
-  Calendar,
-  TrendingUp,
-  TrendingDown,
-  Users,
-  Target,
   ArrowLeft,
+  BarChart2,
+  BarChart3,
+  Calendar,
+  Camera,
+  Check,
   CheckCircle2,
+  ChevronDown,
   Clock,
   Eye,
   EyeOff,
-  ShoppingBag,
   List,
-  BarChart2,
+  MessageSquare,
+  Send,
+  ShoppingBag,
+  Target,
+  TrendingDown,
+  TrendingUp,
+  Users,
   X,
 } from "lucide-react";
+import Link from "next/link";
+import { useSession } from "next-auth/react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
-  BarChart,
+  Area,
+  AreaChart,
   Bar,
+  BarChart,
+  Cell,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
   XAxis,
   YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  Cell,
-  PieChart,
-  Pie,
-  AreaChart,
-  Area,
 } from "recharts";
+import FeedTab from "@/components/inspector/FeedTab";
 import BlurIn from "@/components/ui/blur-in";
-import {
-  Drawer,
-  DrawerContent,
-  DrawerHeader,
-  DrawerTitle,
-  DrawerDescription,
-} from "@/components/ui/drawer";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { isMasterAccount, EMAIL_TO_VENDOR_LABELS } from "@/utils/auth";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
+import { EMAIL_TO_VENDOR_LABELS, isMasterAccount } from "@/utils/auth";
 import {
   getAllPeriods,
   getPeriodDateRange,
@@ -55,12 +61,10 @@ import {
   isDateInPeriod,
 } from "@/utils/dateUtils";
 import {
+  type GoalPeriod,
   getSellerGoal,
   getSellersWithGoals,
-  GoalPeriod,
 } from "@/utils/sellerGoals";
-import FeedTab from "@/components/inspector/FeedTab";
-import { Camera, BarChart3, MessageSquare, Send, Check } from "lucide-react";
 
 const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY;
 const spreadsheetId = process.env.NEXT_PUBLIC_SPREADSHEET_ID;
@@ -123,6 +127,11 @@ const CODE_COLORS: Record<string, string> = {
   ANTICIPO: "#3b82f6",
   EFT: "#06b6d4",
 };
+
+const NEW_CLIENT_SALE_THRESHOLD = 250;
+const NEW_CLIENT_WEEKLY_GOAL = 3;
+const NEW_CLIENT_PERIOD_GOAL = 12;
+const ALLOW_NONZERO_BEFORE_THRESHOLD = false;
 
 const normalizePhotoUrls = (value: unknown): string[] => {
   if (Array.isArray(value)) {
@@ -629,6 +638,120 @@ export default function InspectorPeriodosPage() {
     return filteredSales.filter((s) => s.venta > 0).length;
   }, [filteredSales]);
 
+  const newClients = useMemo(() => {
+    if (!selectedSeller || !selectedPeriod || salesData.length === 0) {
+      return {
+        count: 0,
+        entries: [] as Array<{
+          clientName: string;
+          date: Date;
+          amount: number;
+          sale: Sale;
+        }>,
+      };
+    }
+
+    const { periodStartDate, periodEndDate } =
+      getPeriodDateRange(selectedPeriod);
+    const selectedWeekRange = selectedWeek
+      ? periodWeeks[selectedWeek - 1]
+      : null;
+
+    const isDateInSelectedRange = (date: Date) => {
+      if (selectedDay) {
+        return date.toISOString().split("T")[0] === selectedDay;
+      }
+
+      if (selectedWeekRange) {
+        return isDateInPeriod(
+          date,
+          selectedWeekRange.weekStart,
+          selectedWeekRange.weekEnd,
+        );
+      }
+
+      return isDateInPeriod(date, periodStartDate, periodEndDate);
+    };
+
+    const clientFirstSales = new Map<
+      string,
+      {
+        firstPositive?: { date: Date; amount: number; sale: Sale };
+        firstThreshold?: { date: Date; amount: number; sale: Sale };
+      }
+    >();
+
+    salesData.forEach((sale) => {
+      if (!sale.clientName) return;
+      if (sale.venta <= 0) return;
+
+      const saleDate = new Date(sale.fechaSinHora);
+      const entry = clientFirstSales.get(sale.clientName) || {};
+
+      if (!entry.firstPositive || saleDate < entry.firstPositive.date) {
+        entry.firstPositive = { date: saleDate, amount: sale.venta, sale };
+      }
+
+      if (sale.venta >= NEW_CLIENT_SALE_THRESHOLD) {
+        if (!entry.firstThreshold || saleDate < entry.firstThreshold.date) {
+          entry.firstThreshold = { date: saleDate, amount: sale.venta, sale };
+        }
+      }
+
+      clientFirstSales.set(sale.clientName, entry);
+    });
+
+    const entries: Array<{
+      clientName: string;
+      date: Date;
+      amount: number;
+      sale: Sale;
+    }> = [];
+
+    clientFirstSales.forEach((entry, clientName) => {
+      if (ALLOW_NONZERO_BEFORE_THRESHOLD) {
+        if (
+          entry.firstThreshold &&
+          entry.firstThreshold.sale.email === selectedSeller &&
+          isDateInSelectedRange(entry.firstThreshold.date)
+        ) {
+          entries.push({
+            clientName,
+            date: entry.firstThreshold.date,
+            amount: entry.firstThreshold.amount,
+            sale: entry.firstThreshold.sale,
+          });
+        }
+        return;
+      }
+
+      if (
+        entry.firstPositive &&
+        entry.firstPositive.amount >= NEW_CLIENT_SALE_THRESHOLD &&
+        entry.firstPositive.sale.email === selectedSeller &&
+        isDateInSelectedRange(entry.firstPositive.date)
+      ) {
+        entries.push({
+          clientName,
+          date: entry.firstPositive.date,
+          amount: entry.firstPositive.amount,
+          sale: entry.firstPositive.sale,
+        });
+      }
+    });
+
+    entries.sort((a, b) => b.date.getTime() - a.date.getTime());
+
+    return { count: entries.length, entries };
+  }, [
+    periodWeeks,
+    salesData,
+    selectedDay,
+    selectedPeriod,
+    selectedSeller,
+    selectedWeek,
+  ]);
+
   // Daily sales chart data
   const dailySalesChartData = useMemo(() => {
     if (!selectedPeriod) return [];
@@ -778,6 +901,33 @@ export default function InspectorPeriodosPage() {
   const currentSaleReview = selectedSale
     ? reviews.get(getSaleId(selectedSale))
     : null;
+
+  const clientHistory = useMemo(() => {
+    if (!selectedSale) {
+      return { previousSales: [] as Sale[], totalSales: 0 };
+    }
+
+    const selectedSaleId = getSaleId(selectedSale);
+    const selectedSaleTime = new Date(selectedSale.fechaSinHora).getTime();
+
+    const previousSales = salesData
+      .filter((sale) => {
+        if (sale.clientName !== selectedSale.clientName) return false;
+        if (getSaleId(sale) === selectedSaleId) return false;
+
+        const saleTime = new Date(sale.fechaSinHora).getTime();
+        return saleTime < selectedSaleTime;
+      })
+      .sort(
+        (a, b) =>
+          new Date(b.fechaSinHora).getTime() -
+          new Date(a.fechaSinHora).getTime(),
+      );
+
+    const totalSales = previousSales.reduce((sum, sale) => sum + sale.venta, 0);
+
+    return { previousSales, totalSales };
+  }, [salesData, selectedSale]);
 
   // Loading state
   if (status === "loading") {
@@ -1199,7 +1349,7 @@ export default function InspectorPeriodosPage() {
               /* ========== SELLER DETAIL VIEW ========== */
               <>
                 {/* Seller Summary Cards */}
-                <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+                <div className="grid grid-cols-2 lg:grid-cols-6 gap-4 mb-6">
                   <div className="bg-white rounded-xl p-4 border border-gray-200">
                     <div className="flex items-center gap-2 mb-2">
                       <div className="p-2 bg-blue-50 rounded-lg">
@@ -1268,6 +1418,26 @@ export default function InspectorPeriodosPage() {
 
                   <div className="bg-white rounded-xl p-4 border border-gray-200">
                     <div className="flex items-center gap-2 mb-2">
+                      <div className="p-2 bg-sky-50 rounded-lg">
+                        <Users className="w-4 h-4 text-sky-600" />
+                      </div>
+                      <span className="text-xs text-gray-500 uppercase tracking-wide">
+                        Clientes Nuevos
+                      </span>
+                    </div>
+                    <p className="text-xl font-bold text-gray-800">
+                      {newClients.count}
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Meta:{" "}
+                      {selectedWeek || selectedDay
+                        ? NEW_CLIENT_WEEKLY_GOAL
+                        : NEW_CLIENT_PERIOD_GOAL}
+                    </p>
+                  </div>
+
+                  <div className="bg-white rounded-xl p-4 border border-gray-200">
+                    <div className="flex items-center gap-2 mb-2">
                       <div className="p-2 bg-cyan-50 rounded-lg">
                         <CheckCircle2 className="w-4 h-4 text-cyan-600" />
                       </div>
@@ -1294,6 +1464,96 @@ export default function InspectorPeriodosPage() {
                         visitsCount > 0 ? totalFilteredSales / visitsCount : 0,
                       )}
                     </p>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden mb-6">
+                  <div className="px-4 py-3 border-b border-gray-200">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                        <Users className="w-4 h-4" />
+                        Clientes Nuevos ({newClients.count})
+                      </h3>
+                      <span className="text-xs text-gray-500">
+                        Meta:{" "}
+                        {selectedWeek || selectedDay
+                          ? NEW_CLIENT_WEEKLY_GOAL
+                          : NEW_CLIENT_PERIOD_GOAL}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {selectedDay
+                        ? "Primer venta global en este dia"
+                        : selectedWeek
+                          ? `Primer venta global en semana ${selectedWeek}`
+                          : "Primer venta global en el periodo"}
+                    </p>
+                  </div>
+                  <div className="overflow-x-auto max-h-[300px] overflow-y-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50 sticky top-0">
+                        <tr className="border-b border-gray-200">
+                          <th className="text-left py-2 px-4 font-medium text-gray-600">
+                            Fecha
+                          </th>
+                          <th className="text-left py-2 px-4 font-medium text-gray-600">
+                            Cliente
+                          </th>
+                          <th className="text-left py-2 px-4 font-medium text-gray-600">
+                            Codigo
+                          </th>
+                          <th className="text-right py-2 px-4 font-medium text-gray-600">
+                            Venta
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {newClients.entries.map((entry) => (
+                          <tr
+                            key={getSaleId(entry.sale)}
+                            className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer active:bg-gray-100"
+                            onClick={() => setSelectedSale(entry.sale)}
+                          >
+                            <td className="py-2 px-4 text-gray-600">
+                              {entry.date.toLocaleDateString("es-ES", {
+                                day: "numeric",
+                                month: "short",
+                              })}
+                              {entry.sale.submissionTime && (
+                                <span className="text-xs text-gray-400 ml-1">
+                                  {entry.sale.submissionTime
+                                    .split(" ")[1]
+                                    ?.slice(0, 5)}
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-2 px-4 font-medium text-gray-800">
+                              {entry.clientName}
+                            </td>
+                            <td className="py-2 px-4">
+                              <span
+                                className="text-xs px-2 py-0.5 rounded-full"
+                                style={{
+                                  backgroundColor: `${CODE_COLORS[entry.sale.codigo] || "#6b7280"}20`,
+                                  color:
+                                    CODE_COLORS[entry.sale.codigo] || "#6b7280",
+                                }}
+                              >
+                                {entry.sale.codigo || "N/A"}
+                              </span>
+                            </td>
+                            <td className="text-right py-2 px-4 font-medium text-gray-800">
+                              {formatCurrency(entry.amount)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {newClients.entries.length === 0 && (
+                      <div className="py-8 text-center text-gray-500">
+                        No hay clientes nuevos para mostrar
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -2372,6 +2632,91 @@ export default function InspectorPeriodosPage() {
                     {formatCurrency(selectedSale.venta)}
                   </p>
                 </div>
+              </div>
+
+              {/* Client Traceability */}
+              <div className="mb-6">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                    <List className="w-4 h-4" />
+                    Historial previo ({clientHistory.previousSales.length})
+                  </h4>
+                  <span className="text-xs text-gray-500">
+                    Total previo: {formatCurrency(clientHistory.totalSales)}
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500 mb-3">
+                  Incluye ventas de otros vendedores
+                </p>
+                {clientHistory.previousSales.length > 0 ? (
+                  <div className="overflow-x-auto max-h-[200px] overflow-y-auto border border-gray-200 rounded-lg">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50 sticky top-0">
+                        <tr className="border-b border-gray-200">
+                          <th className="text-left py-2 px-4 font-medium text-gray-600">
+                            Fecha
+                          </th>
+                          <th className="text-left py-2 px-4 font-medium text-gray-600">
+                            Vendedor
+                          </th>
+                          <th className="text-left py-2 px-4 font-medium text-gray-600">
+                            Codigo
+                          </th>
+                          <th className="text-right py-2 px-4 font-medium text-gray-600">
+                            Venta
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {clientHistory.previousSales.map((sale) => (
+                          <tr
+                            key={getSaleId(sale)}
+                            className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer"
+                            onClick={() => setSelectedSale(sale)}
+                          >
+                            <td className="py-2 px-4 text-gray-600">
+                              {new Date(sale.fechaSinHora).toLocaleDateString(
+                                "es-ES",
+                                {
+                                  day: "numeric",
+                                  month: "short",
+                                },
+                              )}
+                              {sale.submissionTime && (
+                                <span className="text-xs text-gray-400 ml-1">
+                                  {sale.submissionTime
+                                    .split(" ")[1]
+                                    ?.slice(0, 5)}
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-2 px-4 text-gray-600">
+                              {EMAIL_TO_VENDOR_LABELS[sale.email] || sale.email}
+                            </td>
+                            <td className="py-2 px-4">
+                              <span
+                                className="text-xs px-2 py-0.5 rounded-full"
+                                style={{
+                                  backgroundColor: `${CODE_COLORS[sale.codigo] || "#6b7280"}20`,
+                                  color: CODE_COLORS[sale.codigo] || "#6b7280",
+                                }}
+                              >
+                                {sale.codigo || "N/A"}
+                              </span>
+                            </td>
+                            <td className="text-right py-2 px-4 font-medium text-gray-800">
+                              {formatCurrency(sale.venta)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="py-6 text-center text-sm text-gray-500 border border-dashed border-gray-200 rounded-lg">
+                    Sin ventas previas para este cliente
+                  </div>
+                )}
               </div>
 
               {/* Products List */}
