@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -390,40 +390,7 @@ export default function InspectorPeriodosPage() {
     setSelectedDay(null);
   }, []);
 
-  // Fetch sales data
-  useEffect(() => {
-    if (isAdmin) {
-      fetchData();
-    }
-  }, [isAdmin, fetchData]);
-
-  useEffect(() => {
-    setExpandedPhotoUrl(null);
-    setShowNoteInput(false);
-    setNoteText("");
-  }, []);
-
-  // Fetch reviews on mount
-  useEffect(() => {
-    const fetchReviews = async () => {
-      try {
-        const response = await fetch("/api/feed-reviews");
-        if (response.ok) {
-          const data = await response.json();
-          const reviewMap = new Map<string, FeedReview>();
-          data.reviews.forEach((review: FeedReview) => {
-            reviewMap.set(review.saleId, review);
-          });
-          setReviews(reviewMap);
-        }
-      } catch (error) {
-        console.error("Error fetching reviews:", error);
-      }
-    };
-    fetchReviews();
-  }, []);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     setIsLoading(true);
     try {
       // Fetch up to column AQ (43 columns) to ensure we capture AP even with column shifts
@@ -514,7 +481,40 @@ export default function InspectorPeriodosPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
+
+  // Fetch sales data
+  useEffect(() => {
+    if (isAdmin) {
+      fetchData();
+    }
+  }, [isAdmin, fetchData]);
+
+  useEffect(() => {
+    setExpandedPhotoUrl(null);
+    setShowNoteInput(false);
+    setNoteText("");
+  }, []);
+
+  // Fetch reviews on mount
+  useEffect(() => {
+    const fetchReviews = async () => {
+      try {
+        const response = await fetch("/api/feed-reviews");
+        if (response.ok) {
+          const data = await response.json();
+          const reviewMap = new Map<string, FeedReview>();
+          data.reviews.forEach((review: FeedReview) => {
+            reviewMap.set(review.saleId, review);
+          });
+          setReviews(reviewMap);
+        }
+      } catch (error) {
+        console.error("Error fetching reviews:", error);
+      }
+    };
+    fetchReviews();
+  }, []);
 
   // Get filtered sales for the selected period and optional week/day/seller
   const filteredSales = useMemo(() => {

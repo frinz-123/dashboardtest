@@ -18,7 +18,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { useSession } from "next-auth/react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import AppHeader from "@/components/AppHeader";
 import VendorSelector from "@/components/VendorSelector";
 import {
@@ -1027,8 +1027,17 @@ export default function RecorridosPage() {
       : 0;
 
   // ===== HELPER FUNCTIONS =====
-  const getCurrentLocation = () => {
-    if (navigator.geolocation) {
+  const getCurrentLocation = useCallback(() => {
+    if (typeof window === "undefined") return;
+    if (!("geolocation" in navigator)) {
+      debug.error("Geolocation not available in this browser");
+      return;
+    }
+    if (!window.isSecureContext) {
+      debug.error("Geolocation requires a secure context (HTTPS)");
+      return;
+    }
+    try {
       navigator.geolocation.getCurrentPosition(
         (pos) =>
           setCurrentLocation({
@@ -1036,9 +1045,16 @@ export default function RecorridosPage() {
             lng: pos.coords.longitude,
           }),
         (err) => debug.error("Error getting location:", err),
+        {
+          enableHighAccuracy: false,
+          maximumAge: 10 * 60 * 1000,
+          timeout: 8000,
+        },
       );
+    } catch (error) {
+      debug.error("Error getting location:", error);
     }
-  };
+  }, []);
   const openInMaps = (client: Client) => {
     window.open(
       `https://www.google.com/maps/dir/?api=1&destination=${client.Latitude},${client.Longitud}`,
@@ -1157,18 +1173,7 @@ export default function RecorridosPage() {
         .catch(() => setDataLoaded(true));
       getCurrentLocation();
     }
-  }, [
-    checkRouteInProgress,
-    fetchClients,
-    fetchConfiguration,
-    fetchRescheduledVisits,
-    fetchRoutePerformance,
-    fetchScheduledVisits,
-    fetchVisitHistory,
-    getCurrentLocation,
-    loadPersistedRouteState,
-    userEmail,
-  ]);
+  }, [userEmail]);
 
   useEffect(() => {
     if (isMaster && dataLoaded) {
@@ -1203,22 +1208,11 @@ export default function RecorridosPage() {
       };
       fetchAndUpdateState();
     }
-  }, [
-    selectedVendorEmail,
-    isMaster,
-    checkRouteInProgress,
-    dataLoaded,
-    fetchClients,
-    fetchRescheduledVisits,
-    fetchScheduledVisits,
-    fetchVisitHistory,
-    loadPersistedRouteState,
-    userEmail,
-  ]);
+  }, [selectedVendorEmail, isMaster, dataLoaded, userEmail]);
 
   useEffect(() => {
     if (dataLoaded) checkRouteInProgress();
-  }, [dataLoaded, checkRouteInProgress]);
+  }, [dataLoaded, visitHistory]);
 
   const mazatlanDayName = getMazatlanDayName();
 
