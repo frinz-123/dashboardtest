@@ -115,22 +115,48 @@ const getLegacySaleId = (sale: Sale): string => {
   return `${sale.email}|${sale.fechaSinHora}|${sale.clientName}`;
 };
 
-// Generate a unique ID for a sale (must match FeedTab's getSaleId)
-const getSaleId = (sale: Sale): string => {
+const hashString = (value: string): string => {
+  let hash = 0;
+  for (let i = 0; i < value.length; i++) {
+    hash = (hash << 5) - hash + value.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash).toString(36);
+};
+
+const getPhotoKey = (photoUrls: string[]): string => {
+  const firstUrl = photoUrls.find((url) => url.trim()) || "";
+  return firstUrl ? hashString(firstUrl) : "";
+};
+
+const getSaleIdVariants = (sale: Sale): string[] => {
   const baseId = getLegacySaleId(sale);
   const timeKey = getSubmissionTimeKey(sale.submissionTime);
-  return timeKey ? `${baseId}|${timeKey}` : baseId;
+  const photoKey = getPhotoKey(sale.photoUrls || []);
+  const variants = [] as string[];
+
+  if (photoKey) variants.push(`${baseId}|p:${photoKey}`);
+  if (timeKey) variants.push(`${baseId}|t:${timeKey}`);
+  variants.push(baseId);
+
+  return variants;
+};
+
+// Generate a unique ID for a sale (must match FeedTab's getSaleId)
+const getSaleId = (sale: Sale): string => {
+  return getSaleIdVariants(sale)[0];
 };
 
 const getReviewForSale = (
   sale: Sale,
   reviewMap: Map<string, FeedReview>,
 ): FeedReview | null => {
-  return (
-    reviewMap.get(getSaleId(sale)) ||
-    reviewMap.get(getLegacySaleId(sale)) ||
-    null
-  );
+  const variants = getSaleIdVariants(sale);
+  for (const variant of variants) {
+    const review = reviewMap.get(variant);
+    if (review) return review;
+  }
+  return null;
 };
 
 const getSaleTimestampInfo = (

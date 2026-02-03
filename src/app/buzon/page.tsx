@@ -51,10 +51,35 @@ const getLegacySaleId = (sale: Sale): string => {
   return `${sale.email}|${sale.fechaSinHora}|${sale.clientName}`;
 };
 
-const getSaleId = (sale: Sale): string => {
+const hashString = (value: string): string => {
+  let hash = 0;
+  for (let i = 0; i < value.length; i++) {
+    hash = (hash << 5) - hash + value.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash).toString(36);
+};
+
+const getPhotoKey = (photoUrls: string[]): string => {
+  const firstUrl = photoUrls.find((url) => url.trim()) || "";
+  return firstUrl ? hashString(firstUrl) : "";
+};
+
+const getSaleIdVariants = (sale: Sale): string[] => {
   const baseId = getLegacySaleId(sale);
   const timeKey = getSubmissionTimeKey(sale.submissionTime);
-  return timeKey ? `${baseId}|${timeKey}` : baseId;
+  const photoKey = getPhotoKey(sale.photoUrls || []);
+  const variants = [] as string[];
+
+  if (photoKey) variants.push(`${baseId}|p:${photoKey}`);
+  if (timeKey) variants.push(`${baseId}|t:${timeKey}`);
+  variants.push(baseId);
+
+  return variants;
+};
+
+const getSaleId = (sale: Sale): string => {
+  return getSaleIdVariants(sale)[0];
 };
 
 const normalizePhotoUrls = (value: unknown): string[] => {
@@ -325,8 +350,9 @@ export default function BuzonPage() {
     if (!sessionEmail) return [];
     const saleMap = new Map<string, Sale>();
     salesData.forEach((sale) => {
-      saleMap.set(getSaleId(sale), sale);
-      saleMap.set(getLegacySaleId(sale), sale);
+      getSaleIdVariants(sale).forEach((variant) => {
+        saleMap.set(variant, sale);
+      });
     });
 
     const result: BuzonEntry[] = [];

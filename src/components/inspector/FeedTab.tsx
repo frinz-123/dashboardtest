@@ -51,22 +51,48 @@ const getLegacySaleId = (sale: FeedSale): string => {
   return `${sale.email}|${sale.fechaSinHora}|${sale.clientName}`;
 };
 
-// Generate a unique ID for a sale
-const getSaleId = (sale: FeedSale): string => {
+const hashString = (value: string): string => {
+  let hash = 0;
+  for (let i = 0; i < value.length; i++) {
+    hash = (hash << 5) - hash + value.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash).toString(36);
+};
+
+const getPhotoKey = (photoUrls: string[]): string => {
+  const firstUrl = photoUrls.find((url) => url.trim()) || "";
+  return firstUrl ? hashString(firstUrl) : "";
+};
+
+const getSaleIdVariants = (sale: FeedSale): string[] => {
   const baseId = getLegacySaleId(sale);
   const timeKey = getSubmissionTimeKey(sale.submissionTime);
-  return timeKey ? `${baseId}|${timeKey}` : baseId;
+  const photoKey = getPhotoKey(sale.photoUrls || []);
+  const variants = [] as string[];
+
+  if (photoKey) variants.push(`${baseId}|p:${photoKey}`);
+  if (timeKey) variants.push(`${baseId}|t:${timeKey}`);
+  variants.push(baseId);
+
+  return variants;
+};
+
+// Generate a unique ID for a sale
+const getSaleId = (sale: FeedSale): string => {
+  return getSaleIdVariants(sale)[0];
 };
 
 const getReviewForSale = (
   sale: FeedSale,
   reviewMap: Map<string, FeedReview>,
 ): FeedReview | null => {
-  return (
-    reviewMap.get(getSaleId(sale)) ||
-    reviewMap.get(getLegacySaleId(sale)) ||
-    null
-  );
+  const variants = getSaleIdVariants(sale);
+  for (const variant of variants) {
+    const review = reviewMap.get(variant);
+    if (review) return review;
+  }
+  return null;
 };
 
 // Get time-based label for a date
@@ -346,6 +372,17 @@ export default function FeedTab({
       setIsSubmittingReview(true);
       try {
         const saleId = getSaleId(lightboxSale);
+        if (process.env.NODE_ENV !== "production") {
+          const variants = getSaleIdVariants(lightboxSale);
+          console.debug("Feed review submit", {
+            saleId,
+            variants,
+            submissionTime: lightboxSale.submissionTime || "",
+            photoCount: lightboxSale.photoUrls?.length || 0,
+            clientName: lightboxSale.clientName,
+            email: lightboxSale.email,
+          });
+        }
         const response = await fetch("/api/feed-reviews", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
