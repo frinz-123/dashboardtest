@@ -2,6 +2,7 @@
 
 import {
   ArrowLeft,
+  BarChart2,
   BarChart3,
   Calendar,
   Camera,
@@ -16,12 +17,14 @@ import {
   Send,
   ShoppingBag,
   Target,
+  TrendingDown,
   TrendingUp,
   Users,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -203,7 +206,7 @@ const normalizePhotoUrls = (value: unknown): string[] => {
             .replace(/^["'""'']+|["'""'']+$/g, "")
             .trim(),
         )
-        .filter((url) => url?.includes("http"));
+        .filter((url) => url && url.includes("http"));
       if (urls.length > 0) return urls;
     }
 
@@ -216,7 +219,7 @@ const normalizePhotoUrls = (value: unknown): string[] => {
           .replace(/^["'""'']+|["'""'']+$/g, "")
           .trim(),
       )
-      .filter((url) => url?.includes("http"));
+      .filter((url) => url && url.includes("http"));
 
     return urls;
   }
@@ -383,14 +386,47 @@ export default function InspectorPeriodosPage() {
   useEffect(() => {
     setSelectedWeek(null);
     setSelectedDay(null);
-  }, []);
+  }, [selectedPeriod]);
 
   // Reset day selection when week changes
   useEffect(() => {
     setSelectedDay(null);
+  }, [selectedWeek]);
+
+  // Fetch sales data
+  useEffect(() => {
+    if (isAdmin) {
+      fetchData();
+    }
+  }, [isAdmin]);
+
+  useEffect(() => {
+    setExpandedPhotoUrl(null);
+    setShowNoteInput(false);
+    setNoteText("");
+  }, [selectedSale]);
+
+  // Fetch reviews on mount
+  useEffect(() => {
+    const fetchReviews = async () => {
+      try {
+        const response = await fetch("/api/feed-reviews");
+        if (response.ok) {
+          const data = await response.json();
+          const reviewMap = new Map<string, FeedReview>();
+          data.reviews.forEach((review: FeedReview) => {
+            reviewMap.set(review.saleId, review);
+          });
+          setReviews(reviewMap);
+        }
+      } catch (error) {
+        console.error("Error fetching reviews:", error);
+      }
+    };
+    fetchReviews();
   }, []);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = async () => {
     setIsLoading(true);
     try {
       // Fetch up to column AQ (43 columns) to ensure we capture AP even with column shifts
@@ -481,40 +517,7 @@ export default function InspectorPeriodosPage() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
-
-  // Fetch sales data
-  useEffect(() => {
-    if (isAdmin) {
-      fetchData();
-    }
-  }, [isAdmin, fetchData]);
-
-  useEffect(() => {
-    setExpandedPhotoUrl(null);
-    setShowNoteInput(false);
-    setNoteText("");
-  }, [selectedSale]);
-
-  // Fetch reviews on mount
-  useEffect(() => {
-    const fetchReviews = async () => {
-      try {
-        const response = await fetch("/api/feed-reviews");
-        if (response.ok) {
-          const data = await response.json();
-          const reviewMap = new Map<string, FeedReview>();
-          data.reviews.forEach((review: FeedReview) => {
-            reviewMap.set(review.saleId, review);
-          });
-          setReviews(reviewMap);
-        }
-      } catch (error) {
-        console.error("Error fetching reviews:", error);
-      }
-    };
-    fetchReviews();
-  }, []);
+  };
 
   // Get filtered sales for the selected period and optional week/day/seller
   const filteredSales = useMemo(() => {
@@ -2078,7 +2081,7 @@ export default function InspectorPeriodosPage() {
                           }}
                         />
                         <Bar dataKey="totalSales" radius={[0, 4, 4, 0]}>
-                          {visibleSellerStats.map((_entry, index) => (
+                          {visibleSellerStats.map((entry, index) => (
                             <Cell
                               key={`cell-${index}`}
                               fill={COLORS[index % COLORS.length]}
@@ -2874,6 +2877,7 @@ export default function InspectorPeriodosPage() {
                           placeholder="Agregar nota (opcional)..."
                           className="w-full p-3 border border-gray-200 rounded-lg text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
                           rows={3}
+                          autoFocus
                         />
                         <div className="flex gap-2">
                           <button
