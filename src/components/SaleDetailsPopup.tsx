@@ -1,4 +1,3 @@
-import React from "react";
 import { X } from "lucide-react";
 
 const EMAIL_TO_SELLER: Record<string, string> = {

@@ -1,7 +1,7 @@
 "use client";
 
+import { ChevronDown, Eye, Users } from "lucide-react";
 import React from "react";
-import { ChevronDown, Users, Eye } from "lucide-react";
 import { getVendorLabel } from "@/utils/auth";
 
 interface VendorOption {

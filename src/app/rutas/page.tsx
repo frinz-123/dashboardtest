@@ -1,10 +1,10 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { ChevronDown, CheckSquare, Square, Map } from "lucide-react";
-import AppHeader from "@/components/AppHeader";
-import { useSession } from "next-auth/react";
+import { CheckSquare, ChevronDown, Map, Square } from "lucide-react";
 import { redirect } from "next/navigation";
+import { useSession } from "next-auth/react";
+import { useEffect, useState } from "react";
+import AppHeader from "@/components/AppHeader";
 
 const ROUTES = [
   { id: 1, name: "Ruta 1 Centro" },
@@ -438,7 +438,7 @@ export default function RutasPage() {
 
   const getProgress = () => {
     if (!selectedRoute) return 0;
-    const routeClients = ROUTE_CLIENTS[parseInt(selectedRoute)];
+    const routeClients = ROUTE_CLIENTS[parseInt(selectedRoute, 10)];
     if (!routeClients) return 0;
     return (completedClients.size / routeClients.length) * 100;
   };
@@ -455,7 +455,7 @@ export default function RutasPage() {
 
     return Object.entries(userProgress).reduce(
       (acc, [routeId, clients]) => {
-        acc[parseInt(routeId)] = new Set(clients);
+        acc[parseInt(routeId, 10)] = new Set(clients);
         return acc;
       },
       {} as Record<number, Set<string>>,
@@ -477,117 +477,124 @@ export default function RutasPage() {
     >
       <AppHeader title="Rutas" icon={Map} />
       <main className="px-4 py-4 max-w-2xl mx-auto">
-
-      <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
-        <div className="relative">
-          <button
-            onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-            className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent flex justify-between items-center"
-          >
-            <span className="text-gray-700">
-              {selectedRoute
-                ? ROUTES.find((r) => r.id.toString() === selectedRoute)?.name
-                : "Seleccionar Ruta"}
-            </span>
-            <div className="flex items-center gap-2">
-              {selectedRoute && (
-                <span
-                  className={`px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
-                    getRouteStatus(parseInt(selectedRoute), completedClients),
-                  )}`}
-                >
-                  {getRouteStatus(parseInt(selectedRoute), completedClients)}
-                </span>
-              )}
-              <ChevronDown className="h-4 w-4 text-gray-400" />
-            </div>
-          </button>
-
-          {isDropdownOpen && (
-            <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg">
-              <div className="py-1 max-h-60 overflow-auto">
-                {ROUTES.map((route) => {
-                  const allProgress = getAllRoutesProgress();
-                  const routeStatus = getRouteStatus(
-                    route.id,
-                    allProgress[route.id] || new Set(),
-                  );
-                  return (
-                    <div
-                      key={route.id}
-                      className="flex items-center justify-between px-3 py-2 hover:bg-gray-50 cursor-pointer"
-                      onClick={() => {
-                        setSelectedRoute(route.id.toString());
-                        setIsDropdownOpen(false);
-                      }}
-                    >
-                      <span className="text-sm text-gray-700">
-                        {route.name}
-                      </span>
-                      <span
-                        className={`px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(routeStatus)}`}
-                      >
-                        {routeStatus}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {selectedRoute && ROUTE_CLIENTS[parseInt(selectedRoute)] && (
         <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
-          <div className="flex justify-between items-center mb-3">
-            <h2 className="text-sm font-semibold text-gray-700">
-              Clientes de la Ruta
-            </h2>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={clearRouteProgress}
-                className="text-xs text-red-600 hover:text-red-700"
-              >
-                Reiniciar
-              </button>
-              <span className="text-xs text-gray-500">
-                {completedClients.size} de{" "}
-                {ROUTE_CLIENTS[parseInt(selectedRoute)].length}
+          <div className="relative">
+            <button
+              onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+              className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent flex justify-between items-center"
+            >
+              <span className="text-gray-700">
+                {selectedRoute
+                  ? ROUTES.find((r) => r.id.toString() === selectedRoute)?.name
+                  : "Seleccionar Ruta"}
               </span>
-            </div>
-          </div>
-
-          {/* Progress bar */}
-          <div className="w-full bg-gray-200 h-1.5 rounded-full mb-4">
-            <div
-              className="bg-blue-600 h-1.5 rounded-full transition-all duration-300"
-              style={{ width: `${getProgress()}%` }}
-            />
-          </div>
-
-          <div className="space-y-2">
-            {ROUTE_CLIENTS[parseInt(selectedRoute)].map((client, index) => (
-              <div
-                key={index}
-                className="flex items-center p-2 hover:bg-gray-50 rounded-lg cursor-pointer"
-                onClick={() => toggleClient(client)}
-              >
-                {completedClients.has(client) ? (
-                  <CheckSquare className="h-5 w-5 text-blue-600 mr-2" />
-                ) : (
-                  <Square className="h-5 w-5 text-gray-400 mr-2" />
+              <div className="flex items-center gap-2">
+                {selectedRoute && (
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
+                      getRouteStatus(
+                        parseInt(selectedRoute, 10),
+                        completedClients,
+                      ),
+                    )}`}
+                  >
+                    {getRouteStatus(
+                      parseInt(selectedRoute, 10),
+                      completedClients,
+                    )}
+                  </span>
                 )}
-                <span
-                  className={`text-sm ${completedClients.has(client) ? "text-gray-400 line-through" : "text-gray-700"}`}
-                >
-                  {client}
-                </span>
+                <ChevronDown className="h-4 w-4 text-gray-400" />
               </div>
-            ))}
+            </button>
+
+            {isDropdownOpen && (
+              <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg">
+                <div className="py-1 max-h-60 overflow-auto">
+                  {ROUTES.map((route) => {
+                    const allProgress = getAllRoutesProgress();
+                    const routeStatus = getRouteStatus(
+                      route.id,
+                      allProgress[route.id] || new Set(),
+                    );
+                    return (
+                      <div
+                        key={route.id}
+                        className="flex items-center justify-between px-3 py-2 hover:bg-gray-50 cursor-pointer"
+                        onClick={() => {
+                          setSelectedRoute(route.id.toString());
+                          setIsDropdownOpen(false);
+                        }}
+                      >
+                        <span className="text-sm text-gray-700">
+                          {route.name}
+                        </span>
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(routeStatus)}`}
+                        >
+                          {routeStatus}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         </div>
-      )}
+
+        {selectedRoute && ROUTE_CLIENTS[parseInt(selectedRoute, 10)] && (
+          <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
+            <div className="flex justify-between items-center mb-3">
+              <h2 className="text-sm font-semibold text-gray-700">
+                Clientes de la Ruta
+              </h2>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={clearRouteProgress}
+                  className="text-xs text-red-600 hover:text-red-700"
+                >
+                  Reiniciar
+                </button>
+                <span className="text-xs text-gray-500">
+                  {completedClients.size} de{" "}
+                  {ROUTE_CLIENTS[parseInt(selectedRoute, 10)].length}
+                </span>
+              </div>
+            </div>
+
+            {/* Progress bar */}
+            <div className="w-full bg-gray-200 h-1.5 rounded-full mb-4">
+              <div
+                className="bg-blue-600 h-1.5 rounded-full transition-all duration-300"
+                style={{ width: `${getProgress()}%` }}
+              />
+            </div>
+
+            <div className="space-y-2">
+              {ROUTE_CLIENTS[parseInt(selectedRoute, 10)].map(
+                (client, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center p-2 hover:bg-gray-50 rounded-lg cursor-pointer"
+                    onClick={() => toggleClient(client)}
+                  >
+                    {completedClients.has(client) ? (
+                      <CheckSquare className="h-5 w-5 text-blue-600 mr-2" />
+                    ) : (
+                      <Square className="h-5 w-5 text-gray-400 mr-2" />
+                    )}
+                    <span
+                      className={`text-sm ${completedClients.has(client) ? "text-gray-400 line-through" : "text-gray-700"}`}
+                    >
+                      {client}
+                    </span>
+                  </div>
+                ),
+              )}
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );

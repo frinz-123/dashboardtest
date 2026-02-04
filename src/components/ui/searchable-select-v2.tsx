@@ -1,11 +1,11 @@
 "use client";
 
-import * as React from "react";
 import { Check, ChevronsUpDown, Search } from "lucide-react";
+import * as React from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "./button";
-import { Popover, PopoverContent, PopoverTrigger } from "./popover";
 import { Input } from "./input";
+import { Popover, PopoverContent, PopoverTrigger } from "./popover";
 
 interface SearchableSelectProps {
   options: { value: string; label: string }[];

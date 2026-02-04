@@ -1,13 +1,13 @@
 "use client";
 
-import React, {
+import mapboxgl from "mapbox-gl";
+import {
+  forwardRef,
   useEffect,
+  useImperativeHandle,
   useRef,
   useState,
-  useImperativeHandle,
-  forwardRef,
 } from "react";
-import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import convex from "@turf/convex";
 import { featureCollection, point } from "@turf/helpers";
@@ -15,7 +15,7 @@ import { PenTool } from "lucide-react";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
 
-const DEFAULT_CENTER = { lng: -110.962, lat: 29.072 }; // Hermosillo, Sonora, MX
+const _DEFAULT_CENTER = { lng: -110.962, lat: 29.072 }; // Hermosillo, Sonora, MX
 const FALLBACK_CENTER = { lng: -107.394, lat: 24.8091 }; // Culiacán, Sinaloa
 
 // Function to get pin color based on codigo
@@ -84,7 +84,7 @@ const NavegarMap = forwardRef(function NavegarMap(
     lng: number;
   } | null>(null);
   const [locationTried, setLocationTried] = useState(false);
-  const [route, setRoute] = useState<RouteInfo | null>(null);
+  const [_route, setRoute] = useState<RouteInfo | null>(null);
   const routeLayerId = "route-line";
   const [showDibujo, setShowDibujo] = useState(false);
   const polygonLayerId = "clients-polygon";
@@ -125,7 +125,7 @@ const NavegarMap = forwardRef(function NavegarMap(
           (pos) => {
             const loc = { lat: pos.coords.latitude, lng: pos.coords.longitude };
             setUserLocation(loc);
-            onUserLocationChange && onUserLocationChange(loc);
+            onUserLocationChange?.(loc);
             resolve(loc);
           },
           (err) => {
@@ -144,12 +144,12 @@ const NavegarMap = forwardRef(function NavegarMap(
     try {
       const loc = await getAccurateLocation();
       setUserLocation(loc);
-      onUserLocationChange && onUserLocationChange(loc);
+      onUserLocationChange?.(loc);
       // Optionally, recenter map
       if (map.current) {
         map.current.flyTo({ center: [loc.lng, loc.lat], zoom: 15 });
       }
-    } catch (e) {
+    } catch (_e) {
       // Optionally, show error
     }
   };
@@ -170,7 +170,7 @@ const NavegarMap = forwardRef(function NavegarMap(
           duration: routeData.duration,
         };
         setRoute(info);
-        onRouteInfo && onRouteInfo(info);
+        onRouteInfo?.(info);
         // Draw route on map
         if (map.current) {
           if (map.current.getLayer(routeLayerId)) {
@@ -205,7 +205,7 @@ const NavegarMap = forwardRef(function NavegarMap(
         return info;
       } else {
         setRoute(null);
-        onRouteInfo && onRouteInfo(null);
+        onRouteInfo?.(null);
         return null;
       }
     },
@@ -220,7 +220,7 @@ const NavegarMap = forwardRef(function NavegarMap(
           map.current.removeSource(routeLayerId);
         }
       }
-      onRouteInfo && onRouteInfo(null);
+      onRouteInfo?.(null);
     },
     getAccurateLocation,
     refreshLocation,
@@ -278,7 +278,7 @@ const NavegarMap = forwardRef(function NavegarMap(
       el.innerText = client.name[0].toUpperCase();
       el.onclick = (e) => {
         e.stopPropagation();
-        onSelectClient && onSelectClient(client.name);
+        onSelectClient?.(client.name);
       };
       const marker = new mapboxgl.Marker(el)
         .setLngLat([client.lng, client.lat])
@@ -337,8 +337,8 @@ const NavegarMap = forwardRef(function NavegarMap(
       if (map.current?.getLayer(polygonLayerId)) {
         map.current.removeLayer(polygonLayerId);
       }
-      if (map.current?.getLayer(polygonLayerId + "-outline")) {
-        map.current.removeLayer(polygonLayerId + "-outline");
+      if (map.current?.getLayer(`${polygonLayerId}-outline`)) {
+        map.current.removeLayer(`${polygonLayerId}-outline`);
       }
       if (map.current?.getSource(polygonSourceId)) {
         map.current.removeSource(polygonSourceId);
@@ -384,7 +384,7 @@ const NavegarMap = forwardRef(function NavegarMap(
 
     // Add outline layer
     map.current.addLayer({
-      id: polygonLayerId + "-outline",
+      id: `${polygonLayerId}-outline`,
       type: "line",
       source: polygonSourceId,
       paint: {
@@ -427,7 +427,9 @@ const NavegarMap = forwardRef(function NavegarMap(
             ? "bg-purple-600 text-white hover:bg-purple-700"
             : "bg-white text-gray-700 hover:bg-gray-50 border border-gray-200"
         }`}
-        title={showDibujo ? "Ocultar área de cobertura" : "Mostrar área de cobertura"}
+        title={
+          showDibujo ? "Ocultar área de cobertura" : "Mostrar área de cobertura"
+        }
       >
         <PenTool className="w-4 h-4" />
         <span>Dibujo</span>

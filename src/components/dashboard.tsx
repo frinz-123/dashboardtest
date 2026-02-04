@@ -155,8 +155,8 @@ export default function Dashboard() {
   const [isGoalDetailsOpen, setIsGoalDetailsOpen] = useState(false);
   const clientHistoryRef = React.useRef<HTMLDivElement | null>(null);
 
-  const todayKey = new Date().toDateString();
-  const periodReferenceDate = React.useMemo(() => new Date(), [todayKey]);
+  const _todayKey = new Date().toDateString();
+  const periodReferenceDate = React.useMemo(() => new Date(), []);
   const periodInfo = React.useMemo(
     () => getCurrentPeriodInfo(periodReferenceDate),
     [periodReferenceDate],
@@ -198,8 +198,8 @@ export default function Dashboard() {
     if (!normalizedSearchTerm) {
       return [];
     }
-    return clientNames.filter(
-      (name) => name && name.toLowerCase().includes(normalizedSearchTerm),
+    return clientNames.filter((name) =>
+      name?.toLowerCase().includes(normalizedSearchTerm),
     );
   }, [clientNames, normalizedSearchTerm]);
 

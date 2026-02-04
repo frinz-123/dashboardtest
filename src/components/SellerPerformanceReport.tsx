@@ -1,12 +1,12 @@
 "use client";
 
 import {
-  TrendingUp,
-  Users,
-  Target,
   Award,
   Calendar,
   Clock,
+  Target,
+  TrendingUp,
+  Users,
 } from "lucide-react";
 
 interface SellerAnalytics {

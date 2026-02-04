@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
-import Link from "next/link";
-import { Menu } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { Menu } from "lucide-react";
+import Link from "next/link";
 import { signOut } from "next-auth/react";
+import type React from "react";
+import { useMemo, useState } from "react";
 import { useBuzonNotifications } from "@/hooks/useBuzonNotifications";
 
 interface NavItem {
@@ -69,8 +70,12 @@ export default function AppHeader({
       <header className="sticky top-0 z-40 backdrop-blur-xl bg-white/80 border-b border-slate-200/50">
         <div className="px-4 py-3 flex justify-between items-center max-w-2xl mx-auto">
           <div>
-            <h1 className="text-2xl font-semibold text-slate-900 tracking-tight">{title}</h1>
-            {subtitle && <p className="text-xs text-blue-600 font-medium">{subtitle}</p>}
+            <h1 className="text-2xl font-semibold text-slate-900 tracking-tight">
+              {title}
+            </h1>
+            {subtitle && (
+              <p className="text-xs text-blue-600 font-medium">{subtitle}</p>
+            )}
           </div>
 
           <div className="flex items-center gap-2">

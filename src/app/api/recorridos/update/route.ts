@@ -88,9 +88,8 @@ async function updateVisitStatus(body: any) {
 
   const sheets = google.sheets({ version: "v4", auth });
 
-
   // Handle master account audit trail
-  const isMaster = isMasterAccount(masterEmail || userEmail);
+  const _isMaster = isMasterAccount(masterEmail || userEmail);
   const normalizedUserEmail = userEmail.toLowerCase().trim();
   const effectiveVendor =
     EMAIL_TO_VENDOR_LABELS[normalizedUserEmail] || normalizedUserEmail;
@@ -105,7 +104,9 @@ async function updateVisitStatus(body: any) {
 
   const nowUtc = new Date();
   const mazatlanOffset = -7; // GMT-7
-  const mazatlanNow = new Date(nowUtc.getTime() + mazatlanOffset * 60 * 60 * 1000);
+  const mazatlanNow = new Date(
+    nowUtc.getTime() + mazatlanOffset * 60 * 60 * 1000,
+  );
 
   const fecha = dateOnlyFromInput || mazatlanNow.toISOString().split("T")[0];
 
@@ -238,7 +239,7 @@ async function scheduleNextVisit(
     const diaIndex = headers.indexOf("Dia");
 
     const frequency =
-      frequencyIndex >= 0 ? parseInt(clientRow[frequencyIndex]) || 2 : 2;
+      frequencyIndex >= 0 ? parseInt(clientRow[frequencyIndex], 10) || 2 : 2;
     const tipoCliente =
       tipoClienteIndex >= 0 ? clientRow[tipoClienteIndex] : "";
     const entregaDay = entregaIndex >= 0 ? clientRow[entregaIndex] : "";
@@ -377,7 +378,6 @@ async function scheduleNextVisit(
     // Don't fail the main operation if scheduling fails
   }
 }
-
 
 // Helper function to get ISO week number
 function getWeekNumber(date: Date): number {
@@ -540,7 +540,7 @@ async function updateWeeklySchedule(body: any) {
   const weekNumber =
     typeof semana === "number"
       ? semana
-      : parseInt(semana) || getWeekNumber(new Date());
+      : parseInt(semana, 10) || getWeekNumber(new Date());
 
   // ✅ CORRECTED: Expected Programacion_Semanal columns:
   // semana_numero, fecha_inicio, dia_semana, cliente_nombre, vendedor, ultima_visita, proxima_visita_programada, estado, orden_visita

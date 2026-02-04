@@ -5,7 +5,6 @@ import { haptics } from "@/utils/haptics";
 import { deletePhotos, getPhoto } from "@/utils/photoStore";
 import {
   type QueuedSubmission,
-  SubmissionStatus,
   submissionQueue,
 } from "@/utils/submissionQueue";
 

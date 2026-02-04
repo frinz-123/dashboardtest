@@ -1,8 +1,8 @@
 "use client";
 
-import { PanelDeInventarioComponent } from "@/components/panel-de-inventario";
-import { useSession } from "next-auth/react";
 import { redirect } from "next/navigation";
+import { useSession } from "next-auth/react";
+import { PanelDeInventarioComponent } from "@/components/panel-de-inventario";
 
 const AUTHORIZED_EMAILS = [
   "cesar.reyes.ochoa@gmail.com",

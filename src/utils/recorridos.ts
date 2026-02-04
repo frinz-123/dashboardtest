@@ -3,18 +3,37 @@
  * Extracted to simplify the main component
  */
 
-export type RouteDay = "Lunes" | "Martes" | "Miercoles" | "Jueves" | "Viernes" | "Sabado" | "Domingo";
+export type RouteDay =
+  | "Lunes"
+  | "Martes"
+  | "Miercoles"
+  | "Jueves"
+  | "Viernes"
+  | "Sabado"
+  | "Domingo";
 
 export type VisitStatus = "pending" | "completed" | "skipped" | "postponed";
 
 export type VisitType = "Pedidos" | "Entrega" | "Normal";
 
 export const ROUTE_DAYS: RouteDay[] = [
-  "Lunes", "Martes", "Miercoles", "Jueves", "Viernes", "Sabado", "Domingo"
+  "Lunes",
+  "Martes",
+  "Miercoles",
+  "Jueves",
+  "Viernes",
+  "Sabado",
+  "Domingo",
 ];
 
 export const DAY_NAMES: RouteDay[] = [
-  "Domingo", "Lunes", "Martes", "Miercoles", "Jueves", "Viernes", "Sabado"
+  "Domingo",
+  "Lunes",
+  "Martes",
+  "Miercoles",
+  "Jueves",
+  "Viernes",
+  "Sabado",
 ];
 
 const MAZATLAN_OFFSET = -7; // GMT-7
@@ -77,7 +96,9 @@ export function normalizeDay(day: string): string {
  * Get ISO week number from a date
  */
 export function getWeekNumber(date: Date): number {
-  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const d = new Date(
+    Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()),
+  );
   const dayNum = d.getUTCDay() || 7;
   d.setUTCDate(d.getUTCDate() + 4 - dayNum);
   const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
@@ -88,7 +109,10 @@ export function getWeekNumber(date: Date): number {
  * Calculate distance between two coordinates using Haversine formula
  */
 export function calculateDistance(
-  lat1: number, lon1: number, lat2: number, lon2: number
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
 ): number {
   const R = 6371; // Radius of the Earth in kilometers
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -96,9 +120,9 @@ export function calculateDistance(
   const a =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
     Math.cos((lat1 * Math.PI) / 180) *
-    Math.cos((lat2 * Math.PI) / 180) *
-    Math.sin(dLon / 2) *
-    Math.sin(dLon / 2);
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return R * c;
 }
@@ -131,10 +155,14 @@ export function isCleyClient(tipoCliente: string | undefined): boolean {
  */
 export function getStatusColor(status: VisitStatus): string {
   switch (status) {
-    case "completed": return "bg-green-500";
-    case "skipped": return "bg-red-500";
-    case "postponed": return "bg-yellow-500";
-    default: return "bg-gray-300";
+    case "completed":
+      return "bg-green-500";
+    case "skipped":
+      return "bg-red-500";
+    case "postponed":
+      return "bg-yellow-500";
+    default:
+      return "bg-gray-300";
   }
 }
 
@@ -143,10 +171,14 @@ export function getStatusColor(status: VisitStatus): string {
  */
 export function getClientTypeColor(type: string): string {
   switch (type?.toUpperCase()) {
-    case "CLEY": return "bg-blue-100 text-blue-800";
-    case "PREMIUM": return "bg-purple-100 text-purple-800";
-    case "REGULAR": return "bg-green-100 text-green-800";
-    default: return "bg-gray-100 text-gray-800";
+    case "CLEY":
+      return "bg-blue-100 text-blue-800";
+    case "PREMIUM":
+      return "bg-purple-100 text-purple-800";
+    case "REGULAR":
+      return "bg-green-100 text-green-800";
+    default:
+      return "bg-gray-100 text-gray-800";
   }
 }
 
@@ -157,7 +189,7 @@ export function buildApiUrl(
   baseSheet: string,
   email: string | null,
   isMaster: boolean,
-  selectedVendorEmail: string | null
+  selectedVendorEmail: string | null,
 ): string {
   let apiUrl = `/api/recorridos?email=${encodeURIComponent(email || "")}&sheet=${baseSheet}`;
 
@@ -196,7 +228,8 @@ export function getSelectedDayFormattedDate(selectedDay: RouteDay): string {
 
   const selectedDayIndex = DAY_NAMES.indexOf(selectedDay);
   const selectedDate = new Date(currentWeekStart);
-  if (selectedDayIndex === 0) { // Sunday
+  if (selectedDayIndex === 0) {
+    // Sunday
     selectedDate.setDate(currentWeekStart.getDate() + 6);
   } else {
     selectedDate.setDate(currentWeekStart.getDate() + selectedDayIndex - 1);
@@ -215,7 +248,7 @@ export const DEFAULT_START_LNG = -107.3749752;
 export function optimizeRoute<T extends { Latitude: number; Longitud: number }>(
   clients: T[],
   startLat: number = DEFAULT_START_LAT,
-  startLng: number = DEFAULT_START_LNG
+  startLng: number = DEFAULT_START_LNG,
 ): T[] {
   if (clients.length <= 1) return clients;
 
@@ -227,12 +260,18 @@ export function optimizeRoute<T extends { Latitude: number; Longitud: number }>(
   while (unvisited.length > 0) {
     let nearestIndex = 0;
     let shortestDistance = calculateDistance(
-      currentLat, currentLng, unvisited[0].Latitude, unvisited[0].Longitud
+      currentLat,
+      currentLng,
+      unvisited[0].Latitude,
+      unvisited[0].Longitud,
     );
 
     for (let i = 1; i < unvisited.length; i++) {
       const distance = calculateDistance(
-        currentLat, currentLng, unvisited[i].Latitude, unvisited[i].Longitud
+        currentLat,
+        currentLng,
+        unvisited[i].Latitude,
+        unvisited[i].Longitud,
       );
       if (distance < shortestDistance) {
         shortestDistance = distance;
@@ -252,10 +291,12 @@ export function optimizeRoute<T extends { Latitude: number; Longitud: number }>(
 /**
  * Calculate total route distance
  */
-export function calculateTotalRouteDistance<T extends { Latitude: number; Longitud: number }>(
+export function calculateTotalRouteDistance<
+  T extends { Latitude: number; Longitud: number },
+>(
   clients: T[],
   startLat: number = DEFAULT_START_LAT,
-  startLng: number = DEFAULT_START_LNG
+  startLng: number = DEFAULT_START_LNG,
 ): number {
   if (clients.length === 0) return 0;
 
@@ -264,7 +305,12 @@ export function calculateTotalRouteDistance<T extends { Latitude: number; Longit
   let currentLng = startLng;
 
   clients.forEach((client) => {
-    const distance = calculateDistance(currentLat, currentLng, client.Latitude, client.Longitud);
+    const distance = calculateDistance(
+      currentLat,
+      currentLng,
+      client.Latitude,
+      client.Longitud,
+    );
     totalDistance += distance;
     currentLat = client.Latitude;
     currentLng = client.Longitud;

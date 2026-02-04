@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
 import { google } from "googleapis";
+import { type NextRequest, NextResponse } from "next/server";
 
 type RescheduleRequest = {
   clientName: string;
@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         message: `${values.length} reschedules saved successfully`,
-        reschedules: values.map((row, index) => ({
+        reschedules: values.map((_row, index) => ({
           clientName: reschedules[index].clientName,
           visitType: reschedules[index].visitType,
           originalDay: reschedules[index].originalDay,
@@ -169,7 +169,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Update the 'activo' column to 'No'
-      const updateResponse = await sheets.spreadsheets.values.update({
+      const _updateResponse = await sheets.spreadsheets.values.update({
         spreadsheetId,
         range: `Visitas_Reprogramadas!G${rowIndexToUpdate}`,
         valueInputOption: "RAW",

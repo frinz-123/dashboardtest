@@ -1,7 +1,7 @@
 "use client";
 
-import { Search, X, Sparkles } from "lucide-react";
-import { useState, useRef, useEffect } from "react";
+import { Search, Sparkles, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 type SearchInputProps = {
   value: string;

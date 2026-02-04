@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, Users, Target, TrendingUp, Award, Zap } from "lucide-react";
+import { Award, BarChart3, Target, TrendingUp, Users, Zap } from "lucide-react";
 
 interface SellerMetrics {
   vendedor: string;

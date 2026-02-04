@@ -103,9 +103,60 @@ type FeedReview = {
   note: string;
 };
 
+const getSubmissionTimeKey = (submissionTime?: string): string => {
+  if (!submissionTime) return "";
+  const timePart = submissionTime.includes(" ")
+    ? submissionTime.split(" ")[1]
+    : submissionTime;
+  return timePart?.slice(0, 8) || "";
+};
+
+const getLegacySaleId = (sale: Sale): string => {
+  return `${sale.email}|${sale.fechaSinHora}|${sale.clientName}`;
+};
+
+const hashString = (value: string): string => {
+  let hash = 0;
+  for (let i = 0; i < value.length; i++) {
+    hash = (hash << 5) - hash + value.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash).toString(36);
+};
+
+const getPhotoKey = (photoUrls: string[]): string => {
+  const firstUrl = photoUrls.find((url) => url.trim()) || "";
+  return firstUrl ? hashString(firstUrl) : "";
+};
+
+const getSaleIdVariants = (sale: Sale): string[] => {
+  const baseId = getLegacySaleId(sale);
+  const timeKey = getSubmissionTimeKey(sale.submissionTime);
+  const photoKey = getPhotoKey(sale.photoUrls || []);
+  const variants = [] as string[];
+
+  if (photoKey) variants.push(`${baseId}|p:${photoKey}`);
+  if (timeKey) variants.push(`${baseId}|t:${timeKey}`);
+  variants.push(baseId);
+
+  return variants;
+};
+
 // Generate a unique ID for a sale (must match FeedTab's getSaleId)
 const getSaleId = (sale: Sale): string => {
-  return `${sale.email}|${sale.fechaSinHora}|${sale.clientName}`;
+  return getSaleIdVariants(sale)[0];
+};
+
+const getReviewForSale = (
+  sale: Sale,
+  reviewMap: Map<string, FeedReview>,
+): FeedReview | null => {
+  const variants = getSaleIdVariants(sale);
+  for (const variant of variants) {
+    const review = reviewMap.get(variant);
+    if (review) return review;
+  }
+  return null;
 };
 
 const getSaleTimestampInfo = (
@@ -933,7 +984,7 @@ export default function InspectorPeriodosPage() {
 
   // Get current sale's review
   const currentSaleReview = selectedSale
-    ? reviews.get(getSaleId(selectedSale))
+    ? getReviewForSale(selectedSale, reviews)
     : null;
 
   const clientHistory = useMemo(() => {

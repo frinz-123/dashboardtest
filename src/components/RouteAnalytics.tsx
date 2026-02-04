@@ -1,13 +1,13 @@
-import React, { useState, useEffect } from "react";
-import { useSession } from "next-auth/react";
 import {
-  TrendingUp,
-  TrendingDown,
-  Calendar,
-  MapPin,
-  Clock,
   Award,
+  Calendar,
+  Clock,
+  MapPin,
+  TrendingDown,
+  TrendingUp,
 } from "lucide-react";
+import { useSession } from "next-auth/react";
+import { useEffect, useState } from "react";
 
 type RouteMetrics = {
   userEmail: string;
@@ -36,7 +36,7 @@ export default function RouteAnalytics({
   className = "",
 }: RouteAnalyticsProps) {
   const { data: session } = useSession();
-  const [metrics, setMetrics] = useState<RouteMetrics[]>([]);
+  const [_metrics, setMetrics] = useState<RouteMetrics[]>([]);
   const [performance, setPerformance] = useState<PerformanceData | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -44,7 +44,7 @@ export default function RouteAnalytics({
     if (session?.user?.email) {
       fetchRouteMetrics();
     }
-  }, [session]);
+  }, [session, fetchRouteMetrics]);
 
   const fetchRouteMetrics = async () => {
     try {

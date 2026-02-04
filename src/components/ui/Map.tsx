@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import mapboxgl from "mapbox-gl";
 import { RefreshCw } from "lucide-react";
+import mapboxgl from "mapbox-gl";
+import { useCallback, useEffect, useRef, useState } from "react";
 import "mapbox-gl/dist/mapbox-gl.css";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
@@ -62,7 +62,7 @@ const hasSignificantMovement = (
   return distance > MIN_MOVEMENT_THRESHOLD;
 };
 
-export default function Map({ onLocationUpdate, clientLocation }: MapProps) {
+export default function MapView({ onLocationUpdate, clientLocation }: MapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const [location, setLocation] = useState<{ lat: number; lng: number } | null>(
@@ -79,11 +79,16 @@ export default function Map({ onLocationUpdate, clientLocation }: MapProps) {
   const isComponentUnmounted = useRef(false);
   const locationWatchId = useRef<number | null>(null);
   const accuracyFallbackTimeout = useRef<NodeJS.Timeout | null>(null);
+  const locationRef = useRef<{ lat: number; lng: number } | null>(null);
+  const clientLocationRef = useRef<{ lat: number; lng: number } | null>(null);
+  const onLocationUpdateRef = useRef<MapProps["onLocationUpdate"]>(
+    onLocationUpdate,
+  );
 
   const HIGH_ACCURACY_THRESHOLD = 40; // meters
   const HIGH_ACCURACY_TIMEOUT = 12000;
 
-  const stopWatchingLocation = () => {
+  const stopWatchingLocation = useCallback(() => {
     if (locationWatchId.current !== null) {
       navigator.geolocation.clearWatch(locationWatchId.current);
       locationWatchId.current = null;
@@ -98,9 +103,9 @@ export default function Map({ onLocationUpdate, clientLocation }: MapProps) {
       clearTimeout(retryTimeoutRef.current);
       retryTimeoutRef.current = null;
     }
-  };
+  }, []);
 
-  const createLabeledMarker = (label: string, color: string) => {
+  const createLabeledMarker = useCallback((label: string, color: string) => {
     const el = document.createElement("div");
     el.style.position = "relative";
     el.style.display = "flex";
@@ -127,11 +132,15 @@ export default function Map({ onLocationUpdate, clientLocation }: MapProps) {
     el.appendChild(bubble);
     el.appendChild(text);
     return el;
-  };
+  }, []);
 
-  const getCurrentLocation = () => {
+  const getCurrentLocation = useCallback(() => {
     if (isComponentUnmounted.current) {
       return;
+    }
+
+    if (process.env.NODE_ENV !== "production") {
+      console.debug("Map: getCurrentLocation requested");
     }
 
     if (!navigator.geolocation) {
@@ -169,11 +178,14 @@ export default function Map({ onLocationUpdate, clientLocation }: MapProps) {
         lng: Number(position.coords.longitude.toFixed(6)),
       };
 
-      const shouldUpdateMap = hasSignificantMovement(location, newLocation);
+      const shouldUpdateMap = hasSignificantMovement(
+        locationRef.current,
+        newLocation,
+      );
 
       setLocation(newLocation);
       setLocationAccuracy(position.coords.accuracy);
-      onLocationUpdate?.({
+      onLocationUpdateRef.current?.({
         ...newLocation,
         accuracy: position.coords.accuracy,
         timestamp: position.timestamp || Date.now(),
@@ -189,7 +201,7 @@ export default function Map({ onLocationUpdate, clientLocation }: MapProps) {
           .setLngLat([newLocation.lng, newLocation.lat])
           .addTo(map.current);
 
-        if (!clientLocation) {
+        if (!clientLocationRef.current) {
           map.current.setCenter([newLocation.lng, newLocation.lat]);
         }
       }
@@ -286,9 +298,21 @@ export default function Map({ onLocationUpdate, clientLocation }: MapProps) {
       (error) => handleGeolocationError(error),
       options,
     );
-  };
+  }, [createLabeledMarker, stopWatchingLocation]);
 
   // Request location permission when component mounts
+  useEffect(() => {
+    locationRef.current = location;
+  }, [location]);
+
+  useEffect(() => {
+    clientLocationRef.current = clientLocation ?? null;
+  }, [clientLocation]);
+
+  useEffect(() => {
+    onLocationUpdateRef.current = onLocationUpdate;
+  }, [onLocationUpdate]);
+
   useEffect(() => {
     isComponentUnmounted.current = false;
     let isCancelled = false;
@@ -298,6 +322,10 @@ export default function Map({ onLocationUpdate, clientLocation }: MapProps) {
         getCurrentLocation();
       }
     };
+
+    if (process.env.NODE_ENV !== "production") {
+      console.debug("Map: permission check effect");
+    }
 
     if (typeof window !== "undefined" && navigator.permissions) {
       navigator.permissions
@@ -323,7 +351,7 @@ export default function Map({ onLocationUpdate, clientLocation }: MapProps) {
       isComponentUnmounted.current = true;
       stopWatchingLocation();
     };
-  }, []);
+  }, [getCurrentLocation, stopWatchingLocation]);
 
   useEffect(() => {
     if (location && mapContainer.current && !map.current) {
@@ -345,7 +373,7 @@ export default function Map({ onLocationUpdate, clientLocation }: MapProps) {
         .setLngLat([location.lng, location.lat])
         .addTo(map.current);
     }
-  }, [location]);
+  }, [location, createLabeledMarker]);
 
   // Update the client location marker effect to respect movement threshold
   useEffect(() => {
@@ -375,7 +403,7 @@ export default function Map({ onLocationUpdate, clientLocation }: MapProps) {
         });
       }
     }
-  }, [clientLocation, location]);
+  }, [clientLocation, location, createLabeledMarker]);
 
   // Modify the auto-update interval
   useEffect(() => {
@@ -390,7 +418,7 @@ export default function Map({ onLocationUpdate, clientLocation }: MapProps) {
     return () => {
       clearInterval(intervalId);
     };
-  }, [isAutoUpdating, isRefreshing]);
+  }, [isAutoUpdating, isRefreshing, getCurrentLocation]);
 
   return (
     <div className="relative">
@@ -427,6 +455,7 @@ export default function Map({ onLocationUpdate, clientLocation }: MapProps) {
           {locationError && (
             <button
               onClick={() => getCurrentLocation()}
+              type="button"
               className="text-xs px-2 py-1 rounded bg-yellow-200 text-yellow-900 hover:bg-yellow-300"
             >
               Reintentar
@@ -434,6 +463,7 @@ export default function Map({ onLocationUpdate, clientLocation }: MapProps) {
           )}
           <button
             onClick={() => setIsAutoUpdating(!isAutoUpdating)}
+            type="button"
             className={`text-xs px-2 py-1 rounded ${
               isAutoUpdating
                 ? "bg-blue-100 text-blue-600"
@@ -448,6 +478,7 @@ export default function Map({ onLocationUpdate, clientLocation }: MapProps) {
               setLocation(null);
               getCurrentLocation();
             }}
+            type="button"
             className="text-xs px-2 py-1 rounded bg-red-100 text-red-600 hover:bg-red-200"
             disabled={isRefreshing}
           >
@@ -455,6 +486,7 @@ export default function Map({ onLocationUpdate, clientLocation }: MapProps) {
           </button>
           <button
             onClick={getCurrentLocation}
+            type="button"
             className="p-2 rounded-full hover:bg-gray-100 transition-colors duration-200"
             disabled={isRefreshing}
           >
