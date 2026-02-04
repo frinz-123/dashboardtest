@@ -1,36 +1,17 @@
 "use client";
 
-import {
-  Check,
-  ChevronsUpDown,
-  PackagePlus,
-  Pencil,
-  Plus,
-  RefreshCcw,
-  Truck,
-} from "lucide-react";
+import { Check, ChevronDown } from "lucide-react";
+import { PackagePlus, Pencil, Plus, RefreshCcw, Truck } from "lucide-react";
 import { redirect } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AppHeader from "@/components/AppHeader";
-import {
-  Command,
-  CommandEmpty,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import {
   EMAIL_TO_VENDOR_LABELS,
@@ -174,119 +155,169 @@ const ProductCombobox = ({
   value,
   onChange,
   options,
-  placeholder = "Selecciona o escribe",
+  placeholder = "Buscar producto...",
   inputId,
 }: ProductComboboxProps) => {
-  const [open, setOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const debugCombobox = process.env.NODE_ENV !== "production";
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
 
-  const normalizedQuery = query.trim();
-  const lowerQuery = normalizedQuery.toLowerCase();
-  const filteredOptions = options.filter((option) =>
-    option.toLowerCase().includes(lowerQuery),
+  const filteredOptions = useMemo(() => {
+    if (!query.trim()) return options;
+    const lowerQuery = query.toLowerCase();
+    return options.filter((opt) => opt.toLowerCase().includes(lowerQuery));
+  }, [options, query]);
+
+  const handleSelect = useCallback(
+    (selectedValue: string) => {
+      onChange(selectedValue);
+      setQuery("");
+      setIsOpen(false);
+      setHighlightedIndex(0);
+    },
+    [onChange],
   );
-  const hasCustomOption =
-    normalizedQuery.length > 0 &&
-    !options.some((option) => option.toLowerCase() === lowerQuery);
 
-  const handleSelect = (nextValue: string) => {
-    onChange(nextValue);
-    if (debugCombobox) {
-      console.log("[InventarioCarro][Combobox] select", {
-        nextValue,
-        previousValue: value,
-      });
-    }
-    setOpen(false);
-    setQuery("");
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setQuery(e.target.value);
+    setIsOpen(true);
+    setHighlightedIndex(0);
   };
 
-  return (
-    <Popover
-      open={open}
-      onOpenChange={(nextOpen) => {
-        setOpen(nextOpen);
-        if (!nextOpen) {
-          setQuery("");
+  const handleInputFocus = () => {
+    setIsOpen(true);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (!isOpen) {
+      if (e.key === "ArrowDown" || e.key === "Enter") {
+        setIsOpen(true);
+        e.preventDefault();
+      }
+      return;
+    }
+
+    switch (e.key) {
+      case "ArrowDown":
+        e.preventDefault();
+        setHighlightedIndex((prev) =>
+          prev < filteredOptions.length - 1 ? prev + 1 : prev,
+        );
+        break;
+      case "ArrowUp":
+        e.preventDefault();
+        setHighlightedIndex((prev) => (prev > 0 ? prev - 1 : 0));
+        break;
+      case "Enter":
+        e.preventDefault();
+        if (filteredOptions[highlightedIndex]) {
+          handleSelect(filteredOptions[highlightedIndex]);
         }
-      }}
-    >
-      <PopoverTrigger asChild>
+        break;
+      case "Escape":
+        e.preventDefault();
+        setIsOpen(false);
+        setQuery("");
+        break;
+    }
+  };
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(e.target as Node)
+      ) {
+        setIsOpen(false);
+        setQuery("");
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Scroll highlighted item into view
+  useEffect(() => {
+    if (isOpen && listRef.current) {
+      const highlightedEl = listRef.current.children[
+        highlightedIndex
+      ] as HTMLElement;
+      if (highlightedEl) {
+        highlightedEl.scrollIntoView({ block: "nearest" });
+      }
+    }
+  }, [highlightedIndex, isOpen]);
+
+  return (
+    <div ref={containerRef} className="relative w-full">
+      <div className="relative">
+        <input
+          ref={inputRef}
+          id={inputId}
+          type="text"
+          value={query || (isOpen ? "" : value)}
+          onChange={handleInputChange}
+          onFocus={handleInputFocus}
+          onKeyDown={handleKeyDown}
+          placeholder={value || placeholder}
+          className={cn(
+            "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 pr-8 text-sm outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-400",
+            !value && !query && "text-slate-400",
+          )}
+          autoComplete="off"
+        />
         <button
           type="button"
-          aria-haspopup="listbox"
-          aria-expanded={open}
-          className="flex w-full items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-left"
+          tabIndex={-1}
+          onClick={() => {
+            setIsOpen(!isOpen);
+            inputRef.current?.focus();
+          }}
+          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
         >
-          <span
-            className={cn(
-              "truncate",
-              value ? "text-slate-900" : "text-slate-400",
-            )}
-          >
-            {value || placeholder}
-          </span>
-          <ChevronsUpDown className="h-4 w-4 text-slate-400" />
+          <ChevronDown className="h-4 w-4" />
         </button>
-      </PopoverTrigger>
-      <PopoverContent
-        className="z-[70] w-[min(92vw,24rem)] p-0"
-        align="start"
-        onPointerDown={(event) => {
-          if (debugCombobox) {
-            console.log("[InventarioCarro][Combobox] pointerdown", {
-              target: (event.target as HTMLElement)?.tagName,
-            });
-          }
-        }}
-      >
-        <Command>
-          <CommandInput
-            id={inputId}
-            placeholder="Busca producto..."
-            value={query}
-            onValueChange={setQuery}
-          />
-          <CommandList>
-            <CommandEmpty>Sin resultados</CommandEmpty>
-            {hasCustomOption && (
-              <CommandItem
-                value={normalizedQuery}
-                onSelect={() => handleSelect(normalizedQuery)}
-                onClick={(event) => {
-                  event.preventDefault();
-                  handleSelect(normalizedQuery);
-                }}
-                className="cursor-pointer"
-              >
-                Usar "{normalizedQuery}"
-              </CommandItem>
-            )}
-            {filteredOptions.map((option) => (
-              <CommandItem
+      </div>
+
+      {isOpen && (
+        <ul
+          ref={listRef}
+          className="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
+        >
+          {filteredOptions.length === 0 ? (
+            <li className="px-3 py-2 text-sm text-slate-500">Sin resultados</li>
+          ) : (
+            filteredOptions.map((option, index) => (
+              <li
                 key={option}
-                value={option}
-                onSelect={() => handleSelect(option)}
-                onClick={(event) => {
-                  event.preventDefault();
+                onMouseDown={(e) => {
+                  e.preventDefault();
                   handleSelect(option);
                 }}
-                className="cursor-pointer"
+                onMouseEnter={() => setHighlightedIndex(index)}
+                className={cn(
+                  "flex cursor-pointer items-center gap-2 px-3 py-2 text-sm",
+                  index === highlightedIndex && "bg-slate-100",
+                  value === option && "font-medium text-slate-900",
+                )}
               >
                 <Check
                   className={cn(
-                    "mr-2 h-4 w-4",
+                    "h-4 w-4 shrink-0",
                     value === option ? "opacity-100" : "opacity-0",
                   )}
                 />
                 {option}
-              </CommandItem>
-            ))}
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
+              </li>
+            ))
+          )}
+        </ul>
+      )}
+    </div>
   );
 };
 

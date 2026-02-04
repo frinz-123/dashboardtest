@@ -34,6 +34,7 @@
   "name": "dashboard-el-rey",
   "dependencies": {
     "@aws-sdk/client-s3": "^3.981.0",
+    "@base-ui/react": "^1.1.0",
     "@mapbox/mapbox-gl-draw": "^1.5.1",
     "@radix-ui/react-avatar": "^1.1.1",
     "@radix-ui/react-dialog": "^1.1.15",
