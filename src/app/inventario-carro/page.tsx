@@ -1,7 +1,17 @@
 "use client";
 
-import { Check, ChevronDown } from "lucide-react";
-import { PackagePlus, Pencil, Plus, RefreshCcw, Truck } from "lucide-react";
+import {
+  Calendar,
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  PackagePlus,
+  Pencil,
+  Plus,
+  RefreshCcw,
+  Truck,
+} from "lucide-react";
 import { redirect } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -265,7 +275,7 @@ const ProductCombobox = ({
           onKeyDown={handleKeyDown}
           placeholder={value || placeholder}
           className={cn(
-            "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 pr-8 text-sm outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-400",
+            "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 pr-8 text-base outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-400",
             !value && !query && "text-slate-400",
           )}
           autoComplete="off"
@@ -289,7 +299,7 @@ const ProductCombobox = ({
           className="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
         >
           {filteredOptions.length === 0 ? (
-            <li className="px-3 py-2 text-sm text-slate-500">Sin resultados</li>
+            <li className="px-3 py-2 text-base text-slate-500">Sin resultados</li>
           ) : (
             filteredOptions.map((option, index) => (
               <li
@@ -300,7 +310,7 @@ const ProductCombobox = ({
                 }}
                 onMouseEnter={() => setHighlightedIndex(index)}
                 className={cn(
-                  "flex cursor-pointer items-center gap-2 px-3 py-2 text-sm",
+                  "flex cursor-pointer items-center gap-2 px-3 py-2 text-base",
                   index === highlightedIndex && "bg-slate-100",
                   value === option && "font-medium text-slate-900",
                 )}
@@ -316,6 +326,204 @@ const ProductCombobox = ({
             ))
           )}
         </ul>
+      )}
+    </div>
+  );
+};
+
+type DatePickerProps = {
+  value: string; // YYYY-MM-DD format
+  onChange: (value: string) => void;
+  id?: string;
+};
+
+const DAYS_ES = ["Do", "Lu", "Ma", "Mi", "Ju", "Vi", "Sa"];
+const MONTHS_ES = [
+  "Enero",
+  "Febrero",
+  "Marzo",
+  "Abril",
+  "Mayo",
+  "Junio",
+  "Julio",
+  "Agosto",
+  "Septiembre",
+  "Octubre",
+  "Noviembre",
+  "Diciembre",
+];
+
+const DatePicker = ({ value, onChange, id }: DatePickerProps) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Parse value or default to today
+  const selectedDate = value ? new Date(`${value}T12:00:00`) : new Date();
+  const [viewMonth, setViewMonth] = useState(selectedDate.getMonth());
+  const [viewYear, setViewYear] = useState(selectedDate.getFullYear());
+
+  const formatDisplayDate = (dateStr: string) => {
+    if (!dateStr) return "";
+    const date = new Date(`${dateStr}T12:00:00`);
+    return date.toLocaleDateString("es-MX", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  };
+
+  const getDaysInMonth = (month: number, year: number) => {
+    return new Date(year, month + 1, 0).getDate();
+  };
+
+  const getFirstDayOfMonth = (month: number, year: number) => {
+    return new Date(year, month, 1).getDay();
+  };
+
+  const handlePrevMonth = () => {
+    if (viewMonth === 0) {
+      setViewMonth(11);
+      setViewYear(viewYear - 1);
+    } else {
+      setViewMonth(viewMonth - 1);
+    }
+  };
+
+  const handleNextMonth = () => {
+    if (viewMonth === 11) {
+      setViewMonth(0);
+      setViewYear(viewYear + 1);
+    } else {
+      setViewMonth(viewMonth + 1);
+    }
+  };
+
+  const handleSelectDay = (day: number) => {
+    const newDate = `${viewYear}-${String(viewMonth + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    onChange(newDate);
+    setIsOpen(false);
+  };
+
+  const isSelectedDay = (day: number) => {
+    if (!value) return false;
+    const selected = new Date(`${value}T12:00:00`);
+    return (
+      selected.getDate() === day &&
+      selected.getMonth() === viewMonth &&
+      selected.getFullYear() === viewYear
+    );
+  };
+
+  const isToday = (day: number) => {
+    const today = new Date();
+    return (
+      today.getDate() === day &&
+      today.getMonth() === viewMonth &&
+      today.getFullYear() === viewYear
+    );
+  };
+
+  // Close on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(e.target as Node)
+      ) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Reset view to selected date when opening
+  useEffect(() => {
+    if (isOpen && value) {
+      const date = new Date(`${value}T12:00:00`);
+      setViewMonth(date.getMonth());
+      setViewYear(date.getFullYear());
+    }
+  }, [isOpen, value]);
+
+  const daysInMonth = getDaysInMonth(viewMonth, viewYear);
+  const firstDay = getFirstDayOfMonth(viewMonth, viewYear);
+  const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+  const emptyDays = Array.from({ length: firstDay }, (_, i) => i);
+
+  return (
+    <div ref={containerRef} className="relative w-full">
+      <button
+        type="button"
+        id={id}
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex w-full items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 text-base text-left"
+      >
+        <span className={value ? "text-slate-900" : "text-slate-400"}>
+          {value ? formatDisplayDate(value) : "Seleccionar fecha"}
+        </span>
+        <Calendar className="h-4 w-4 text-slate-400" />
+      </button>
+
+      {isOpen && (
+        <div className="absolute z-50 mt-1 w-full rounded-lg border border-slate-200 bg-white p-3 shadow-lg">
+          {/* Header */}
+          <div className="mb-2 flex items-center justify-between">
+            <button
+              type="button"
+              onClick={handlePrevMonth}
+              className="rounded p-1 hover:bg-slate-100"
+            >
+              <ChevronLeft className="h-5 w-5" />
+            </button>
+            <span className="text-sm font-semibold">
+              {MONTHS_ES[viewMonth]} {viewYear}
+            </span>
+            <button
+              type="button"
+              onClick={handleNextMonth}
+              className="rounded p-1 hover:bg-slate-100"
+            >
+              <ChevronRight className="h-5 w-5" />
+            </button>
+          </div>
+
+          {/* Day headers */}
+          <div className="mb-1 grid grid-cols-7 gap-1">
+            {DAYS_ES.map((day) => (
+              <div
+                key={day}
+                className="text-center text-xs font-medium text-slate-500"
+              >
+                {day}
+              </div>
+            ))}
+          </div>
+
+          {/* Days grid */}
+          <div className="grid grid-cols-7 gap-1">
+            {emptyDays.map((i) => (
+              <div key={`empty-${i}`} />
+            ))}
+            {days.map((day) => (
+              <button
+                key={day}
+                type="button"
+                onClick={() => handleSelectDay(day)}
+                className={cn(
+                  "flex h-9 w-full items-center justify-center rounded text-sm",
+                  isSelectedDay(day)
+                    ? "bg-slate-900 text-white"
+                    : isToday(day)
+                      ? "bg-slate-100 font-semibold"
+                      : "hover:bg-slate-100",
+                )}
+              >
+                {day}
+              </button>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   );
@@ -1075,11 +1283,11 @@ export default function InventarioCarroPage() {
       </main>
 
       <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
-        <DialogContent className="w-[92vw] max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-[92vw] max-w-2xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
           <DialogHeader>
             <DialogTitle>Nueva carga</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
+          <div className="space-y-4 overflow-hidden">
             <div className="space-y-1">
               <label
                 htmlFor="add-date"
@@ -1087,14 +1295,12 @@ export default function InventarioCarroPage() {
               >
                 Fecha
               </label>
-              <input
+              <DatePicker
                 id="add-date"
-                type="date"
                 value={addForm.date}
-                onChange={(event) =>
-                  setAddForm((prev) => ({ ...prev, date: event.target.value }))
+                onChange={(date) =>
+                  setAddForm((prev) => ({ ...prev, date }))
                 }
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
               />
             </div>
             <div className="space-y-3">
@@ -1150,7 +1356,7 @@ export default function InventarioCarroPage() {
                             event.target.value,
                           )
                         }
-                        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-base"
                       />
                     </div>
                     <button
@@ -1190,7 +1396,7 @@ export default function InventarioCarroPage() {
                     movementType: event.target.value,
                   }))
                 }
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-base"
               >
                 {MOVEMENT_TYPES.map((type) => (
                   <option key={type} value={type}>
@@ -1216,7 +1422,7 @@ export default function InventarioCarroPage() {
                   }))
                 }
                 rows={3}
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-base"
               />
             </div>
             <div className="flex justify-end gap-2">
@@ -1254,16 +1460,14 @@ export default function InventarioCarroPage() {
                 >
                   Fecha
                 </label>
-                <input
+                <DatePicker
                   id="edit-date"
-                  type="date"
                   value={editForm.date}
-                  onChange={(event) =>
+                  onChange={(date) =>
                     setEditForm((prev) =>
-                      prev ? { ...prev, date: event.target.value } : prev,
+                      prev ? { ...prev, date } : prev,
                     )
                   }
-                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
                 />
               </div>
               <div className="space-y-1">
