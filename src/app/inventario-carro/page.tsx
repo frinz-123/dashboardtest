@@ -6,12 +6,17 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ClipboardList,
+  Minus,
+  Package,
   PackagePlus,
   Pencil,
   Plus,
   RefreshCcw,
+  Settings2,
   Truck,
 } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
 import { redirect } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -75,6 +80,15 @@ const BASELINE_WEEK_KEY = (() => {
 })();
 
 const MOVEMENT_TYPES = ["InventarioInicial", "Carga", "Ajuste"] as const;
+
+const MOVEMENT_TYPE_CONFIG: Record<
+  (typeof MOVEMENT_TYPES)[number],
+  { label: string; icon: typeof ClipboardList }
+> = {
+  InventarioInicial: { label: "Inventario Inicial", icon: ClipboardList },
+  Carga: { label: "Carga", icon: Package },
+  Ajuste: { label: "Ajuste", icon: Settings2 },
+};
 
 type LedgerRow = {
   rowNumber: number;
@@ -299,7 +313,9 @@ const ProductCombobox = ({
           className="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
         >
           {filteredOptions.length === 0 ? (
-            <li className="px-3 py-2 text-base text-slate-500">Sin resultados</li>
+            <li className="px-3 py-2 text-base text-slate-500">
+              Sin resultados
+            </li>
           ) : (
             filteredOptions.map((option, index) => (
               <li
@@ -525,6 +541,66 @@ const DatePicker = ({ value, onChange, id }: DatePickerProps) => {
           </div>
         </div>
       )}
+    </div>
+  );
+};
+
+type QuantityStepperProps = {
+  value: string;
+  onChange: (value: string) => void;
+  id?: string;
+  min?: number;
+};
+
+const QuantityStepper = ({
+  value,
+  onChange,
+  id,
+  min = 0,
+}: QuantityStepperProps) => {
+  const numValue = parseInt(value, 10) || 0;
+
+  const handleDecrement = () => {
+    const newValue = Math.max(min, numValue - 1);
+    onChange(String(newValue));
+  };
+
+  const handleIncrement = () => {
+    onChange(String(numValue + 1));
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const inputValue = e.target.value;
+    if (inputValue === "" || /^\d+$/.test(inputValue)) {
+      onChange(inputValue);
+    }
+  };
+
+  return (
+    <div className="flex h-10 w-full items-center overflow-hidden rounded-lg border border-slate-200">
+      <button
+        type="button"
+        onClick={handleDecrement}
+        className="flex h-full w-10 shrink-0 items-center justify-center border-r border-slate-200 bg-slate-50 text-slate-600 transition-colors hover:bg-slate-100 active:bg-slate-200"
+      >
+        <Minus className="h-4 w-4" />
+      </button>
+      <input
+        id={id}
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        value={value}
+        onChange={handleInputChange}
+        className="h-full w-full min-w-0 flex-1 bg-white px-2 text-center text-base tabular-nums outline-none"
+      />
+      <button
+        type="button"
+        onClick={handleIncrement}
+        className="flex h-full w-10 shrink-0 items-center justify-center border-l border-slate-200 bg-slate-50 text-slate-600 transition-colors hover:bg-slate-100 active:bg-slate-200"
+      >
+        <Plus className="h-4 w-4" />
+      </button>
     </div>
   );
 };
@@ -1287,7 +1363,7 @@ export default function InventarioCarroPage() {
           <DialogHeader>
             <DialogTitle>Nueva carga</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 overflow-hidden">
+          <div className="space-y-4">
             <div className="space-y-1">
               <label
                 htmlFor="add-date"
@@ -1298,114 +1374,164 @@ export default function InventarioCarroPage() {
               <DatePicker
                 id="add-date"
                 value={addForm.date}
-                onChange={(date) =>
-                  setAddForm((prev) => ({ ...prev, date }))
-                }
+                onChange={(date) => setAddForm((prev) => ({ ...prev, date }))}
               />
             </div>
-            <div className="space-y-3">
+            <motion.div
+              layout
+              className="space-y-3"
+              transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+            >
               <div className="flex flex-col gap-2">
                 <p className="text-xs font-semibold text-slate-600">
                   Productos
                 </p>
               </div>
 
-              <div className="space-y-2">
-                {addForm.items.map((item, index) => (
-                  <div
-                    key={item.id}
-                    className="flex flex-col gap-2 sm:flex-row sm:items-end"
-                  >
-                    <div className="flex-1 space-y-1">
-                      <label
-                        htmlFor={`add-product-${item.id}`}
-                        className={cn(
-                          "text-xs font-semibold text-slate-600",
-                          index > 0 && "sr-only",
-                        )}
-                      >
-                        Producto
-                      </label>
-                      <ProductCombobox
-                        inputId={`add-product-${item.id}`}
-                        value={item.product}
-                        onChange={(nextValue) =>
-                          handleItemChange(item.id, "product", nextValue)
-                        }
-                        options={productList}
-                      />
-                    </div>
-                    <div className="sm:w-28 space-y-1">
-                      <label
-                        htmlFor={`add-quantity-${item.id}`}
-                        className={cn(
-                          "text-xs font-semibold text-slate-600",
-                          index > 0 && "sr-only",
-                        )}
-                      >
-                        Cantidad
-                      </label>
-                      <input
-                        id={`add-quantity-${item.id}`}
-                        type="number"
-                        value={item.quantity}
-                        onChange={(event) =>
-                          handleItemChange(
-                            item.id,
-                            "quantity",
-                            event.target.value,
-                          )
-                        }
-                        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-base"
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveItem(item.id)}
-                      className="self-start sm:self-center text-xs text-slate-500 hover:text-slate-900"
+              <motion.div
+                layout
+                className="space-y-2"
+                transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+              >
+                <AnimatePresence initial={false}>
+                  {addForm.items.map((item, index) => (
+                    <motion.div
+                      key={item.id}
+                      layout
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{
+                        duration: 0.25,
+                        ease: [0.4, 0, 0.2, 1],
+                        layout: { duration: 0.25, ease: [0.4, 0, 0.2, 1] },
+                      }}
+                      className="flex flex-col gap-2 sm:flex-row sm:items-end"
                     >
-                      Quitar
-                    </button>
-                  </div>
-                ))}
-              </div>
+                      <div className="flex-1 space-y-1">
+                        <label
+                          htmlFor={`add-product-${item.id}`}
+                          className={cn(
+                            "text-xs font-semibold text-slate-600",
+                            index > 0 && "sr-only",
+                          )}
+                        >
+                          Producto
+                        </label>
+                        <ProductCombobox
+                          inputId={`add-product-${item.id}`}
+                          value={item.product}
+                          onChange={(nextValue) =>
+                            handleItemChange(item.id, "product", nextValue)
+                          }
+                          options={productList}
+                        />
+                      </div>
+                      <div className="sm:w-36 space-y-1">
+                        <label
+                          htmlFor={`add-quantity-${item.id}`}
+                          className={cn(
+                            "text-xs font-semibold text-slate-600",
+                            index > 0 && "sr-only",
+                          )}
+                        >
+                          Cantidad
+                        </label>
+                        <QuantityStepper
+                          id={`add-quantity-${item.id}`}
+                          value={item.quantity}
+                          onChange={(val) =>
+                            handleItemChange(item.id, "quantity", val)
+                          }
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveItem(item.id)}
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-700"
+                        aria-label="Quitar producto"
+                      >
+                        <Minus className="h-5 w-5" />
+                      </button>
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+              </motion.div>
 
-              <button
+              <motion.button
+                layout
                 type="button"
                 onClick={handleAddItem}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-800"
+                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 text-base font-semibold text-white hover:bg-slate-800"
+                transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
               >
                 <Plus className="h-3.5 w-3.5" />
                 Agregar producto
-              </button>
-            </div>
+              </motion.button>
+            </motion.div>
 
-            <div className="space-y-1">
-              <label
-                htmlFor="add-type"
-                className="text-xs font-semibold text-slate-600"
-              >
-                Tipo
-              </label>
-              <select
-                id="add-type"
-                value={addForm.movementType}
-                onChange={(event) =>
-                  setAddForm((prev) => ({
-                    ...prev,
-                    movementType: event.target.value,
-                  }))
-                }
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-base"
-              >
-                {MOVEMENT_TYPES.map((type) => (
-                  <option key={type} value={type}>
-                    {type}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-1">
+            <motion.div
+              layout
+              className="space-y-2"
+              transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+            >
+              <p className="text-xs font-semibold text-slate-600">Tipo</p>
+              <div className="grid grid-cols-3 gap-2">
+                {MOVEMENT_TYPES.map((type) => {
+                  const config = MOVEMENT_TYPE_CONFIG[type];
+                  const Icon = config.icon;
+                  const isSelected = addForm.movementType === type;
+                  return (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() =>
+                        setAddForm((prev) => ({ ...prev, movementType: type }))
+                      }
+                      className={cn(
+                        "relative flex flex-col rounded-lg border p-3 text-left transition-all",
+                        isSelected
+                          ? "border-slate-900 bg-slate-50 ring-1 ring-slate-900"
+                          : "border-slate-200 bg-white hover:border-slate-300",
+                      )}
+                    >
+                      <div className="flex items-start justify-between">
+                        <Icon
+                          className={cn(
+                            "h-5 w-5",
+                            isSelected ? "text-slate-900" : "text-slate-400",
+                          )}
+                        />
+                        <div
+                          className={cn(
+                            "flex h-4 w-4 items-center justify-center rounded-full border",
+                            isSelected
+                              ? "border-slate-900 bg-slate-900"
+                              : "border-slate-300 bg-white",
+                          )}
+                        >
+                          {isSelected && (
+                            <div className="h-1.5 w-1.5 rounded-full bg-white" />
+                          )}
+                        </div>
+                      </div>
+                      <span
+                        className={cn(
+                          "mt-4 text-sm font-medium",
+                          isSelected ? "text-slate-900" : "text-slate-600",
+                        )}
+                      >
+                        {config.label}
+                      </span>
+                    </button>
+                  );
+                })}</div>
+            </motion.div>
+            <motion.div
+              layout
+              className="space-y-1"
+              transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+            >
               <label
                 htmlFor="add-notes"
                 className="text-xs font-semibold text-slate-600"
@@ -1424,8 +1550,12 @@ export default function InventarioCarroPage() {
                 rows={3}
                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-base"
               />
-            </div>
-            <div className="flex justify-end gap-2">
+            </motion.div>
+            <motion.div
+              layout
+              className="flex justify-end gap-2"
+              transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+            >
               <button
                 type="button"
                 onClick={() => setIsAddOpen(false)}
@@ -1441,7 +1571,7 @@ export default function InventarioCarroPage() {
               >
                 Guardar
               </button>
-            </div>
+            </motion.div>
           </div>
         </DialogContent>
       </Dialog>
@@ -1464,9 +1594,7 @@ export default function InventarioCarroPage() {
                   id="edit-date"
                   value={editForm.date}
                   onChange={(date) =>
-                    setEditForm((prev) =>
-                      prev ? { ...prev, date } : prev,
-                    )
+                    setEditForm((prev) => (prev ? { ...prev, date } : prev))
                   }
                 />
               </div>
