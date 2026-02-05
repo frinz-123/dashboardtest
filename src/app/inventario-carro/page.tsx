@@ -20,6 +20,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { redirect } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import AppHeader from "@/components/AppHeader";
 import {
   Dialog,
@@ -630,6 +631,33 @@ export default function InventarioCarroPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [showAllHistory, setShowAllHistory] = useState(false);
+
+  const [printContainer, setPrintContainer] = useState<HTMLDivElement | null>(
+    null,
+  );
+
+  useEffect(() => {
+    const container = document.createElement("div");
+    container.className = "print-root";
+    document.body.appendChild(container);
+    setPrintContainer(container);
+    return () => {
+      document.body.removeChild(container);
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleAfterPrint = () => {
+      document.body.classList.remove("print-mode");
+    };
+    window.addEventListener("afterprint", handleAfterPrint);
+    return () => window.removeEventListener("afterprint", handleAfterPrint);
+  }, []);
+
+  const handlePrint = () => {
+    document.body.classList.add("print-mode");
+    setTimeout(() => window.print(), 0);
+  };
 
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -1242,9 +1270,18 @@ export default function InventarioCarroPage() {
                 Entradas incluyen inventario inicial y ajustes.
               </p>
             </div>
-            {(isLedgerLoading || isSalesLoading) && (
-              <span className="text-xs text-slate-400">Cargando...</span>
-            )}
+            <div className="flex items-center gap-2">
+              {(isLedgerLoading || isSalesLoading) && (
+                <span className="text-xs text-slate-400">Cargando...</span>
+              )}
+              <button
+                type="button"
+                onClick={handlePrint}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
+              >
+                Imprimir
+              </button>
+            </div>
           </div>
 
           <div className="overflow-x-auto">
@@ -1575,6 +1612,168 @@ export default function InventarioCarroPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {printContainer
+        ? createPortal(
+            <div className="print-page">
+              <div style={{ marginBottom: 12 }}>
+                <h1 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>
+                  Detalle por producto
+                </h1>
+                <p
+                  className="print-muted"
+                  style={{ fontSize: 11, margin: "2px 0 0" }}
+                >
+                  {selectedSeller
+                    ? EMAIL_TO_VENDOR_LABELS[selectedSeller] || selectedSeller
+                    : ""}{" "}
+                  &middot; Semana {selectedWeek} del periodo {selectedPeriod} (
+                  {selectedWeekCode})
+                </p>
+                <p
+                  className="print-muted"
+                  style={{ fontSize: 10, margin: "2px 0 0" }}
+                >
+                  Generado:{" "}
+                  {new Date().toLocaleString("es-MX", {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                  })}{" "}
+                  &middot; {productList.length} productos
+                </p>
+              </div>
+              <table className="print-table" style={{ fontSize: 11 }}>
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: "left" }}>Producto</th>
+                    <th
+                      style={{
+                        textAlign: "right",
+                        fontVariantNumeric: "tabular-nums",
+                      }}
+                    >
+                      Saldo inicial
+                    </th>
+                    <th
+                      style={{
+                        textAlign: "right",
+                        fontVariantNumeric: "tabular-nums",
+                      }}
+                    >
+                      Entradas
+                    </th>
+                    <th
+                      style={{
+                        textAlign: "right",
+                        fontVariantNumeric: "tabular-nums",
+                      }}
+                    >
+                      Salidas
+                    </th>
+                    <th
+                      style={{
+                        textAlign: "right",
+                        fontVariantNumeric: "tabular-nums",
+                      }}
+                    >
+                      Saldo final
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {productList.map((product) => (
+                    <tr key={product} className="print-row">
+                      <td>{product}</td>
+                      <td
+                        style={{
+                          textAlign: "right",
+                          fontVariantNumeric: "tabular-nums",
+                        }}
+                      >
+                        {formatNumber(saldoInicial[product] || 0)}
+                      </td>
+                      <td
+                        style={{
+                          textAlign: "right",
+                          fontVariantNumeric: "tabular-nums",
+                        }}
+                      >
+                        {formatNumber(ledgerWeekTotals[product] || 0)}
+                      </td>
+                      <td
+                        style={{
+                          textAlign: "right",
+                          fontVariantNumeric: "tabular-nums",
+                        }}
+                      >
+                        {formatNumber(salesWeekTotals[product] || 0)}
+                      </td>
+                      <td
+                        style={{
+                          textAlign: "right",
+                          fontWeight: 600,
+                          fontVariantNumeric: "tabular-nums",
+                        }}
+                      >
+                        {formatNumber(saldoFinal[product] || 0)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr
+                    className="print-row"
+                    style={{
+                      fontWeight: 700,
+                      borderTop: "2px solid #111827",
+                    }}
+                  >
+                    <td>Total</td>
+                    <td
+                      style={{
+                        textAlign: "right",
+                        fontVariantNumeric: "tabular-nums",
+                      }}
+                    >
+                      {formatNumber(totalInicial)}
+                    </td>
+                    <td
+                      style={{
+                        textAlign: "right",
+                        fontVariantNumeric: "tabular-nums",
+                      }}
+                    >
+                      {formatNumber(totalEntradas)}
+                    </td>
+                    <td
+                      style={{
+                        textAlign: "right",
+                        fontVariantNumeric: "tabular-nums",
+                      }}
+                    >
+                      {formatNumber(totalSalidas)}
+                    </td>
+                    <td
+                      style={{
+                        textAlign: "right",
+                        fontVariantNumeric: "tabular-nums",
+                      }}
+                    >
+                      {formatNumber(totalFinal)}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+              <p
+                className="print-muted"
+                style={{ fontSize: 10, marginTop: 8 }}
+              >
+                Valor de inventario: ${formatNumber(valorInventario)}
+              </p>
+            </div>,
+            printContainer,
+          )
+        : null}
 
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
         <DialogContent className="max-w-lg">
