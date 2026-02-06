@@ -122,6 +122,7 @@ type ProductTraceRow = {
   quantity: number;
   notes: string;
   weekCode: string;
+  ledgerRow?: LedgerRow;
 };
 
 type LedgerFormState = {
@@ -1166,29 +1167,33 @@ export default function InventarioCarroPage() {
         quantity: row.quantity,
         notes: row.notes || "-",
         weekCode: row.weekCode,
+        ledgerRow: row,
       }));
 
-    const salesEntries: ProductTraceRow[] = salesForSeller.flatMap(
-      (row, index) => {
-        const quantity = row.products[traceProduct];
-        if (!quantity) return [];
-        return [
-          {
-            id: `sale-${row.weekCode}-${index}`,
-            date: row.date,
-            kind: "Salida",
-            movementType: "Venta",
-            quantity,
-            notes: "Venta registrada",
-            weekCode: row.weekCode,
-          },
-        ];
-      },
-    );
+    const totalSales = salesForSeller.reduce((sum, row) => {
+      const quantity = row.products[traceProduct] || 0;
+      return sum + quantity;
+    }, 0);
 
-    return [...ledgerEntries, ...salesEntries].sort((a, b) =>
-      b.date.localeCompare(a.date),
-    );
+    const salesEntries: ProductTraceRow[] = totalSales
+      ? [
+          {
+            id: "sales-total",
+            date: "Total",
+            kind: "Salida",
+            movementType: "Total salidas",
+            quantity: totalSales,
+            notes: "Solo lectura",
+            weekCode: "-",
+          },
+        ]
+      : [];
+
+    return [...ledgerEntries, ...salesEntries].sort((a, b) => {
+      const aKey = a.date === "Total" ? "0000-00-00" : a.date;
+      const bKey = b.date === "Total" ? "0000-00-00" : b.date;
+      return bKey.localeCompare(aKey);
+    });
   }, [ledgerForSeller, salesForSeller, traceProduct]);
 
   if (status === "unauthenticated") {
@@ -1501,14 +1506,15 @@ export default function InventarioCarroPage() {
                     <th className="py-2 pr-3">Movimiento</th>
                     <th className="py-2 pr-3">Cantidad</th>
                     <th className="py-2 pr-3">Notas</th>
-                    <th className="py-2">Semana</th>
+                    <th className="py-2 pr-3">Semana</th>
+                    <th className="py-2"></th>
                   </tr>
                 </thead>
                 <tbody>
                   {productTraceRows.length === 0 && (
                     <tr>
                       <td
-                        colSpan={6}
+                        colSpan={7}
                         className="py-4 text-center text-slate-400"
                       >
                         Sin movimientos para este producto
@@ -1533,7 +1539,21 @@ export default function InventarioCarroPage() {
                         {formatNumber(row.quantity)}
                       </td>
                       <td className="py-2 pr-3 text-slate-500">{row.notes}</td>
-                      <td className="py-2 text-slate-500">{row.weekCode}</td>
+                      <td className="py-2 pr-3 text-slate-500">
+                        {row.weekCode}
+                      </td>
+                      <td className="py-2 text-right">
+                        {row.kind === "Entrada" && row.ledgerRow ? (
+                          <button
+                            type="button"
+                            onClick={() => handleEditOpen(row.ledgerRow)}
+                            className="inline-flex items-center gap-1 text-xs text-slate-600 hover:text-slate-900"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                            Editar
+                          </button>
+                        ) : null}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
