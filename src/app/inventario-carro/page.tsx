@@ -551,6 +551,7 @@ type QuantityStepperProps = {
   onChange: (value: string) => void;
   id?: string;
   min?: number;
+  allowNegative?: boolean;
 };
 
 const QuantityStepper = ({
@@ -558,11 +559,13 @@ const QuantityStepper = ({
   onChange,
   id,
   min = 0,
+  allowNegative = false,
 }: QuantityStepperProps) => {
   const numValue = parseInt(value, 10) || 0;
+  const effectiveMin = allowNegative ? -Infinity : min;
 
   const handleDecrement = () => {
-    const newValue = Math.max(min, numValue - 1);
+    const newValue = Math.max(effectiveMin, numValue - 1);
     onChange(String(newValue));
   };
 
@@ -572,8 +575,14 @@ const QuantityStepper = ({
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const inputValue = e.target.value;
-    if (inputValue === "" || /^\d+$/.test(inputValue)) {
-      onChange(inputValue);
+    if (allowNegative) {
+      if (inputValue === "" || inputValue === "-" || /^-?\d+$/.test(inputValue)) {
+        onChange(inputValue);
+      }
+    } else {
+      if (inputValue === "" || /^\d+$/.test(inputValue)) {
+        onChange(inputValue);
+      }
     }
   };
 
@@ -589,8 +598,8 @@ const QuantityStepper = ({
       <input
         id={id}
         type="text"
-        inputMode="numeric"
-        pattern="[0-9]*"
+        inputMode={allowNegative ? "text" : "numeric"}
+        pattern={allowNegative ? "-?[0-9]*" : "[0-9]*"}
         value={value}
         onChange={handleInputChange}
         className="h-full w-full min-w-0 flex-1 bg-white px-2 text-center text-base tabular-nums outline-none"
@@ -821,6 +830,14 @@ export default function InventarioCarroPage() {
 
     if (normalizedItems.length === 0) {
       setNotice("Agrega al menos un producto");
+      return;
+    }
+
+    const invalidQuantity = normalizedItems.find(
+      (item) => isNaN(Number(item.quantity)),
+    );
+    if (invalidQuantity) {
+      setNotice("Cantidad inválida");
       return;
     }
     setIsSaving(true);
@@ -1480,6 +1497,7 @@ export default function InventarioCarroPage() {
                           onChange={(val) =>
                             handleItemChange(item.id, "quantity", val)
                           }
+                          allowNegative={addForm.movementType === "Ajuste"}
                         />
                       </div>
                       <button
