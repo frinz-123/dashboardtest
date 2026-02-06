@@ -1210,7 +1210,7 @@ export default function InventarioCarroPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-white">
       <AppHeader title="Inventario Carro" icon={Truck} />
       <main className="px-4 py-5 max-w-5xl mx-auto space-y-4">
         <section className="bg-white rounded-2xl border border-slate-200 p-4 space-y-3 shadow-sm">

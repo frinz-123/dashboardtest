@@ -472,7 +472,7 @@ export default function RutasPage() {
 
   return (
     <div
-      className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50 font-sans w-full"
+      className="min-h-screen bg-white font-sans w-full"
       style={{ fontFamily: "Inter, sans-serif", fontSize: "0.8rem" }}
     >
       <AppHeader title="Rutas" icon={Map} />

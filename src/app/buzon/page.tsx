@@ -415,7 +415,7 @@ export default function BuzonPage() {
 
   if (status === "loading") {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-white flex items-center justify-center">
         <div className="text-gray-500">Cargando...</div>
       </div>
     );
@@ -423,7 +423,7 @@ export default function BuzonPage() {
 
   if (!session) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+      <div className="min-h-screen bg-white flex items-center justify-center p-4">
         <div className="bg-white rounded-xl p-6 text-center max-w-md">
           <h1 className="text-xl font-bold text-gray-800 mb-2">
             Acceso Restringido
@@ -444,7 +444,7 @@ export default function BuzonPage() {
   const hasMoreEntries = visibleCount < entries.length;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50 font-sans">
+    <div className="min-h-screen bg-white font-sans">
       <AppHeader
         title="Buzon"
         icon={MessageSquare}

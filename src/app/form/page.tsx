@@ -9,7 +9,7 @@ import CleyPhotoCapture, {
   type CleyPhotoPreview,
 } from "@/components/CleyPhotoCapture";
 import CleyOrderQuestion from "@/components/comp-166";
-import BlurIn from "@/components/ui/blur-in";
+const BlurIn = dynamic(() => import("@/components/ui/blur-in"), { ssr: false });
 import LabelNumbers from "@/components/ui/labelnumbers";
 import PendingOrdersBanner from "@/components/ui/PendingOrdersBanner";
 import SearchInput from "@/components/ui/SearchInput";
@@ -1776,7 +1776,7 @@ export default function FormPage() {
   if (isLoading) {
     return (
       <div
-        className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50 font-sans w-full"
+        className="min-h-screen bg-white font-sans w-full"
         style={{ fontFamily: "Inter, sans-serif", fontSize: "0.8rem" }}
       >
         <AppHeader title="Ventas" icon={ShoppingCart} />
@@ -1791,7 +1791,7 @@ export default function FormPage() {
 
   return (
     <div
-      className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50 font-sans w-full"
+      className="min-h-screen bg-white font-sans w-full"
       style={{ fontFamily: "Inter, sans-serif", fontSize: "0.8rem" }}
     >
       {/* Pending Orders Banner - Shows queue status */}
