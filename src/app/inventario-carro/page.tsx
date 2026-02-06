@@ -832,6 +832,14 @@ export default function InventarioCarroPage() {
       setNotice("Agrega al menos un producto");
       return;
     }
+
+    const invalidQuantity = normalizedItems.find(
+      (item) => isNaN(Number(item.quantity)),
+    );
+    if (invalidQuantity) {
+      setNotice("Cantidad inválida");
+      return;
+    }
     setIsSaving(true);
     setNotice(null);
     try {
