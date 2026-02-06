@@ -6,12 +6,9 @@ import dynamic from "next/dynamic";
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import SearchInput from "@/components/ui/SearchInput";
-import NavegarMap, {
-  type Client as NavegarClient,
-  type RouteInfo,
-} from "./NavegarMap";
+import type { Client as NavegarClient, RouteInfo } from "./NavegarMap";
 
-const _Map = dynamic(() => import("@/components/ui/Map"), { ssr: false });
+const NavegarMap = dynamic(() => import("./NavegarMap"), { ssr: false });
 
 const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY;
 const spreadsheetId = process.env.NEXT_PUBLIC_SPREADSHEET_ID;
@@ -667,11 +664,11 @@ export default function NavegarPage() {
         />
       </div>
       {/* Bottom sheet */}
-      <div className="fixed left-0 right-0 bottom-0 z-10 flex flex-col items-center">
+      <div className="fixed left-0 right-0 bottom-0 z-10 flex flex-col items-center pointer-events-none">
         {/* Handle */}
-        <div className="w-16 h-1.5 bg-gray-300 rounded-full mt-2 mb-3" />
+        <div className="w-16 h-1.5 bg-gray-300 rounded-full mt-2 mb-3 pointer-events-auto" />
         {/* Filter bar */}
-        <div className="w-full max-w-md mx-auto px-4 mb-3">
+        <div className="w-full max-w-md mx-auto px-4 mb-3 pointer-events-auto">
           <div className="flex flex-wrap items-center gap-1.5">
             {/* Codigo filter */}
             <FilterChip
@@ -899,7 +896,7 @@ export default function NavegarPage() {
           </Dropdown>
         )}
         {/* Main content card */}
-        <div className="bg-white rounded-t-2xl shadow-[0_-4px_20px_rgba(0,0,0,0.08)] w-full max-w-md mx-auto p-4 border-t border-gray-100">
+        <div className="bg-white rounded-t-2xl shadow-[0_-4px_20px_rgba(0,0,0,0.08)] w-full max-w-md mx-auto p-4 border-t border-gray-100 pointer-events-auto">
           {/* Route Mode UI */}
           {routeMode &&
           selectedClient &&
@@ -1315,7 +1312,7 @@ function Dropdown({
   }, [anchorRef, onClose]);
 
   return (
-    <div className="absolute bottom-full mb-2 z-30">
+    <div className="absolute bottom-full mb-2 z-30 pointer-events-auto">
       <div
         className={`
         bg-white rounded-xl shadow-lg border border-gray-100
