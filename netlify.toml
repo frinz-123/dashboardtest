@@ -9,9 +9,6 @@
   # Extend timeout for API routes that handle file uploads
   external_node_modules = ["googleapis"]
 
-[[plugins]]
-  package = "@netlify/plugin-nextjs"
-
 [[headers]]
   for = "/manifest.json"
   [headers.values]
