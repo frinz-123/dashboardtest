@@ -1170,10 +1170,7 @@ export default function InventarioCarroPage() {
         ledgerRow: row,
       }));
 
-    const totalSales = salesForSeller.reduce((sum, row) => {
-      const quantity = row.products[traceProduct] || 0;
-      return sum + quantity;
-    }, 0);
+    const totalSales = salesWeekTotals[traceProduct] || 0;
 
     const salesEntries: ProductTraceRow[] = totalSales
       ? [
@@ -1194,7 +1191,7 @@ export default function InventarioCarroPage() {
       const bKey = b.date === "Total" ? "0000-00-00" : b.date;
       return bKey.localeCompare(aKey);
     });
-  }, [ledgerForSeller, salesForSeller, traceProduct]);
+  }, [ledgerForSeller, salesWeekTotals, traceProduct]);
 
   if (status === "unauthenticated") {
     redirect("/api/auth/signin");
