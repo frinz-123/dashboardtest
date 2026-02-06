@@ -1,5 +1,5 @@
 import { google } from "googleapis";
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { getCurrentPeriodInfo } from "@/utils/dateUtils";
 import { sheetsAuth } from "@/utils/googleAuth";
 
@@ -328,27 +328,27 @@ export async function POST(req: Request) {
       }
     }
 
-    // ✅ VALIDATION: Alert if email looks suspicious
-    if (userEmail === "arturo.elreychiltepin@gmail.com") {
-      console.error(
-        "🚨 SUSPICIOUS EMAIL DETECTED: Submission using arturo.elreychiltepin@gmail.com",
-      );
-      console.error("🚨 REQUEST DETAILS:", {
-        userAgent: req.headers.get("user-agent"),
-        referer: req.headers.get("referer"),
-        timestamp: new Date().toISOString(),
-        clientName: clientName,
-      });
-    }
+    // ✅ VALIDATION: Alert if email looks suspicious (deferred to after response)
+    const suspiciousEmail = userEmail === "arturo.elreychiltepin@gmail.com";
+    const suspiciousHeaders = suspiciousEmail ? {
+      userAgent: req.headers.get("user-agent"),
+      referer: req.headers.get("referer"),
+    } : null;
 
     const sheets = google.sheets({ version: "v4", auth: sheetsAuth });
 
     try {
-      // First, get client's location from the first occurrence in the sheet
-      const clientData = await sheets.spreadsheets.values.get({
-        spreadsheetId,
-        range: "Form_Data!A:C",
-      });
+      // Fetch client location and last row number in parallel
+      const [clientData, currentData] = await Promise.all([
+        sheets.spreadsheets.values.get({
+          spreadsheetId,
+          range: "Form_Data!A:C",
+        }),
+        sheets.spreadsheets.values.get({
+          spreadsheetId,
+          range: "Form_Data!A:A",
+        }),
+      ]);
 
       let clientLat = "",
         clientLng = "";
@@ -433,12 +433,6 @@ export async function POST(req: Request) {
           }
         }
       }
-
-      // Get the current data to find the last row
-      const currentData = await sheets.spreadsheets.values.get({
-        spreadsheetId,
-        range: "Form_Data!A:A",
-      });
 
       const lastRow = currentData.data.values
         ? currentData.data.values.length + 1
@@ -654,14 +648,24 @@ export async function POST(req: Request) {
         });
       }
 
-      console.log("✅ SUBMISSION SUCCESSFUL:", {
-        submissionId,
-        clientName,
-        processingTime,
-        timestamp: new Date().toISOString(),
+      const jsonResponse = NextResponse.json(successData);
+      after(() => {
+        console.log("✅ SUBMISSION SUCCESSFUL:", {
+          submissionId,
+          clientName,
+          processingTime,
+          timestamp: new Date().toISOString(),
+        });
+        if (suspiciousEmail) {
+          console.error("🚨 SUSPICIOUS EMAIL DETECTED: Submission using arturo.elreychiltepin@gmail.com");
+          console.error("🚨 REQUEST DETAILS:", {
+            ...suspiciousHeaders,
+            timestamp: new Date().toISOString(),
+            clientName,
+          });
+        }
       });
-
-      return NextResponse.json(successData);
+      return jsonResponse;
     } catch (error) {
       console.error("❌ SHEETS API ERROR:", {
         submissionId,

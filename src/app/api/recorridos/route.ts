@@ -228,7 +228,12 @@ export async function GET(request: NextRequest) {
         sheet,
       );
 
-      return NextResponse.json({ data: filteredData }, { status: 200 });
+      return NextResponse.json({ data: filteredData }, {
+        status: 200,
+        headers: {
+          "Cache-Control": "public, s-maxage=30, stale-while-revalidate=60",
+        },
+      });
     } catch (sheetsError: any) {
       console.error("❌ API ERROR: Google Sheets API failed:", sheetsError);
       console.error("❌ API ERROR: Error message:", sheetsError.message);

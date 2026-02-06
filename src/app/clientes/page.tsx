@@ -1808,26 +1808,52 @@ export default function ClientesPage() {
     debouncedSearch(value);
   };
 
+  // Initial load: fire all 8 fetches in parallel
   useEffect(() => {
     if (!isAllowed || status !== "authenticated") return;
-    fetchClientNames();
-    fetchAnalyticsData();
-    fetchSellerAnalyticsData();
+
+    const topClientsRange = getTopClientsDateRange();
+    const topProductsRange = getTopProductsDateRange();
+    const topCodigosRange = getTopCodigosDateRange();
+    const productosPorCodigoRange = getProductosPorCodigoDateRange();
+    const clientesDesatendidosRange = getClientesDesatendidosDateRange();
+
+    Promise.all([
+      fetchClientNames(),
+      fetchAnalyticsData(),
+      fetchSellerAnalyticsData(),
+      fetchTopClientsData(
+        topClientsRange.startDate.toISOString().split("T")[0],
+        topClientsRange.endDate.toISOString().split("T")[0],
+      ),
+      fetchTopProductsData(
+        topProductsRange.startDate.toISOString().split("T")[0],
+        topProductsRange.endDate.toISOString().split("T")[0],
+      ),
+      fetchTopCodigosData(
+        topCodigosRange.startDate.toISOString().split("T")[0],
+        topCodigosRange.endDate.toISOString().split("T")[0],
+      ),
+      fetchProductosPorCodigoData(
+        productosPorCodigoRange.startDate.toISOString().split("T")[0],
+        productosPorCodigoRange.endDate.toISOString().split("T")[0],
+      ),
+      fetchClientesDesatendidosData(
+        clientesDesatendidosRange.startDate.toISOString().split("T")[0],
+        clientesDesatendidosRange.endDate.toISOString().split("T")[0],
+      ),
+    ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAllowed, status]);
 
-  // Fetch top clients data when date filter changes (including initial load)
+  // Refetch top clients when its date filter changes (user interaction only)
   useEffect(() => {
     if (!isAllowed || status !== "authenticated") return;
+    // Skip the initial "year" default — already handled above
+    if (topClientsDateFilter === "year" && !topClientsCustomDateFrom && !topClientsCustomDateTo) return;
 
     const { startDate, endDate } = getTopClientsDateRange();
-    const dateFrom = startDate.toISOString().split("T")[0];
-    const dateTo = endDate.toISOString().split("T")[0];
-
-    console.log("🔄 Fetching top clients with date range:", {
-      dateFrom,
-      dateTo,
-    });
-    fetchTopClientsData(dateFrom, dateTo);
+    fetchTopClientsData(startDate.toISOString().split("T")[0], endDate.toISOString().split("T")[0]);
   }, [
     topClientsDateFilter,
     topClientsCustomDateFrom,
@@ -1836,19 +1862,13 @@ export default function ClientesPage() {
     status,
   ]);
 
-  // Fetch top products data when date filter changes (including initial load)
+  // Refetch top products when its date filter changes (user interaction only)
   useEffect(() => {
     if (!isAllowed || status !== "authenticated") return;
+    if (topProductsDateFilter === "year" && !topProductsCustomDateFrom && !topProductsCustomDateTo) return;
 
     const { startDate, endDate } = getTopProductsDateRange();
-    const dateFrom = startDate.toISOString().split("T")[0];
-    const dateTo = endDate.toISOString().split("T")[0];
-
-    console.log("🔄 Fetching top products with date range:", {
-      dateFrom,
-      dateTo,
-    });
-    fetchTopProductsData(dateFrom, dateTo);
+    fetchTopProductsData(startDate.toISOString().split("T")[0], endDate.toISOString().split("T")[0]);
   }, [
     topProductsDateFilter,
     topProductsCustomDateFrom,
@@ -1857,19 +1877,13 @@ export default function ClientesPage() {
     status,
   ]);
 
-  // Fetch top codigos data when date filter changes (including initial load)
+  // Refetch top codigos when its date filter changes (user interaction only)
   useEffect(() => {
     if (!isAllowed || status !== "authenticated") return;
+    if (topCodigosDateFilter === "year" && !topCodigosCustomDateFrom && !topCodigosCustomDateTo) return;
 
     const { startDate, endDate } = getTopCodigosDateRange();
-    const dateFrom = startDate.toISOString().split("T")[0];
-    const dateTo = endDate.toISOString().split("T")[0];
-
-    console.log("🔄 Fetching top codigos with date range:", {
-      dateFrom,
-      dateTo,
-    });
-    fetchTopCodigosData(dateFrom, dateTo);
+    fetchTopCodigosData(startDate.toISOString().split("T")[0], endDate.toISOString().split("T")[0]);
   }, [
     topCodigosDateFilter,
     topCodigosCustomDateFrom,
@@ -1878,19 +1892,13 @@ export default function ClientesPage() {
     status,
   ]);
 
-  // Fetch productos por codigo data when date filter changes (including initial load)
+  // Refetch productos por codigo when its date filter changes (user interaction only)
   useEffect(() => {
     if (!isAllowed || status !== "authenticated") return;
+    if (productosPorCodigoDateFilter === "year" && !productosPorCodigoCustomDateFrom && !productosPorCodigoCustomDateTo) return;
 
     const { startDate, endDate } = getProductosPorCodigoDateRange();
-    const dateFrom = startDate.toISOString().split("T")[0];
-    const dateTo = endDate.toISOString().split("T")[0];
-
-    console.log("🔄 Fetching productos por codigo with date range:", {
-      dateFrom,
-      dateTo,
-    });
-    fetchProductosPorCodigoData(dateFrom, dateTo);
+    fetchProductosPorCodigoData(startDate.toISOString().split("T")[0], endDate.toISOString().split("T")[0]);
   }, [
     productosPorCodigoDateFilter,
     productosPorCodigoCustomDateFrom,
@@ -1899,19 +1907,13 @@ export default function ClientesPage() {
     status,
   ]);
 
-  // Fetch clientes desatendidos data when date filter changes (including initial load)
+  // Refetch clientes desatendidos when its date filter changes (user interaction only)
   useEffect(() => {
     if (!isAllowed || status !== "authenticated") return;
+    if (clientesDesatendidosDateFilter === "year" && !clientesDesatendidosCustomDateFrom && !clientesDesatendidosCustomDateTo) return;
 
     const { startDate, endDate } = getClientesDesatendidosDateRange();
-    const dateFrom = startDate.toISOString().split("T")[0];
-    const dateTo = endDate.toISOString().split("T")[0];
-
-    console.log("🔄 Fetching clientes desatendidos with date range:", {
-      dateFrom,
-      dateTo,
-    });
-    fetchClientesDesatendidosData(dateFrom, dateTo);
+    fetchClientesDesatendidosData(startDate.toISOString().split("T")[0], endDate.toISOString().split("T")[0]);
   }, [
     clientesDesatendidosDateFilter,
     clientesDesatendidosCustomDateFrom,
