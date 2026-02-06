@@ -13,6 +13,18 @@ export const isMasterAccount = (email: string | null | undefined): boolean => {
   return MASTER_ACCOUNTS.includes(email.toLowerCase().trim());
 };
 
+const INVENTARIO_CARRO_ACCOUNTS = [
+  ...MASTER_ACCOUNTS,
+  "bodegaelrey034@gmail.com",
+];
+
+export const isInventarioCarroAdmin = (
+  email: string | null | undefined,
+): boolean => {
+  if (!email) return false;
+  return INVENTARIO_CARRO_ACCOUNTS.includes(email.toLowerCase().trim());
+};
+
 // Email to vendor label mapping for master account switching
 export const EMAIL_TO_VENDOR_LABELS: Record<string, string> = {
   "ventas1productoselrey@gmail.com": "Christian",
