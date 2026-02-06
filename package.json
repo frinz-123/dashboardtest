@@ -68,5 +68,8 @@
     "vaul": "^1.1.2"
   },
   "version": "0.1.0",
+  "engines": {
+    "node": ">=20.9.0"
+  },
   "private": true
 }
