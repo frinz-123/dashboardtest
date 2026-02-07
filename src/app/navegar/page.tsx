@@ -13,6 +13,7 @@ const NavegarMap = dynamic(() => import("./NavegarMap"), { ssr: false });
 const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY;
 const spreadsheetId = process.env.NEXT_PUBLIC_SPREADSHEET_ID;
 const sheetName = process.env.NEXT_PUBLIC_SHEET_NAME;
+const DEBUG_FILTER_INTERACTIONS = process.env.NODE_ENV !== "production";
 
 const DAYS_WITHOUT_VISIT = 30;
 const DEFAULT_VISIT_DATE = "1/1/2024";
@@ -67,7 +68,7 @@ export default function NavegarPage() {
     endDate?: string; // ISO format for range end
   } | null>(null);
   const [dateDropdownOpen, setDateDropdownOpen] = useState(false);
-  const dateChipRef = useRef<HTMLDivElement>(null);
+  const dateChipRef = useRef<HTMLButtonElement>(null);
   const [_dateFilterMode, _setDateFilterMode] = useState<"single" | "range">(
     "single",
   );
@@ -310,46 +311,6 @@ export default function NavegarPage() {
     )?.code;
     setSelectedClientCode(clientCode || null);
   }, [selectedClient, allClientCodes]);
-
-  // Close dropdowns on outside click (combined handler for performance)
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      const target = event.target as Node;
-      if (codigoChipRef.current && !codigoChipRef.current.contains(target)) {
-        setCodigoDropdownOpen(false);
-      }
-      if (
-        vendedorChipRef.current &&
-        !vendedorChipRef.current.contains(target)
-      ) {
-        setVendedorDropdownOpen(false);
-      }
-      if (dateChipRef.current && !dateChipRef.current.contains(target)) {
-        setDateDropdownOpen(false);
-      }
-      if (emailChipRef.current && !emailChipRef.current.contains(target)) {
-        setEmailDropdownOpen(false);
-      }
-    }
-    const anyOpen =
-      codigoDropdownOpen ||
-      vendedorDropdownOpen ||
-      dateDropdownOpen ||
-      emailDropdownOpen;
-    if (anyOpen) {
-      document.addEventListener("mousedown", handleClickOutside);
-    } else {
-      document.removeEventListener("mousedown", handleClickOutside);
-    }
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [
-    codigoDropdownOpen,
-    vendedorDropdownOpen,
-    dateDropdownOpen,
-    emailDropdownOpen,
-  ]);
 
   // Single-pass filtering with Set operations (optimized)
   const filteredNames = useMemo(() => {
@@ -746,6 +707,7 @@ export default function NavegarPage() {
             anchorRef={codigoChipRef}
             onClose={() => setCodigoDropdownOpen(false)}
             align="left"
+            debugName="codigo"
           >
             <div className="py-1">
               {uniqueCodes.length > 0 ? (
@@ -779,6 +741,7 @@ export default function NavegarPage() {
             anchorRef={vendedorChipRef}
             onClose={() => setVendedorDropdownOpen(false)}
             align="left"
+            debugName="vendedor"
           >
             <div className="py-1">
               {uniqueVendedorNames.length > 0 ? (
@@ -814,6 +777,7 @@ export default function NavegarPage() {
             anchorRef={dateChipRef}
             onClose={() => setDateDropdownOpen(false)}
             align="left"
+            debugName="fecha"
           >
             <div className="p-3 space-y-3">
               <div>
@@ -865,6 +829,7 @@ export default function NavegarPage() {
             anchorRef={emailChipRef}
             onClose={() => setEmailDropdownOpen(false)}
             align="right"
+            debugName="email"
           >
             <div className="py-1">
               {uniqueEmails.length > 0 ? (
@@ -1292,27 +1257,39 @@ function Dropdown({
   anchorRef,
   onClose,
   align = "left",
+  debugName = "unknown",
 }: {
   children: React.ReactNode;
   anchorRef: React.RefObject<HTMLElement>;
   onClose: () => void;
   align?: "left" | "right";
+  debugName?: string;
 }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (
-        anchorRef.current &&
-        !anchorRef.current.contains(event.target as Node)
-      ) {
+      const target = event.target as Node;
+      const isAnchorClick = anchorRef.current?.contains(target) ?? false;
+      const isDropdownClick = panelRef.current?.contains(target) ?? false;
+      if (!isAnchorClick && !isDropdownClick) {
+        if (DEBUG_FILTER_INTERACTIONS) {
+          console.debug(
+            `[navegar][filters] dropdown ${debugName} closing from true outside click`,
+          );
+        }
         onClose();
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [anchorRef, onClose]);
+  }, [anchorRef, debugName, onClose]);
 
   return (
-    <div className="absolute bottom-full mb-2 z-30 pointer-events-auto">
+    <div
+      ref={panelRef}
+      className="absolute bottom-full mb-2 z-30 pointer-events-auto"
+    >
       <div
         className={`
         bg-white rounded-xl shadow-lg border border-gray-100
