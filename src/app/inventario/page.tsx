@@ -5,7 +5,10 @@ import { redirect } from "next/navigation";
 import { useSession } from "next-auth/react";
 
 const PanelDeInventarioComponent = dynamic(
-  () => import("@/components/panel-de-inventario").then(m => ({ default: m.PanelDeInventarioComponent })),
+  () =>
+    import("@/components/panel-de-inventario").then((m) => ({
+      default: m.PanelDeInventarioComponent,
+    })),
   {
     ssr: false,
     loading: () => (
@@ -30,7 +33,7 @@ export default function InventarioPage() {
 
   // Protect the route - only allow access if logged in and authorized
   if (status === "unauthenticated") {
-    redirect("/api/auth/signin");
+    redirect("/auth/signin");
   }
 
   // Check if user is authorized

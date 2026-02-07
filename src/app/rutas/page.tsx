@@ -342,7 +342,7 @@ export default function RutasPage() {
   const { data: session, status } = useSession({
     required: true,
     onUnauthenticated() {
-      redirect("/api/auth/signin");
+      redirect("/auth/signin");
     },
   });
 

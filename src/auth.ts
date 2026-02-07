@@ -1,11 +1,57 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 
+const googleClientId =
+  process.env.GOOGLE_CLIENT_ID ?? process.env.AUTH_GOOGLE_ID;
+const googleClientSecret =
+  process.env.GOOGLE_CLIENT_SECRET ?? process.env.AUTH_GOOGLE_SECRET;
+const authSecret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
+
+const shouldTrustHost =
+  process.env.AUTH_TRUST_HOST === "true" ||
+  Boolean(
+    process.env.AUTH_URL ||
+      process.env.NEXTAUTH_URL ||
+      process.env.NETLIFY ||
+      process.env.VERCEL ||
+      process.env.CF_PAGES,
+  ) ||
+  process.env.NODE_ENV !== "production";
+
+if (!googleClientId || !googleClientSecret) {
+  console.error("[auth] Missing Google OAuth environment variables", {
+    hasGoogleClientId: Boolean(googleClientId),
+    hasGoogleClientSecret: Boolean(googleClientSecret),
+    expectedVars: [
+      "GOOGLE_CLIENT_ID",
+      "GOOGLE_CLIENT_SECRET",
+      "AUTH_GOOGLE_ID",
+      "AUTH_GOOGLE_SECRET",
+    ],
+  });
+}
+
+if (!authSecret) {
+  console.error("[auth] Missing auth secret environment variable", {
+    expectedVars: ["AUTH_SECRET", "NEXTAUTH_SECRET"],
+  });
+}
+
+if (process.env.NODE_ENV === "production") {
+  console.log("[auth] Runtime configuration snapshot", {
+    hasAuthUrl: Boolean(process.env.AUTH_URL),
+    hasNextAuthUrl: Boolean(process.env.NEXTAUTH_URL),
+    hasAuthTrustHost: Boolean(process.env.AUTH_TRUST_HOST),
+    hasNetlifyFlag: Boolean(process.env.NETLIFY),
+    trustHost: shouldTrustHost,
+  });
+}
+
 export const { auth, handlers, signIn, signOut } = NextAuth({
   providers: [
     Google({
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      clientId: googleClientId ?? "",
+      clientSecret: googleClientSecret ?? "",
     }),
   ],
   pages: {
@@ -37,7 +83,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
       if (new URL(url).origin === baseUrl) return url;
       return baseUrl;
     },
-    async session({ session, token }) {
+    async session({ session }) {
       return session;
     },
     async jwt({ token, user }) {
@@ -47,7 +93,21 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
       return token;
     },
   },
-  secret: process.env.NEXTAUTH_SECRET,
+  trustHost: shouldTrustHost,
+  secret: authSecret,
+  logger: {
+    error(code, metadata) {
+      console.error("[auth][error]", code, metadata);
+    },
+    warn(code) {
+      console.warn("[auth][warn]", code);
+    },
+    debug(code, metadata) {
+      if (process.env.NODE_ENV !== "production") {
+        console.debug("[auth][debug]", code, metadata);
+      }
+    },
+  },
   session: {
     strategy: "jwt",
   },

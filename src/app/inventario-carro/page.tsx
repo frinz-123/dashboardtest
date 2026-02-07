@@ -1194,7 +1194,7 @@ export default function InventarioCarroPage() {
   }, [ledgerForSeller, salesWeekTotals, traceProduct]);
 
   if (status === "unauthenticated") {
-    redirect("/api/auth/signin");
+    redirect("/auth/signin");
   }
 
   if (status === "authenticated" && !isAdmin) {
