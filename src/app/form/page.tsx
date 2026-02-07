@@ -9,7 +9,6 @@ import CleyPhotoCapture, {
   type CleyPhotoPreview,
 } from "@/components/CleyPhotoCapture";
 import CleyOrderQuestion from "@/components/comp-166";
-const BlurIn = dynamic(() => import("@/components/ui/blur-in"), { ssr: false });
 import LabelNumbers from "@/components/ui/labelnumbers";
 import PendingOrdersBanner from "@/components/ui/PendingOrdersBanner";
 import SearchInput from "@/components/ui/SearchInput";
@@ -1614,9 +1613,25 @@ export default function FormPage() {
       const sessionEmail = session?.user?.email;
       const fallbackEmail = OVERRIDE_EMAILS[0];
       const baseEmail = sessionEmail || cachedEmail || fallbackEmail;
-      const isAdmin = isOverrideEmail(sessionEmail || cachedEmail);
+      const isAdmin = Boolean(sessionEmail && isOverrideEmail(sessionEmail));
       const actorEmail = sessionEmail || cachedEmail || null;
       const finalEmail = isAdmin && overrideEmail ? overrideEmail : baseEmail;
+      const hasAdminOverrideIntent = Boolean(
+        overrideEmail || overrideDate || overridePeriod || overrideMonthCode,
+      );
+
+      console.log("🔐 ADMIN OVERRIDE RESOLUTION:", {
+        sessionEmail,
+        cachedEmail,
+        isAdminSession: isAdmin,
+        hasAdminOverrideIntent,
+        overrideEmail: overrideEmail || null,
+        overrideDate: overrideDate || null,
+        overridePeriod: overridePeriod || null,
+        overrideMonthCode: overrideMonthCode || null,
+        actorEmail,
+        finalEmail,
+      });
 
       if (!finalEmail) {
         setValidationErrors((prev) => ({
@@ -1628,16 +1643,23 @@ export default function FormPage() {
         return;
       }
 
+      if (hasAdminOverrideIntent && !isAdmin) {
+        setValidationErrors((prev) => ({
+          ...prev,
+          submit:
+            "El modo admin requiere una sesion valida de administrador para aplicar overrides.",
+        }));
+        isSubmittingRef.current = false;
+        return;
+      }
+
       setIsSubmitting(true);
 
       // Calculate order details
       const cleyValue = isCley ? cleyOrderValue : null;
 
-      const baseDate = new Date().toISOString();
       const submittedAt =
-        isAdmin && overrideDate
-          ? new Date(overrideDate).toISOString()
-          : baseDate;
+        isAdmin && overrideDate ? new Date(overrideDate).toISOString() : null;
 
       const submissionTotal = Object.entries(quantities).reduce(
         (sum, [product, qty]) => {

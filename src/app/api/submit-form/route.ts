@@ -20,6 +20,7 @@ const PHOTO_MIN_REQUIRED = 2;
 
 // 🔧 DEDUPLICATION: In-memory cache for recent submissions (expires after 2 minutes)
 const recentSubmissions = new Map<string, { timestamp: number; data: any }>();
+const inFlightSubmissions = new Set<string>();
 const DEDUPLICATION_WINDOW = 120000; // 2 minutes
 
 // Clean up old entries periodically
@@ -109,7 +110,10 @@ export async function POST(req: Request) {
       photoUrls: rawPhotoUrls,
     } = body;
 
-    submissionId = clientSubmissionId;
+    submissionId =
+      typeof clientSubmissionId === "string" && clientSubmissionId.trim()
+        ? clientSubmissionId.trim()
+        : undefined;
     const photoUrls = normalizePhotoUrls(rawPhotoUrls);
 
     // 🔧 DEDUPLICATION: Check if we've seen this submission recently
@@ -135,6 +139,16 @@ export async function POST(req: Request) {
 
     const adminEmailForValidation = actorEmail ?? userEmail ?? null;
     const isAdmin = isOverrideEmail(adminEmailForValidation);
+    const hasOverrideDateInput =
+      typeof overrideDateString === "string" &&
+      overrideDateString.trim().length > 0;
+    const hasAnyOverrideRequest = Boolean(
+      isAdminOverride ||
+        overrideTargetEmail ||
+        hasOverrideDateInput ||
+        (typeof overridePeriod === "string" && overridePeriod.trim()) ||
+        (typeof overrideMonthCode === "string" && overrideMonthCode.trim()),
+    );
 
     const locationAge = location?.timestamp
       ? Date.now() - location.timestamp
@@ -189,7 +203,24 @@ export async function POST(req: Request) {
       isQueuedSubmission,
       normalizedAttemptNumber,
       shouldBypassLocationChecks,
+      hasOverrideDateInput,
+      hasAnyOverrideRequest,
     });
+
+    if (hasAnyOverrideRequest && !isAdmin) {
+      console.warn(
+        "⚠️ OVERRIDE REQUEST IGNORED: request contains override fields but actor is not admin",
+        {
+          submissionId,
+          actorEmail,
+          userEmail,
+          overrideTargetEmail,
+          hasOverrideDateInput,
+          overridePeriod,
+          overrideMonthCode,
+        },
+      );
+    }
 
     const normalizedClientCode =
       typeof clientCode === "string" ? clientCode.toUpperCase() : "";
@@ -330,16 +361,34 @@ export async function POST(req: Request) {
 
     // ✅ VALIDATION: Alert if email looks suspicious (deferred to after response)
     const suspiciousEmail = userEmail === "arturo.elreychiltepin@gmail.com";
-    const suspiciousHeaders = suspiciousEmail ? {
-      userAgent: req.headers.get("user-agent"),
-      referer: req.headers.get("referer"),
-    } : null;
+    const suspiciousHeaders = suspiciousEmail
+      ? {
+          userAgent: req.headers.get("user-agent"),
+          referer: req.headers.get("referer"),
+        }
+      : null;
+
+    if (submissionId && inFlightSubmissions.has(submissionId)) {
+      console.log("🔁 IN-FLIGHT DUPLICATE BLOCKED:", {
+        submissionId,
+        clientName,
+      });
+      return NextResponse.json({
+        success: true,
+        duplicate: true,
+        message: "Pedido ya en proceso (duplicado)",
+      });
+    }
+
+    if (submissionId) {
+      inFlightSubmissions.add(submissionId);
+    }
 
     const sheets = google.sheets({ version: "v4", auth: sheetsAuth });
 
     try {
-      // Fetch client location and last row number in parallel
-      const [clientData, currentData] = await Promise.all([
+      // Fetch client location, row count, and submission ids in parallel
+      const [clientData, currentData, submissionIdData] = await Promise.all([
         sheets.spreadsheets.values.get({
           spreadsheetId,
           range: "Form_Data!A:C",
@@ -348,7 +397,32 @@ export async function POST(req: Request) {
           spreadsheetId,
           range: "Form_Data!A:A",
         }),
+        submissionId
+          ? sheets.spreadsheets.values.get({
+              spreadsheetId,
+              range: "Form_Data!AE:AE",
+            })
+          : Promise.resolve(null),
       ]);
+
+      if (submissionId) {
+        const seenSubmissionIds =
+          submissionIdData?.data.values
+            ?.map((row) => (typeof row[0] === "string" ? row[0].trim() : ""))
+            .filter(Boolean) || [];
+
+        if (seenSubmissionIds.includes(submissionId)) {
+          console.log("🔄 SHEET DUPLICATE DETECTED:", {
+            submissionId,
+            clientName,
+          });
+          return NextResponse.json({
+            success: true,
+            duplicate: true,
+            message: "Pedido ya procesado (sheet duplicate)",
+          });
+        }
+      }
 
       let clientLat = "",
         clientLng = "";
@@ -444,10 +518,11 @@ export async function POST(req: Request) {
       // Format current date/time using Mazatlan timezone (GMT-7)
       // 🔧 ADMIN OVERRIDE: Use override date if provided by admin user
       let submissionTimestamp: Date;
-      if (isAdmin && overrideDateString) {
-        submissionTimestamp = new Date(overrideDateString);
+      if (isAdmin && hasOverrideDateInput) {
+        const overrideDateValue = String(overrideDateString).trim();
+        submissionTimestamp = new Date(overrideDateValue);
         console.log("📅 ADMIN DATE OVERRIDE: Using override date", {
-          overrideDateString,
+          overrideDateString: overrideDateValue,
           parsedDate: submissionTimestamp.toISOString(),
           isValidDate: !Number.isNaN(submissionTimestamp.getTime()),
           adminEmail: adminEmailForValidation,
@@ -459,7 +534,7 @@ export async function POST(req: Request) {
           console.warn(
             "⚠️ INVALID OVERRIDE DATE: Falling back to current time",
             {
-              overrideDateString,
+              overrideDateString: overrideDateValue,
               adminEmail: adminEmailForValidation,
             },
           );
@@ -595,6 +670,7 @@ export async function POST(req: Request) {
       rowData[27] = products["El Rey Mix Original"] || ""; // Column AB
       rowData[28] = products["El Rey Mix Especial"] || ""; // Column AC
       rowData[29] = products["Medio Kilo Chiltepin Entero"] || ""; // Column AD
+      rowData[30] = submissionId || ""; // Column AE - Idempotency key
       rowData[31] = clientCode; // Column AF
       rowData[32] = formattedDate; // Column AG (now in MM/DD/YYYY format)
       rowData[33] = total.toString(); // Column AH
@@ -617,9 +693,15 @@ export async function POST(req: Request) {
       console.log("Final row data:", {
         columnAL: rowData[37],
         columnAM: rowData[38],
+        columnAE: rowData[30],
+        columnH: rowData[7],
         columnAO: rowData[40],
         columnAP: rowData[41],
         fullArrayLength: rowData.length,
+        isAdminEffective: isAdmin,
+        actorEmail,
+        userEmail,
+        overrideTargetEmail,
       });
 
       // Try using append instead of update to handle the column range better
@@ -657,7 +739,9 @@ export async function POST(req: Request) {
           timestamp: new Date().toISOString(),
         });
         if (suspiciousEmail) {
-          console.error("🚨 SUSPICIOUS EMAIL DETECTED: Submission using arturo.elreychiltepin@gmail.com");
+          console.error(
+            "🚨 SUSPICIOUS EMAIL DETECTED: Submission using arturo.elreychiltepin@gmail.com",
+          );
           console.error("🚨 REQUEST DETAILS:", {
             ...suspiciousHeaders,
             timestamp: new Date().toISOString(),
@@ -692,6 +776,10 @@ export async function POST(req: Request) {
         },
         { status: 500 },
       );
+    } finally {
+      if (submissionId) {
+        inFlightSubmissions.delete(submissionId);
+      }
     }
   } catch (error) {
     const processingTime = Date.now() - startTime;

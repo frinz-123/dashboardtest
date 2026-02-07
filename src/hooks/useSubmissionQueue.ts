@@ -75,6 +75,13 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
   const isProcessingRef = useRef(false);
   const processIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const autoRetriedIdsRef = useRef<Set<string>>(new Set());
+  const hasBackgroundSyncRef = useRef(false);
+
+  const tryRegisterBackgroundSync = useCallback(async (): Promise<boolean> => {
+    const syncRegistered = await submissionQueue.requestBackgroundSync();
+    hasBackgroundSyncRef.current = syncRegistered;
+    return syncRegistered;
+  }, []);
 
   // Load initial state
   const loadQueue = useCallback(async () => {
@@ -440,13 +447,16 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
 
       // Immediately try to process if online
       if (navigator.onLine) {
-        // Small delay to let UI update first
-        setTimeout(() => processQueue(), 100);
+        const syncRegistered = await tryRegisterBackgroundSync();
+        if (!syncRegistered) {
+          // Small delay to let UI update first
+          setTimeout(() => processQueue(), 100);
+        }
       }
 
       return queued;
     },
-    [loadQueue, processQueue],
+    [loadQueue, processQueue, tryRegisterBackgroundSync],
   );
 
   // Update location for a specific item
@@ -457,10 +467,13 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
 
       // Try to process immediately
       if (navigator.onLine) {
-        setTimeout(() => processQueue(), 100);
+        const syncRegistered = await tryRegisterBackgroundSync();
+        if (!syncRegistered) {
+          setTimeout(() => processQueue(), 100);
+        }
       }
     },
-    [loadQueue, processQueue],
+    [loadQueue, processQueue, tryRegisterBackgroundSync],
   );
 
   // Refresh location for the stale item
@@ -485,10 +498,13 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
       await loadQueue();
 
       if (navigator.onLine) {
-        setTimeout(() => processQueue(), 100);
+        const syncRegistered = await tryRegisterBackgroundSync();
+        if (!syncRegistered) {
+          setTimeout(() => processQueue(), 100);
+        }
       }
     },
-    [loadQueue, processQueue],
+    [loadQueue, processQueue, tryRegisterBackgroundSync],
   );
 
   // Remove an item from the queue
@@ -522,7 +538,7 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
       setState((prev) => ({ ...prev, isOnline: true }));
 
       // Try Background Sync first, fall back to manual processing
-      const syncRegistered = await submissionQueue.requestBackgroundSync();
+      const syncRegistered = await tryRegisterBackgroundSync();
       if (!syncRegistered) {
         console.log("Background Sync not available, processing manually...");
         processQueue();
@@ -539,7 +555,7 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
         console.log("Tab visible, triggering Background Sync...");
 
         // Try Background Sync first, fall back to manual processing
-        const syncRegistered = await submissionQueue.requestBackgroundSync();
+        const syncRegistered = await tryRegisterBackgroundSync();
         if (!syncRegistered) {
           processQueue();
         }
@@ -555,14 +571,40 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
       window.removeEventListener("offline", handleOffline);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [processQueue]);
+  }, [processQueue, tryRegisterBackgroundSync]);
+
+  // Detect initial Background Sync support once and prefer SW processing if available.
+  useEffect(() => {
+    let mounted = true;
+
+    const detectBackgroundSync = async () => {
+      try {
+        const syncRegistered = await tryRegisterBackgroundSync();
+        if (!mounted) return;
+        hasBackgroundSyncRef.current = syncRegistered;
+      } catch {
+        if (!mounted) return;
+        hasBackgroundSyncRef.current = false;
+      }
+    };
+
+    detectBackgroundSync();
+
+    return () => {
+      mounted = false;
+    };
+  }, [tryRegisterBackgroundSync]);
 
   // Set up periodic queue processing
   useEffect(() => {
     loadQueue();
 
     processIntervalRef.current = setInterval(() => {
-      if (navigator.onLine && !isProcessingRef.current) {
+      if (
+        navigator.onLine &&
+        !isProcessingRef.current &&
+        !hasBackgroundSyncRef.current
+      ) {
         processQueue();
       }
     }, PROCESS_INTERVAL);
