@@ -11,6 +11,9 @@ import {
 const MAX_RETRIES = 5;
 const RETRY_DELAY_BASE = 2000; // 2 seconds
 const PROCESS_INTERVAL = 5000; // Check queue every 5 seconds
+const REQUEST_TIMEOUT_MS = 10000; // 10 seconds per network attempt
+const PHOTO_UPLOAD_TIMEOUT_MS = 15000; // 15 seconds per photo upload
+const STALE_SENDING_MS = 45000; // Recover "sending" items after 45 seconds
 
 // Service Worker message types
 interface SWMessage {
@@ -28,6 +31,31 @@ interface SWMessage {
     failed: number;
     stale: number;
   };
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message;
+  return "Error desconocido";
+}
+
+function isFetchTypeError(error: unknown): boolean {
+  return (
+    error instanceof TypeError &&
+    typeof error.message === "string" &&
+    error.message.includes("fetch")
+  );
+}
+
+function getErrorCode(error: unknown): string | null {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof (error as { code?: unknown }).code === "string"
+  ) {
+    return (error as { code: string }).code;
+  }
+  return null;
 }
 
 export interface QueueState {
@@ -74,7 +102,6 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
 
   const isProcessingRef = useRef(false);
   const processIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const autoRetriedIdsRef = useRef<Set<string>>(new Set());
   const hasBackgroundSyncRef = useRef(false);
 
   const tryRegisterBackgroundSync = useCallback(async (): Promise<boolean> => {
@@ -82,6 +109,34 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
     hasBackgroundSyncRef.current = syncRegistered;
     return syncRegistered;
   }, []);
+
+  const fetchWithTimeout = useCallback(
+    async (
+      input: RequestInfo | URL,
+      init: RequestInit,
+      timeoutMs: number,
+    ): Promise<Response> => {
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => {
+        controller.abort();
+      }, timeoutMs);
+
+      try {
+        return await fetch(input, {
+          ...init,
+          signal: controller.signal,
+        });
+      } catch (error: unknown) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          throw new Error("Tiempo de espera agotado");
+        }
+        throw error;
+      } finally {
+        window.clearTimeout(timeoutId);
+      }
+    },
+    [],
+  );
 
   // Load initial state
   const loadQueue = useCallback(async () => {
@@ -113,18 +168,22 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
       duplicate?: boolean;
     }> => {
       try {
-        const response = await fetch("/api/submit-form", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
+        const response = await fetchWithTimeout(
+          "/api/submit-form",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              ...submission.payload,
+              queuedAt: submission.payload.queuedAt ?? submission.createdAt,
+              submissionId: submission.id,
+              attemptNumber: submission.retryCount + 1,
+            }),
           },
-          body: JSON.stringify({
-            ...submission.payload,
-            queuedAt: submission.payload.queuedAt ?? submission.createdAt,
-            submissionId: submission.id,
-            attemptNumber: submission.retryCount + 1,
-          }),
-        });
+          REQUEST_TIMEOUT_MS,
+        );
 
         const data = await response.json();
 
@@ -136,18 +195,18 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
         }
 
         return { success: true, duplicate: data.duplicate };
-      } catch (error: any) {
+      } catch (error: unknown) {
         // Network error
-        if (error.name === "TypeError" && error.message.includes("fetch")) {
+        if (isFetchTypeError(error)) {
           return { success: false, error: "Sin conexion a internet" };
         }
         return {
           success: false,
-          error: error.message || "Error desconocido",
+          error: getErrorMessage(error),
         };
       }
     },
-    [],
+    [fetchWithTimeout],
   );
 
   const uploadPhoto = useCallback(
@@ -162,10 +221,14 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
       formData.append("photoId", photoId);
       formData.append("submissionId", submissionId);
 
-      const response = await fetch("/api/upload-photo", {
-        method: "POST",
-        body: formData,
-      });
+      const response = await fetchWithTimeout(
+        "/api/upload-photo",
+        {
+          method: "POST",
+          body: formData,
+        },
+        PHOTO_UPLOAD_TIMEOUT_MS,
+      );
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
@@ -185,7 +248,7 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
 
       return data.url as string;
     },
-    [],
+    [fetchWithTimeout],
   );
 
   const prepareSubmission = useCallback(
@@ -233,12 +296,11 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
           success: true,
           item: { ...item, payload: updatedPayload },
         };
-      } catch (error: any) {
-        const isDuplicate =
-          typeof error?.code === "string" && error.code === "DUPLICATE_PHOTO";
+      } catch (error: unknown) {
+        const isDuplicate = getErrorCode(error) === "DUPLICATE_PHOTO";
         return {
           success: false,
-          error: error?.message || "No se pudieron subir las fotos",
+          error: getErrorMessage(error) || "No se pudieron subir las fotos",
           fatal: isDuplicate,
         };
       }
@@ -255,9 +317,14 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
       // Re-validating based on timestamp would break offline-first queue processing.
 
       // Mark as sending
+      const attemptStartedAt = Date.now();
       await submissionQueue.update(item.id, {
         status: "sending",
-        lastAttemptAt: Date.now(),
+        lastAttemptAt: attemptStartedAt,
+      });
+      console.log(`[Queue] ${item.id} -> sending`, {
+        attempt: item.retryCount + 1,
+        at: attemptStartedAt,
       });
 
       setState((prev) => ({ ...prev, currentItem: item }));
@@ -274,6 +341,7 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
             retryCount: newRetryCount,
             errorMessage: prepared.error || "No se pudieron subir las fotos",
           });
+          console.error(`[Queue] ${item.id} -> failed (fatal photo error)`);
           haptics.error();
           return false;
         }
@@ -285,6 +353,7 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
             retryCount: newRetryCount,
             errorMessage: prepared.error || "Maximo de reintentos alcanzado",
           });
+          console.error(`[Queue] ${item.id} -> failed (max retries reached)`);
           haptics.error();
           return false;
         }
@@ -293,6 +362,10 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
           status: "pending",
           retryCount: newRetryCount,
           errorMessage: prepared.error,
+        });
+        console.warn(`[Queue] ${item.id} -> pending (will retry)`, {
+          retryCount: newRetryCount,
+          reason: prepared.error,
         });
 
         return false;
@@ -326,6 +399,7 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
           retryCount: newRetryCount,
           errorMessage: result.error || "Maximo de reintentos alcanzado",
         });
+        console.error(`[Queue] ${item.id} -> failed (max retries reached)`);
         haptics.error();
         return false;
       }
@@ -336,30 +410,57 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
         retryCount: newRetryCount,
         errorMessage: result.error,
       });
+      console.warn(`[Queue] ${item.id} -> pending (will retry)`, {
+        retryCount: newRetryCount,
+        reason: result.error,
+      });
 
       return false;
     },
     [prepareSubmission, sendSubmission],
   );
 
-  // Determine if a failed item should be auto-retried (typically location errors)
-  const shouldAutoRetryFailedItem = useCallback((item: QueuedSubmission) => {
-    if (autoRetriedIdsRef.current.has(item.id)) return false;
-    if (item.status !== "failed") return false;
-    if (typeof item.errorMessage !== "string") return false;
-    if (!/ubicaci|location|gps|precisi|lejos|distance/i.test(item.errorMessage))
-      return false;
+  const recoverStaleSendingItems = useCallback(async () => {
+    const now = Date.now();
+    const items = await submissionQueue.getPending();
+    const staleItems = items.filter((item) => {
+      if (item.status !== "sending") return false;
+      const lastAttemptAt = item.lastAttemptAt ?? item.createdAt;
+      return now - lastAttemptAt > STALE_SENDING_MS;
+    });
 
-    const location = item.payload?.location;
-    if (
-      !location ||
-      typeof location.lat !== "number" ||
-      typeof location.lng !== "number"
-    ) {
-      return false;
+    for (const item of staleItems) {
+      const newRetryCount = item.retryCount + 1;
+      const timeoutMessage =
+        "Tiempo de espera agotado. Pulsa Volver a intentar.";
+
+      if (newRetryCount >= MAX_RETRIES) {
+        await submissionQueue.update(item.id, {
+          status: "failed",
+          retryCount: newRetryCount,
+          errorMessage: timeoutMessage,
+        });
+        console.error(
+          `[Queue] ${item.id} recovered from stale sending -> failed`,
+          {
+            retryCount: newRetryCount,
+          },
+        );
+        continue;
+      }
+
+      await submissionQueue.update(item.id, {
+        status: "pending",
+        retryCount: newRetryCount,
+        errorMessage: timeoutMessage,
+      });
+      console.warn(
+        `[Queue] ${item.id} recovered from stale sending -> pending`,
+        {
+          retryCount: newRetryCount,
+        },
+      );
     }
-
-    return true;
   }, []);
 
   // Process all pending items in the queue
@@ -378,28 +479,8 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
     setState((prev) => ({ ...prev, isProcessing: true }));
 
     try {
-      let items = await submissionQueue.getPending();
-
-      // Auto-recover failed items that were blocked by location checks
-      const failedToRecover = items.filter(shouldAutoRetryFailedItem);
-      for (const item of failedToRecover) {
-        console.log(
-          "♻️ Auto-retrying failed item after location bypass fix:",
-          item.id,
-          item.errorMessage,
-        );
-        await submissionQueue.update(item.id, {
-          status: "pending",
-          retryCount: Math.min(item.retryCount, MAX_RETRIES - 1),
-          errorMessage: null,
-        });
-        autoRetriedIdsRef.current.add(item.id);
-      }
-
-      // Refresh items after recovery to ensure we process the updated state
-      if (failedToRecover.length > 0) {
-        items = await submissionQueue.getPending();
-      }
+      await recoverStaleSendingItems();
+      const items = await submissionQueue.getPending();
 
       for (const item of items) {
         // Skip items that are already being sent or have failed
@@ -432,7 +513,7 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
       }));
       await loadQueue();
     }
-  }, [processItem, loadQueue, shouldAutoRetryFailedItem]);
+  }, [processItem, loadQueue, recoverStaleSendingItems]);
 
   // Add a new submission to the queue
   const addToQueue = useCallback(

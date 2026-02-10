@@ -220,10 +220,10 @@ export default function PendingOrdersBanner({
                     <button
                       type="button"
                       onClick={() => onRetry(item.id)}
-                      className="p-1 hover:bg-gray-100 rounded"
-                      title="Reintentar"
+                      className="text-xs font-semibold text-orange-700 bg-orange-100 hover:bg-orange-200 px-2 py-1 rounded-full transition-colors"
+                      title="Volver a intentar"
                     >
-                      <RefreshCw className="w-3 h-3 text-gray-600" />
+                      Volver a intentar
                     </button>
                   )}
 
