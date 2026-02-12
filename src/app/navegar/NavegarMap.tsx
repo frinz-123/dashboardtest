@@ -3,12 +3,15 @@
 import mapboxgl from "mapbox-gl";
 import {
   forwardRef,
+  useCallback,
   useEffect,
   useImperativeHandle,
   useRef,
   useState,
 } from "react";
 import "mapbox-gl/dist/mapbox-gl.css";
+import MapboxDraw from "@mapbox/mapbox-gl-draw";
+import "@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css";
 import convex from "@turf/convex";
 import { featureCollection, point } from "@turf/helpers";
 import { PenTool } from "lucide-react";
@@ -17,6 +20,7 @@ mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
 
 const _DEFAULT_CENTER = { lng: -110.962, lat: 29.072 }; // Hermosillo, Sonora, MX
 const FALLBACK_CENTER = { lng: -107.394, lat: 24.8091 }; // Culiacán, Sinaloa
+const DEBUG_AREA_SELECTION = process.env.NODE_ENV !== "production";
 
 // Function to get pin color based on codigo
 const getPinColor = (codigo?: string, isSelected: boolean = false) => {
@@ -60,6 +64,132 @@ type NavegarMapProps = {
   currentLocation?: { lat: number; lng: number } | null;
   routeTo?: { lat: number; lng: number } | null;
   onRouteInfo?: (info: RouteInfo | null) => void;
+  onAreaSelectionChange?: (
+    clientsInArea: Client[],
+    hasPolygon: boolean,
+  ) => void;
+  disableDrawing?: boolean;
+};
+
+type LngLatTuple = [number, number];
+type PolygonCoordinates = LngLatTuple[][];
+type MultiPolygonCoordinates = PolygonCoordinates[];
+
+const EPSILON = 1e-10;
+
+const isFiniteNumber = (value: unknown): value is number =>
+  typeof value === "number" && Number.isFinite(value);
+
+const isLngLatTuple = (value: unknown): value is LngLatTuple =>
+  Array.isArray(value) &&
+  value.length >= 2 &&
+  isFiniteNumber(value[0]) &&
+  isFiniteNumber(value[1]);
+
+const isPolygonCoordinates = (value: unknown): value is PolygonCoordinates =>
+  Array.isArray(value) &&
+  value.every(
+    (ring) =>
+      Array.isArray(ring) && ring.length >= 3 && ring.every(isLngLatTuple),
+  );
+
+const isMultiPolygonCoordinates = (
+  value: unknown,
+): value is MultiPolygonCoordinates =>
+  Array.isArray(value) && value.every(isPolygonCoordinates);
+
+const isPointOnSegment = (
+  point: LngLatTuple,
+  start: LngLatTuple,
+  end: LngLatTuple,
+): boolean => {
+  const [px, py] = point;
+  const [x1, y1] = start;
+  const [x2, y2] = end;
+
+  const cross = (px - x1) * (y2 - y1) - (py - y1) * (x2 - x1);
+  if (Math.abs(cross) > EPSILON) return false;
+
+  const dot = (px - x1) * (px - x2) + (py - y1) * (py - y2);
+  return dot <= EPSILON;
+};
+
+const isPointInsideRing = (
+  point: LngLatTuple,
+  ring: LngLatTuple[],
+): boolean => {
+  if (ring.length < 3) return false;
+
+  let isInside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const start = ring[j];
+    const end = ring[i];
+
+    if (isPointOnSegment(point, start, end)) {
+      return true;
+    }
+
+    const [x1, y1] = start;
+    const [x2, y2] = end;
+    const [px, py] = point;
+
+    const intersects =
+      y1 > py !== y2 > py &&
+      px < ((x2 - x1) * (py - y1)) / (y2 - y1 + EPSILON) + x1;
+
+    if (intersects) {
+      isInside = !isInside;
+    }
+  }
+
+  return isInside;
+};
+
+const isPointInsidePolygon = (
+  point: LngLatTuple,
+  polygon: PolygonCoordinates,
+): boolean => {
+  if (!polygon.length) return false;
+  if (!isPointInsideRing(point, polygon[0])) return false;
+
+  for (let i = 1; i < polygon.length; i++) {
+    if (isPointInsideRing(point, polygon[i])) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
+const extractPolygonsFromFeature = (feature: unknown): PolygonCoordinates[] => {
+  if (!feature || typeof feature !== "object") return [];
+  const geometry = (
+    feature as { geometry?: { type?: string; coordinates?: unknown } }
+  ).geometry;
+  if (!geometry || !geometry.type) return [];
+
+  if (
+    geometry.type === "Polygon" &&
+    isPolygonCoordinates(geometry.coordinates)
+  ) {
+    return [geometry.coordinates];
+  }
+
+  if (
+    geometry.type === "MultiPolygon" &&
+    isMultiPolygonCoordinates(geometry.coordinates)
+  ) {
+    return geometry.coordinates;
+  }
+
+  return [];
+};
+
+const hasPolygonGeometry = (feature: unknown): boolean => {
+  if (!feature || typeof feature !== "object") return false;
+  const geometryType = (feature as { geometry?: { type?: string } }).geometry
+    ?.type;
+  return geometryType === "Polygon" || geometryType === "MultiPolygon";
 };
 
 const NavegarMap = forwardRef(function NavegarMap(
@@ -71,6 +201,8 @@ const NavegarMap = forwardRef(function NavegarMap(
     routeTo,
     onRouteInfo,
     onUserLocationChange,
+    onAreaSelectionChange,
+    disableDrawing = false,
   }: NavegarMapProps & {
     onUserLocationChange?: (loc: { lat: number; lng: number } | null) => void;
   },
@@ -87,8 +219,86 @@ const NavegarMap = forwardRef(function NavegarMap(
   const [_route, setRoute] = useState<RouteInfo | null>(null);
   const routeLayerId = "route-line";
   const [showDibujo, setShowDibujo] = useState(false);
-  const polygonLayerId = "clients-polygon";
-  const polygonSourceId = "clients-polygon-source";
+  const [isManualDibujo, setIsManualDibujo] = useState(false);
+  const [selectedAreaCount, setSelectedAreaCount] = useState(0);
+  const drawControlRef = useRef<MapboxDraw | null>(null);
+  const isHandlingDrawEventRef = useRef(false);
+  const autoPolygonLayerId = "clients-polygon";
+  const autoPolygonSourceId = "clients-polygon-source";
+
+  const emitClientsInArea = useCallback(
+    (polygons: PolygonCoordinates[]) => {
+      if (!polygons.length) {
+        setSelectedAreaCount(0);
+        onAreaSelectionChange?.([], false);
+        if (DEBUG_AREA_SELECTION) {
+          console.debug("[NavegarMap][draw] no polygons to evaluate");
+        }
+        return;
+      }
+
+      const clientsInArea = clients.filter((client) => {
+        const point: LngLatTuple = [client.lng, client.lat];
+        return polygons.some((polygon) => isPointInsidePolygon(point, polygon));
+      });
+
+      setSelectedAreaCount(clientsInArea.length);
+      onAreaSelectionChange?.(clientsInArea, true);
+      if (DEBUG_AREA_SELECTION) {
+        console.debug("[NavegarMap][draw] clients in polygon:", {
+          totalVisibleClients: clients.length,
+          selectedClients: clientsInArea.length,
+        });
+      }
+    },
+    [clients, onAreaSelectionChange],
+  );
+
+  const getDrawnPolygonFeature = useCallback(() => {
+    if (!drawControlRef.current) return null;
+    const featureCollection = drawControlRef.current.getAll();
+    return (
+      featureCollection.features.find((feature) => {
+        const geometryType = feature.geometry?.type;
+        return geometryType === "Polygon" || geometryType === "MultiPolygon";
+      }) || null
+    );
+  }, []);
+
+  const emitAreaSelection = useCallback(() => {
+    const drawnPolygon = getDrawnPolygonFeature();
+    if (!drawnPolygon) {
+      setSelectedAreaCount(0);
+      onAreaSelectionChange?.([], false);
+      if (DEBUG_AREA_SELECTION) {
+        console.debug("[NavegarMap][draw] no drawn polygon in store");
+      }
+      return;
+    }
+
+    const polygons = extractPolygonsFromFeature(drawnPolygon);
+    emitClientsInArea(polygons);
+  }, [emitClientsInArea, getDrawnPolygonFeature, onAreaSelectionChange]);
+
+  const clearDrawnArea = useCallback(() => {
+    if (!drawControlRef.current) return;
+    drawControlRef.current.deleteAll();
+    setSelectedAreaCount(0);
+    onAreaSelectionChange?.([], false);
+  }, [onAreaSelectionChange]);
+
+  const removeAutoPolygon = useCallback(() => {
+    if (!map.current) return;
+    if (map.current.getLayer(autoPolygonLayerId)) {
+      map.current.removeLayer(autoPolygonLayerId);
+    }
+    if (map.current.getLayer(`${autoPolygonLayerId}-outline`)) {
+      map.current.removeLayer(`${autoPolygonLayerId}-outline`);
+    }
+    if (map.current.getSource(autoPolygonSourceId)) {
+      map.current.removeSource(autoPolygonSourceId);
+    }
+  }, []);
 
   // Try to get user location on mount
   useEffect(() => {
@@ -224,6 +434,7 @@ const NavegarMap = forwardRef(function NavegarMap(
     },
     getAccurateLocation,
     refreshLocation,
+    clearDrawnArea,
   }));
 
   // Initialize map
@@ -245,6 +456,16 @@ const NavegarMap = forwardRef(function NavegarMap(
         zoom: 13,
       });
       map.current.addControl(new mapboxgl.NavigationControl());
+      const drawControl = new MapboxDraw({
+        displayControlsDefault: false,
+        controls: {
+          polygon: false,
+          trash: false,
+        },
+        defaultMode: "simple_select",
+      });
+      map.current.addControl(drawControl);
+      drawControlRef.current = drawControl;
     }
   }, [userLocation]);
 
@@ -276,10 +497,15 @@ const NavegarMap = forwardRef(function NavegarMap(
       el.style.fontWeight = "bold";
       el.style.color = isSelected ? "#fff" : pinColor;
       el.innerText = client.name[0].toUpperCase();
-      el.onclick = (e) => {
-        e.stopPropagation();
-        onSelectClient?.(client.name);
-      };
+      // While drawing manually, let clicks pass through markers to the draw layer.
+      const isManualDrawingActive = showDibujo && isManualDibujo;
+      el.style.pointerEvents = isManualDrawingActive ? "none" : "auto";
+      if (!isManualDrawingActive) {
+        el.onclick = (e) => {
+          e.stopPropagation();
+          onSelectClient?.(client.name);
+        };
+      }
       const marker = new mapboxgl.Marker(el)
         .setLngLat([client.lng, client.lat])
         .addTo(map.current!);
@@ -316,7 +542,15 @@ const NavegarMap = forwardRef(function NavegarMap(
           .addTo(map.current!),
       );
     }
-  }, [clients, selectedClient, onSelectClient, currentLocation, userLocation]);
+  }, [
+    clients,
+    selectedClient,
+    onSelectClient,
+    currentLocation,
+    userLocation,
+    showDibujo,
+    isManualDibujo,
+  ]);
 
   // Center map on selected client
   useEffect(() => {
@@ -329,64 +563,41 @@ const NavegarMap = forwardRef(function NavegarMap(
     }
   }, [selectedClient, clients]);
 
-  // Draw/remove polygon around filtered clients when Dibujo is toggled
   useEffect(() => {
     if (!map.current) return;
 
-    const removePolygon = () => {
-      if (map.current?.getLayer(polygonLayerId)) {
-        map.current.removeLayer(polygonLayerId);
-      }
-      if (map.current?.getLayer(`${polygonLayerId}-outline`)) {
-        map.current.removeLayer(`${polygonLayerId}-outline`);
-      }
-      if (map.current?.getSource(polygonSourceId)) {
-        map.current.removeSource(polygonSourceId);
-      }
-    };
-
-    if (!showDibujo || clients.length < 3) {
-      removePolygon();
+    if (!showDibujo || isManualDibujo || clients.length < 3) {
+      removeAutoPolygon();
       return;
     }
 
-    // Create points from clients
-    const points = clients.map((c) => point([c.lng, c.lat]));
-    const fc = featureCollection(points);
-
-    // Calculate convex hull
-    const hull = convex(fc);
-
+    const points = clients.map((client) => point([client.lng, client.lat]));
+    const hull = convex(featureCollection(points));
     if (!hull) {
-      removePolygon();
+      removeAutoPolygon();
       return;
     }
 
-    // Remove existing polygon layers/sources first
-    removePolygon();
-
-    // Add the polygon source and layers
-    map.current.addSource(polygonSourceId, {
+    removeAutoPolygon();
+    map.current.addSource(autoPolygonSourceId, {
       type: "geojson",
       data: hull,
     });
 
-    // Add fill layer
     map.current.addLayer({
-      id: polygonLayerId,
+      id: autoPolygonLayerId,
       type: "fill",
-      source: polygonSourceId,
+      source: autoPolygonSourceId,
       paint: {
         "fill-color": "#8B5CF6",
         "fill-opacity": 0.2,
       },
     });
 
-    // Add outline layer
     map.current.addLayer({
-      id: `${polygonLayerId}-outline`,
+      id: `${autoPolygonLayerId}-outline`,
       type: "line",
-      source: polygonSourceId,
+      source: autoPolygonSourceId,
       paint: {
         "line-color": "#8B5CF6",
         "line-width": 2,
@@ -394,11 +605,147 @@ const NavegarMap = forwardRef(function NavegarMap(
       },
     });
 
-    // Cleanup on unmount or when dependencies change
     return () => {
-      removePolygon();
+      removeAutoPolygon();
     };
-  }, [showDibujo, clients]);
+  }, [showDibujo, isManualDibujo, clients, removeAutoPolygon]);
+
+  useEffect(() => {
+    if (!map.current || !drawControlRef.current) return;
+
+    const getEventPolygons = (event: unknown): PolygonCoordinates[] => {
+      const eventFeatures =
+        event &&
+        typeof event === "object" &&
+        Array.isArray((event as { features?: unknown[] }).features)
+          ? (event as { features: unknown[] }).features
+          : [];
+
+      const polygonFeature =
+        eventFeatures.find((feature) => hasPolygonGeometry(feature)) || null;
+
+      if (polygonFeature) {
+        return extractPolygonsFromFeature(polygonFeature);
+      }
+
+      return [];
+    };
+
+    const handleDrawCreate = (event: unknown) => {
+      if (!showDibujo || !isManualDibujo) {
+        return;
+      }
+      if (isHandlingDrawEventRef.current) {
+        if (DEBUG_AREA_SELECTION) {
+          console.debug("[NavegarMap][draw] skipping recursive draw.create");
+        }
+        return;
+      }
+      isHandlingDrawEventRef.current = true;
+
+      const polygons = getEventPolygons(event);
+      try {
+        if (polygons.length > 0) {
+          emitClientsInArea(polygons);
+        } else {
+          emitAreaSelection();
+        }
+      } finally {
+        isHandlingDrawEventRef.current = false;
+      }
+    };
+
+    const handleDrawUpdate = (event: unknown) => {
+      if (!showDibujo || !isManualDibujo) {
+        return;
+      }
+      if (isHandlingDrawEventRef.current) {
+        if (DEBUG_AREA_SELECTION) {
+          console.debug("[NavegarMap][draw] skipping recursive draw.update");
+        }
+        return;
+      }
+      // Avoid interrupting draw flow before the polygon is actually completed.
+      if (drawControlRef.current?.getMode() === "draw_polygon") {
+        return;
+      }
+      isHandlingDrawEventRef.current = true;
+
+      try {
+        const polygons = getEventPolygons(event);
+        if (polygons.length > 0) {
+          emitClientsInArea(polygons);
+        } else {
+          emitAreaSelection();
+        }
+      } finally {
+        isHandlingDrawEventRef.current = false;
+      }
+    };
+
+    const handleDrawDelete = () => {
+      if (!showDibujo || !isManualDibujo) {
+        return;
+      }
+      setSelectedAreaCount(0);
+      onAreaSelectionChange?.([], false);
+    };
+
+    const mapInstance = map.current;
+    mapInstance.on("draw.create", handleDrawCreate);
+    mapInstance.on("draw.update", handleDrawUpdate);
+    mapInstance.on("draw.delete", handleDrawDelete);
+
+    return () => {
+      mapInstance.off("draw.create", handleDrawCreate);
+      mapInstance.off("draw.update", handleDrawUpdate);
+      mapInstance.off("draw.delete", handleDrawDelete);
+    };
+  }, [
+    emitAreaSelection,
+    onAreaSelectionChange,
+    emitClientsInArea,
+    showDibujo,
+    isManualDibujo,
+  ]);
+
+  useEffect(() => {
+    if (!drawControlRef.current || !showDibujo || !isManualDibujo) return;
+    emitAreaSelection();
+  }, [emitAreaSelection, showDibujo, isManualDibujo]);
+
+  useEffect(() => {
+    if (!drawControlRef.current) return;
+    if (disableDrawing && showDibujo) {
+      setShowDibujo(false);
+    }
+
+    if (!showDibujo || disableDrawing) {
+      drawControlRef.current.changeMode("simple_select");
+      clearDrawnArea();
+      removeAutoPolygon();
+      onAreaSelectionChange?.([], false);
+      return;
+    }
+
+    if (isManualDibujo) {
+      clearDrawnArea();
+      drawControlRef.current.changeMode("draw_polygon");
+      removeAutoPolygon();
+      return;
+    }
+
+    drawControlRef.current.changeMode("simple_select");
+    clearDrawnArea();
+    onAreaSelectionChange?.([], false);
+  }, [
+    disableDrawing,
+    showDibujo,
+    isManualDibujo,
+    clearDrawnArea,
+    onAreaSelectionChange,
+    removeAutoPolygon,
+  ]);
 
   // Show loading state while determining user location
   if (!userLocation && !clients.length && !currentLocation) {
@@ -421,26 +768,66 @@ const NavegarMap = forwardRef(function NavegarMap(
       />
       {/* Dibujo toggle button - top left */}
       <button
-        onClick={() => setShowDibujo((prev) => !prev)}
+        type="button"
+        onClick={() => {
+          const nextShowDibujo = !showDibujo;
+          setShowDibujo(nextShowDibujo);
+          // Always default to automatic coverage mode when opening Dibujo.
+          if (nextShowDibujo) {
+            setIsManualDibujo(false);
+          }
+        }}
+        disabled={disableDrawing}
         className={`absolute top-3 left-3 z-10 flex items-center gap-1.5 px-3 py-2 rounded-lg shadow-lg text-sm font-medium transition-all ${
           showDibujo
             ? "bg-purple-600 text-white hover:bg-purple-700"
             : "bg-white text-gray-700 hover:bg-gray-50 border border-gray-200"
         }`}
-        title={
-          showDibujo ? "Ocultar área de cobertura" : "Mostrar área de cobertura"
-        }
+        title={showDibujo ? "Ocultar dibujo" : "Mostrar dibujo"}
       >
         <PenTool className="w-4 h-4" />
         <span>Dibujo</span>
-        {showDibujo && clients.length >= 3 && (
-          <span className="ml-1 text-xs opacity-80">({clients.length})</span>
+        {showDibujo && (
+          <span className="ml-1 text-xs opacity-80">
+            ({isManualDibujo ? selectedAreaCount : clients.length})
+          </span>
         )}
       </button>
-      {/* Info tooltip when Dibujo is active but not enough clients */}
-      {showDibujo && clients.length < 3 && (
-        <div className="absolute top-16 left-3 z-10 bg-yellow-50 border border-yellow-200 text-yellow-800 text-xs px-3 py-2 rounded-lg shadow-md max-w-[200px]">
-          Se necesitan al menos 3 clientes para dibujar el área de cobertura
+      {showDibujo && !disableDrawing && (
+        <div className="absolute top-16 left-3 z-10">
+          <button
+            type="button"
+            onClick={() => setIsManualDibujo((prev) => !prev)}
+            className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium shadow-md transition-colors ${
+              isManualDibujo
+                ? "border-purple-300 bg-purple-50 text-purple-700"
+                : "border-gray-200 bg-white text-gray-700"
+            }`}
+            title="Activar selección manual dentro de polígono"
+          >
+            <span>Manual</span>
+            <span
+              className={`relative h-4 w-7 rounded-full transition-colors ${
+                isManualDibujo ? "bg-purple-600" : "bg-gray-300"
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-transform ${
+                  isManualDibujo ? "translate-x-3.5" : "translate-x-0.5"
+                }`}
+              />
+            </span>
+          </button>
+        </div>
+      )}
+      {disableDrawing && (
+        <div className="absolute top-16 left-3 z-10 bg-yellow-50 border border-yellow-200 text-yellow-800 text-xs px-3 py-2 rounded-lg shadow-md max-w-[220px]">
+          Cierra la navegación activa para habilitar dibujo de área.
+        </div>
+      )}
+      {showDibujo && !isManualDibujo && clients.length < 3 && (
+        <div className="absolute top-28 left-3 z-10 bg-yellow-50 border border-yellow-200 text-yellow-800 text-xs px-3 py-2 rounded-lg shadow-md max-w-[220px]">
+          Se necesitan al menos 3 clientes para el polígono automático.
         </div>
       )}
     </div>

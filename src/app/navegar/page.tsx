@@ -4,7 +4,8 @@ import debounce from "lodash.debounce";
 import { MapPin, Navigation, X } from "lucide-react";
 import dynamic from "next/dynamic";
 import type React from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import SearchInput from "@/components/ui/SearchInput";
 import type { Client as NavegarClient, RouteInfo } from "./NavegarMap";
 
@@ -17,6 +18,7 @@ const DEBUG_FILTER_INTERACTIONS = process.env.NODE_ENV !== "production";
 
 const DAYS_WITHOUT_VISIT = 30;
 const DEFAULT_VISIT_DATE = "1/1/2024";
+const DEBUG_AREA_SELECTION = process.env.NODE_ENV !== "production";
 
 export default function NavegarPage() {
   const [clientNames, setClientNames] = useState<string[]>([]);
@@ -80,6 +82,34 @@ export default function NavegarPage() {
 
   // Add filtering state
   const [isFiltering, setIsFiltering] = useState(false);
+  const [areaSelectedClients, setAreaSelectedClients] = useState<
+    NavegarClient[]
+  >([]);
+  const [hasDrawnPolygon, setHasDrawnPolygon] = useState(false);
+  const [printContainer, setPrintContainer] = useState<HTMLDivElement | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const container = document.createElement("div");
+    container.className = "print-root";
+    document.body.appendChild(container);
+    setPrintContainer(container);
+
+    return () => {
+      document.body.removeChild(container);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleAfterPrint = () => {
+      document.body.classList.remove("print-mode");
+    };
+    window.addEventListener("afterprint", handleAfterPrint);
+    return () => window.removeEventListener("afterprint", handleAfterPrint);
+  }, []);
 
   // Batch fetch all data from Google Sheets once
   useEffect(() => {
@@ -508,6 +538,128 @@ export default function NavegarPage() {
     }
   };
 
+  const areaClientsWithMeta = useMemo(
+    () =>
+      areaSelectedClients
+        .map((client) => {
+          const vendor = clientVendedorMapping[client.name] || "Sin vendedor";
+          const lastVisit = clientLastVisitMap[client.name] || null;
+          return {
+            name: client.name,
+            code: client.codigo || "Sin código",
+            vendedor: vendor,
+            lastVisit,
+            lastVisitLabel: formatVisitDate(lastVisit),
+            lat: client.lat,
+            lng: client.lng,
+          };
+        })
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [
+      areaSelectedClients,
+      clientVendedorMapping,
+      clientLastVisitMap,
+      formatVisitDate,
+    ],
+  );
+
+  const areaPrintFilters = useMemo(() => {
+    const filters: Array<{ label: string; value: string }> = [];
+    if (codigoFilter) filters.push({ label: "Código", value: codigoFilter });
+    if (vendedorFilter)
+      filters.push({ label: "Vendedor", value: vendedorFilter });
+    if (sinVisitarFilter) filters.push({ label: "Sin visitar", value: "Sí" });
+    if (dateFilter) {
+      filters.push({
+        label: "Fecha",
+        value: formatDateFilterValue(dateFilter),
+      });
+    }
+    if (emailFilter) filters.push({ label: "Email", value: emailFilter });
+    if (searchTerm) filters.push({ label: "Búsqueda", value: searchTerm });
+    if (filters.length === 0)
+      filters.push({ label: "Filtros", value: "Ninguno" });
+    return filters;
+  }, [
+    codigoFilter,
+    vendedorFilter,
+    sinVisitarFilter,
+    dateFilter,
+    emailFilter,
+    searchTerm,
+  ]);
+
+  const isAreaPrintDisabled =
+    !hasDrawnPolygon || areaClientsWithMeta.length === 0;
+
+  const handlePrintAreaClients = () => {
+    if (typeof window === "undefined" || isAreaPrintDisabled) return;
+    document.body.classList.add("print-mode");
+    setTimeout(() => {
+      window.print();
+    }, 0);
+  };
+
+  const areaPrintContent = (
+    <div className="print-page">
+      <div className="mb-4 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-lg font-semibold text-gray-900">
+            Navegar · Clientes en Área Dibujada
+          </h1>
+          <p className="text-xs text-gray-500">
+            Lista de clientes dentro del polígono manual.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {areaPrintFilters.map((filter) => (
+              <span key={filter.label} className="print-badge text-[10px]">
+                <span className="font-semibold">{filter.label}:</span>{" "}
+                {filter.value}
+              </span>
+            ))}
+          </div>
+        </div>
+        <div className="text-right text-[10px] print-muted">
+          <p>Generado: {new Date().toLocaleString("es-ES")}</p>
+          <p>Total: {areaClientsWithMeta.length}</p>
+        </div>
+      </div>
+
+      {areaClientsWithMeta.length === 0 ? (
+        <p className="text-sm text-gray-600">No hay clientes para imprimir.</p>
+      ) : (
+        <table className="print-table text-[11px]">
+          <thead>
+            <tr>
+              <th className="text-left">Cliente</th>
+              <th className="text-left">Código</th>
+              <th className="text-left">Vendedor</th>
+              <th className="text-left">Última visita</th>
+              <th className="text-right">Lat</th>
+              <th className="text-right">Lng</th>
+            </tr>
+          </thead>
+          <tbody>
+            {areaClientsWithMeta.map((client) => (
+              <tr key={client.name} className="print-row">
+                <td>{client.name}</td>
+                <td>{client.code}</td>
+                <td>{client.vendedor}</td>
+                <td>{client.lastVisitLabel}</td>
+                <td className="text-right tabular-nums">
+                  {client.lat.toFixed(5)}
+                </td>
+                <td className="text-right tabular-nums">
+                  {client.lng.toFixed(5)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+
   // Prepare client list for map (memoized to avoid remapping on every render)
   const clientList: NavegarClient[] = useMemo(() => {
     const names =
@@ -555,6 +707,36 @@ export default function NavegarPage() {
   ) => {
     setUserLocation(loc);
   };
+
+  const handleAreaSelectionChange = useCallback(
+    (clientsInArea: NavegarClient[], hasPolygon: boolean) => {
+      if (DEBUG_AREA_SELECTION) {
+        console.debug("[NavegarPage][draw] area selection changed:", {
+          hasPolygon,
+          selectedClients: clientsInArea.length,
+        });
+      }
+      setHasDrawnPolygon((prev) => (prev === hasPolygon ? prev : hasPolygon));
+      setAreaSelectedClients((prev) => {
+        if (prev.length !== clientsInArea.length) return clientsInArea;
+
+        const isSameSelection = prev.every((client, index) => {
+          const nextClient = clientsInArea[index];
+          if (!nextClient) return false;
+
+          return (
+            client.name === nextClient.name &&
+            client.lat === nextClient.lat &&
+            client.lng === nextClient.lng &&
+            client.codigo === nextClient.codigo
+          );
+        });
+
+        return isSameSelection ? prev : clientsInArea;
+      });
+    },
+    [],
+  );
 
   // Handle Navegar button click
   const handleNavigate = async () => {
@@ -622,6 +804,8 @@ export default function NavegarPage() {
           onSelectClient={routeMode ? undefined : setSelectedClient}
           onRouteInfo={setRouteInfo}
           onUserLocationChange={handleUserLocationChange}
+          onAreaSelectionChange={handleAreaSelectionChange}
+          disableDrawing={routeMode}
         />
       </div>
       {/* Bottom sheet */}
@@ -939,6 +1123,82 @@ export default function NavegarPage() {
                 placeholder="Buscar cliente..."
                 showSparkles={!searchTerm}
               />
+              {hasDrawnPolygon && (
+                <div className="mt-3 border-t border-gray-100 pt-3">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <span className="text-xs text-gray-500">
+                      Área seleccionada: {areaClientsWithMeta.length} cliente
+                      {areaClientsWithMeta.length !== 1 ? "s" : ""}
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => mapRef.current?.clearDrawnArea?.()}
+                        className="px-2 py-1 text-xs rounded-md border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+                      >
+                        Limpiar área
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handlePrintAreaClients}
+                        disabled={isAreaPrintDisabled}
+                        className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        <Printer className="w-3.5 h-3.5" />
+                        Imprimir
+                      </button>
+                    </div>
+                  </div>
+                  <div className="max-h-40 overflow-y-auto -mx-2 px-2">
+                    {areaClientsWithMeta.length > 0 ? (
+                      areaClientsWithMeta.map((client) => (
+                        <button
+                          type="button"
+                          key={client.name}
+                          onClick={() => {
+                            setSelectedClient(client.name);
+                            setRouteInfo(null);
+                            setRouteMode(false);
+                          }}
+                          className={`w-full px-3 py-2 text-left rounded-lg transition-all ${
+                            selectedClient === client.name
+                              ? "bg-gray-900 text-white"
+                              : "hover:bg-gray-50 text-gray-900"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-sm font-medium truncate pr-2">
+                              {client.name}
+                            </span>
+                            <span
+                              className={`text-xs flex-shrink-0 ${
+                                selectedClient === client.name
+                                  ? "text-gray-400"
+                                  : "text-gray-400"
+                              }`}
+                            >
+                              {client.lastVisitLabel}
+                            </span>
+                          </div>
+                          <div
+                            className={`text-xs mt-0.5 ${
+                              selectedClient === client.name
+                                ? "text-gray-300"
+                                : "text-gray-500"
+                            }`}
+                          >
+                            {client.code} · {client.vendedor}
+                          </div>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="py-6 text-center text-sm text-gray-500">
+                        No hay clientes dentro del área dibujada.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
               {/* Active filters summary */}
               {hasActiveFilters && (
                 <div className="mt-3 flex items-center justify-between">
@@ -956,6 +1216,7 @@ export default function NavegarPage() {
                       setSinVisitarFilter(false);
                       setDateFilter(null);
                       setEmailFilter(null);
+                      mapRef.current?.clearDrawnArea?.();
                     }}
                     className="text-xs text-gray-500 hover:text-gray-700 transition-colors"
                   >
@@ -1163,6 +1424,7 @@ export default function NavegarPage() {
           )}
         </div>
       </div>
+      {printContainer ? createPortal(areaPrintContent, printContainer) : null}
     </div>
   );
 }
@@ -1217,15 +1479,16 @@ function FilterChip({
         </span>
       )}
       {hasValue && (
-        <button
+        <span
           onClick={(e) => {
+            e.preventDefault();
             e.stopPropagation();
             onClear();
           }}
-          className="ml-0.5 p-0.5 rounded-full hover:bg-white/20 transition-colors"
+          className="ml-0.5 p-0.5 rounded-full hover:bg-white/20 transition-colors cursor-pointer"
         >
           <X className="w-3 h-3" />
-        </button>
+        </span>
       )}
     </button>
   );
@@ -1330,6 +1593,7 @@ import {
   Filter,
   Hash,
   Mail,
+  Printer,
   SearchX,
   User,
 } from "lucide-react";
