@@ -706,6 +706,12 @@ export default function InventarioCarroPage() {
     () => Object.entries(EMAIL_TO_VENDOR_LABELS),
     [],
   );
+  const selectedSellerDisplayName = useMemo(() => {
+    if (selectedSeller) {
+      return EMAIL_TO_VENDOR_LABELS[selectedSeller] || selectedSeller;
+    }
+    return vendorOptions[0]?.[1] || "Vendedor";
+  }, [selectedSeller, vendorOptions]);
 
   useEffect(() => {
     if (selectedSeller) return;
@@ -1213,6 +1219,9 @@ export default function InventarioCarroPage() {
     <div className="min-h-screen bg-white">
       <AppHeader title="Inventario Carro" icon={Truck} />
       <main className="px-4 py-5 max-w-5xl mx-auto space-y-4">
+        <h1 className="text-[28px] md:text-[64px] font-bold tracking-[-0.03em] leading-none text-slate-900">
+          {selectedSellerDisplayName}
+        </h1>
         <section className="bg-white rounded-2xl border border-slate-200 p-4 space-y-3 shadow-sm">
           <div className="flex flex-wrap items-center gap-3 justify-between">
             <div>
