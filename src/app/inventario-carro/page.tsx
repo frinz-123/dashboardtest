@@ -710,16 +710,8 @@ export default function InventarioCarroPage() {
     if (selectedSeller) {
       return EMAIL_TO_VENDOR_LABELS[selectedSeller] || selectedSeller;
     }
-    return vendorOptions[0]?.[1] || "Vendedor";
-  }, [selectedSeller, vendorOptions]);
-
-  useEffect(() => {
-    if (selectedSeller) return;
-    const firstSeller = vendorOptions[0]?.[0] || "";
-    if (firstSeller) {
-      setSelectedSeller(firstSeller);
-    }
-  }, [selectedSeller, vendorOptions]);
+    return "Selecciona un vendedor";
+  }, [selectedSeller]);
 
   useEffect(() => {
     if (status !== "authenticated" || !isAdmin) return;
@@ -1273,9 +1265,12 @@ export default function InventarioCarroPage() {
               <select
                 id="filter-seller"
                 value={selectedSeller || ""}
-                onChange={(event) => setSelectedSeller(event.target.value)}
+                onChange={(event) =>
+                  setSelectedSeller(event.target.value || null)
+                }
                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
               >
+                <option value="">Selecciona un vendedor</option>
                 {vendorOptions.map(([email, label]) => (
                   <option key={email} value={email}>
                     {label}
