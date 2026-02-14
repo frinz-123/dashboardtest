@@ -2,12 +2,12 @@
   command = "npm run build"
   publish = ".next"
 
+  [build.environment]
+    NODE_VERSION = "20.9.0"
+
 [functions]
   # Extend timeout for API routes that handle file uploads
   external_node_modules = ["googleapis"]
-
-[[plugins]]
-  package = "@netlify/plugin-nextjs"
 
 [[headers]]
   for = "/manifest.json"

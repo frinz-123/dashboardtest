@@ -782,7 +782,7 @@ function ClientesDesatendidos({
         <div className="flex items-start justify-between gap-3">
           <div>
             <h3 className="font-semibold text-gray-700 flex items-center text-sm">
-              <AlertTriangle className="mr-2 h-4 w-4 text-amber-500" /> Clientes
+              <AlertTriangle className="mr-2 h-4 w-4 text-gray-400" /> Clientes
               Desatendidos
             </h3>
             <p className="text-xs text-gray-500 mt-1">
@@ -812,8 +812,8 @@ function ClientesDesatendidos({
               onClick={() => setDateFilter("currentMonth")}
               className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
                 dateFilter === "currentMonth"
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  ? "bg-gray-900 text-white"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
               }`}
             >
               Mes Actual
@@ -822,8 +822,8 @@ function ClientesDesatendidos({
               onClick={() => setDateFilter("30d")}
               className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
                 dateFilter === "30d"
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  ? "bg-gray-900 text-white"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
               }`}
             >
               Últimos 30 días
@@ -832,8 +832,8 @@ function ClientesDesatendidos({
               onClick={() => setDateFilter("2m")}
               className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
                 dateFilter === "2m"
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  ? "bg-gray-900 text-white"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
               }`}
             >
               Últimos 2 meses
@@ -842,8 +842,8 @@ function ClientesDesatendidos({
               onClick={() => setDateFilter("6m")}
               className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
                 dateFilter === "6m"
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  ? "bg-gray-900 text-white"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
               }`}
             >
               Últimos 6 meses
@@ -852,8 +852,8 @@ function ClientesDesatendidos({
               onClick={() => setDateFilter("year")}
               className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
                 dateFilter === "year"
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  ? "bg-gray-900 text-white"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
               }`}
             >
               Este Año
@@ -862,8 +862,8 @@ function ClientesDesatendidos({
               onClick={() => setDateFilter("custom")}
               className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
                 dateFilter === "custom"
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  ? "bg-gray-900 text-white"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
               }`}
             >
               Personalizado
@@ -920,12 +920,12 @@ function ClientesDesatendidos({
                 : "Filtrar códigos"}
             </button>
             {isCodesOpen && (
-              <div className="absolute z-10 mt-1 w-56 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto p-2">
+              <div className="absolute z-10 mt-1 w-56 bg-white border border-gray-300 rounded-md max-h-60 overflow-y-auto p-2">
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-xs text-gray-600">Selecciona uno o más</p>
                   <button
                     type="button"
-                    className="text-xs text-blue-600 hover:underline"
+                    className="text-xs text-gray-500 hover:underline"
                     onClick={() => setSelectedCodes([])}
                   >
                     Limpiar
@@ -978,12 +978,12 @@ function ClientesDesatendidos({
                 : "Filtrar vendedores"}
             </button>
             {isVendedoresOpen && (
-              <div className="absolute z-10 mt-1 w-56 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto p-2">
+              <div className="absolute z-10 mt-1 w-56 bg-white border border-gray-300 rounded-md max-h-60 overflow-y-auto p-2">
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-xs text-gray-600">Selecciona uno o más</p>
                   <button
                     type="button"
-                    className="text-xs text-blue-600 hover:underline"
+                    className="text-xs text-gray-500 hover:underline"
                     onClick={() => setSelectedVendedores([])}
                   >
                     Limpiar
@@ -1052,8 +1052,8 @@ function ClientesDesatendidos({
                 checked={thresholdOnly}
                 onChange={(e) => setThresholdOnly(e.target.checked)}
               />
-              <span className="h-4 w-8 rounded-full bg-gray-200 transition-colors peer-checked:bg-blue-600"></span>
-              <span className="absolute left-0.5 top-0.5 h-3 w-3 rounded-full bg-white shadow transition-transform peer-checked:translate-x-4"></span>
+              <span className="h-4 w-8 rounded-full bg-gray-200 transition-colors peer-checked:bg-gray-900"></span>
+              <span className="absolute left-0.5 top-0.5 h-3 w-3 rounded-full bg-white transition-transform peer-checked:translate-x-4"></span>
             </span>
           </label>
         </div>
@@ -1061,7 +1061,7 @@ function ClientesDesatendidos({
 
       {isLoading ? (
         <div className="text-center py-4">
-          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto mb-2"></div>
+          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900 mx-auto mb-2"></div>
           <p className="text-sm text-gray-500">Cargando clientes...</p>
         </div>
       ) : items.length === 0 ? (
@@ -1090,7 +1090,7 @@ function ClientesDesatendidos({
                 >
                   <div className="flex items-center flex-1 min-w-0">
                     <div
-                      className={`w-2 h-2 rounded-full mr-3 ${needsAttention ? "bg-amber-500" : lowConversion ? "bg-orange-400" : "bg-gray-300"}`}
+                      className={`w-2 h-2 rounded-full mr-3 ${needsAttention ? "bg-gray-800" : lowConversion ? "bg-gray-500" : "bg-gray-300"}`}
                     ></div>
                     <div>
                       <p className="font-medium text-sm text-gray-800">
@@ -1104,13 +1104,13 @@ function ClientesDesatendidos({
                   <div className="hidden sm:flex w-[620px] shrink-0 items-center justify-end">
                     <div className="w-[120px] flex flex-col items-end justify-center text-right">
                       <p className="text-xs text-gray-500">Ventas</p>
-                      <p className="font-semibold text-sm text-green-600 tabular-nums">
+                      <p className="font-semibold text-sm text-gray-800 tabular-nums">
                         {formatCurrency(row.totalSales)}
                       </p>
                     </div>
                     <div className="w-[100px] flex flex-col items-end justify-center text-right">
                       <p className="text-xs text-gray-500">Visitas</p>
-                      <p className="font-semibold text-sm text-blue-600 tabular-nums">
+                      <p className="font-semibold text-sm text-gray-800 tabular-nums">
                         {row.entries}
                         {row.salesEntries < row.entries && (
                           <span className="text-[10px] text-gray-500 ml-1">
@@ -1121,14 +1121,14 @@ function ClientesDesatendidos({
                     </div>
                     <div className="w-[110px] flex flex-col items-end justify-center text-right">
                       <p className="text-xs text-gray-500">Frecuencia</p>
-                      <p className="font-semibold text-sm text-amber-600 tabular-nums">
+                      <p className="font-semibold text-sm text-gray-800 tabular-nums">
                         {visitFrequencyLabel}
                       </p>
                     </div>
                     <div className="w-[90px] flex flex-col items-end justify-center text-right">
                       <p className="text-xs text-gray-500">Conv.</p>
                       <p
-                        className={`font-semibold text-sm tabular-nums ${row.conversionRate < 50 ? "text-orange-600" : "text-gray-800"}`}
+                        className={`font-semibold text-sm tabular-nums ${row.conversionRate < 50 ? "text-gray-500" : "text-gray-800"}`}
                       >
                         {row.conversionRate.toFixed(0)}%
                       </p>
@@ -1145,7 +1145,7 @@ function ClientesDesatendidos({
                     <p className="font-medium text-xs text-gray-700">
                       {row.lastVisit ? formatDate(row.lastVisit) : "N/D"}
                       {row.lastDays >= 60 && (
-                        <span className="ml-2 text-amber-600">
+                        <span className="ml-2 text-gray-500">
                           · {row.lastDays}d
                         </span>
                       )}
@@ -1168,7 +1168,7 @@ function ClientesDesatendidos({
               {items.length > 50 ? "+" : ""}
             </p>
             <button
-              className="text-xs font-medium text-blue-600 hover:underline flex items-center"
+              className="text-xs font-medium text-gray-500 hover:underline flex items-center"
               onClick={() => setShowMore(!showMore)}
             >
               {showMore ? "Ver menos" : "Ver más"}
@@ -1360,8 +1360,8 @@ function ProductosPorCodigo({
               onClick={() => setDateFilter("currentMonth")}
               className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
                 dateFilter === "currentMonth"
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  ? "bg-gray-900 text-white"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
               }`}
             >
               Mes Actual
@@ -1370,8 +1370,8 @@ function ProductosPorCodigo({
               onClick={() => setDateFilter("30d")}
               className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
                 dateFilter === "30d"
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  ? "bg-gray-900 text-white"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
               }`}
             >
               Últimos 30 días
@@ -1380,8 +1380,8 @@ function ProductosPorCodigo({
               onClick={() => setDateFilter("2m")}
               className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
                 dateFilter === "2m"
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  ? "bg-gray-900 text-white"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
               }`}
             >
               Últimos 2 meses
@@ -1390,8 +1390,8 @@ function ProductosPorCodigo({
               onClick={() => setDateFilter("6m")}
               className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
                 dateFilter === "6m"
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  ? "bg-gray-900 text-white"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
               }`}
             >
               Últimos 6 meses
@@ -1400,8 +1400,8 @@ function ProductosPorCodigo({
               onClick={() => setDateFilter("year")}
               className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
                 dateFilter === "year"
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  ? "bg-gray-900 text-white"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
               }`}
             >
               Este Año
@@ -1410,8 +1410,8 @@ function ProductosPorCodigo({
               onClick={() => setDateFilter("custom")}
               className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
                 dateFilter === "custom"
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  ? "bg-gray-900 text-white"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
               }`}
             >
               Personalizado
@@ -1450,7 +1450,7 @@ function ProductosPorCodigo({
 
       {isLoading ? (
         <div className="text-center py-4">
-          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto mb-2"></div>
+          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900 mx-auto mb-2"></div>
           <p className="text-sm text-gray-500">Cargando datos...</p>
         </div>
       ) : !analyticsData?.productsByCode || codeOptions.length === 0 ? (
@@ -1808,26 +1808,52 @@ export default function ClientesPage() {
     debouncedSearch(value);
   };
 
+  // Initial load: fire all 8 fetches in parallel
   useEffect(() => {
     if (!isAllowed || status !== "authenticated") return;
-    fetchClientNames();
-    fetchAnalyticsData();
-    fetchSellerAnalyticsData();
+
+    const topClientsRange = getTopClientsDateRange();
+    const topProductsRange = getTopProductsDateRange();
+    const topCodigosRange = getTopCodigosDateRange();
+    const productosPorCodigoRange = getProductosPorCodigoDateRange();
+    const clientesDesatendidosRange = getClientesDesatendidosDateRange();
+
+    Promise.all([
+      fetchClientNames(),
+      fetchAnalyticsData(),
+      fetchSellerAnalyticsData(),
+      fetchTopClientsData(
+        topClientsRange.startDate.toISOString().split("T")[0],
+        topClientsRange.endDate.toISOString().split("T")[0],
+      ),
+      fetchTopProductsData(
+        topProductsRange.startDate.toISOString().split("T")[0],
+        topProductsRange.endDate.toISOString().split("T")[0],
+      ),
+      fetchTopCodigosData(
+        topCodigosRange.startDate.toISOString().split("T")[0],
+        topCodigosRange.endDate.toISOString().split("T")[0],
+      ),
+      fetchProductosPorCodigoData(
+        productosPorCodigoRange.startDate.toISOString().split("T")[0],
+        productosPorCodigoRange.endDate.toISOString().split("T")[0],
+      ),
+      fetchClientesDesatendidosData(
+        clientesDesatendidosRange.startDate.toISOString().split("T")[0],
+        clientesDesatendidosRange.endDate.toISOString().split("T")[0],
+      ),
+    ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAllowed, status]);
 
-  // Fetch top clients data when date filter changes (including initial load)
+  // Refetch top clients when its date filter changes (user interaction only)
   useEffect(() => {
     if (!isAllowed || status !== "authenticated") return;
+    // Skip the initial "year" default — already handled above
+    if (topClientsDateFilter === "year" && !topClientsCustomDateFrom && !topClientsCustomDateTo) return;
 
     const { startDate, endDate } = getTopClientsDateRange();
-    const dateFrom = startDate.toISOString().split("T")[0];
-    const dateTo = endDate.toISOString().split("T")[0];
-
-    console.log("🔄 Fetching top clients with date range:", {
-      dateFrom,
-      dateTo,
-    });
-    fetchTopClientsData(dateFrom, dateTo);
+    fetchTopClientsData(startDate.toISOString().split("T")[0], endDate.toISOString().split("T")[0]);
   }, [
     topClientsDateFilter,
     topClientsCustomDateFrom,
@@ -1836,19 +1862,13 @@ export default function ClientesPage() {
     status,
   ]);
 
-  // Fetch top products data when date filter changes (including initial load)
+  // Refetch top products when its date filter changes (user interaction only)
   useEffect(() => {
     if (!isAllowed || status !== "authenticated") return;
+    if (topProductsDateFilter === "year" && !topProductsCustomDateFrom && !topProductsCustomDateTo) return;
 
     const { startDate, endDate } = getTopProductsDateRange();
-    const dateFrom = startDate.toISOString().split("T")[0];
-    const dateTo = endDate.toISOString().split("T")[0];
-
-    console.log("🔄 Fetching top products with date range:", {
-      dateFrom,
-      dateTo,
-    });
-    fetchTopProductsData(dateFrom, dateTo);
+    fetchTopProductsData(startDate.toISOString().split("T")[0], endDate.toISOString().split("T")[0]);
   }, [
     topProductsDateFilter,
     topProductsCustomDateFrom,
@@ -1857,19 +1877,13 @@ export default function ClientesPage() {
     status,
   ]);
 
-  // Fetch top codigos data when date filter changes (including initial load)
+  // Refetch top codigos when its date filter changes (user interaction only)
   useEffect(() => {
     if (!isAllowed || status !== "authenticated") return;
+    if (topCodigosDateFilter === "year" && !topCodigosCustomDateFrom && !topCodigosCustomDateTo) return;
 
     const { startDate, endDate } = getTopCodigosDateRange();
-    const dateFrom = startDate.toISOString().split("T")[0];
-    const dateTo = endDate.toISOString().split("T")[0];
-
-    console.log("🔄 Fetching top codigos with date range:", {
-      dateFrom,
-      dateTo,
-    });
-    fetchTopCodigosData(dateFrom, dateTo);
+    fetchTopCodigosData(startDate.toISOString().split("T")[0], endDate.toISOString().split("T")[0]);
   }, [
     topCodigosDateFilter,
     topCodigosCustomDateFrom,
@@ -1878,19 +1892,13 @@ export default function ClientesPage() {
     status,
   ]);
 
-  // Fetch productos por codigo data when date filter changes (including initial load)
+  // Refetch productos por codigo when its date filter changes (user interaction only)
   useEffect(() => {
     if (!isAllowed || status !== "authenticated") return;
+    if (productosPorCodigoDateFilter === "year" && !productosPorCodigoCustomDateFrom && !productosPorCodigoCustomDateTo) return;
 
     const { startDate, endDate } = getProductosPorCodigoDateRange();
-    const dateFrom = startDate.toISOString().split("T")[0];
-    const dateTo = endDate.toISOString().split("T")[0];
-
-    console.log("🔄 Fetching productos por codigo with date range:", {
-      dateFrom,
-      dateTo,
-    });
-    fetchProductosPorCodigoData(dateFrom, dateTo);
+    fetchProductosPorCodigoData(startDate.toISOString().split("T")[0], endDate.toISOString().split("T")[0]);
   }, [
     productosPorCodigoDateFilter,
     productosPorCodigoCustomDateFrom,
@@ -1899,19 +1907,13 @@ export default function ClientesPage() {
     status,
   ]);
 
-  // Fetch clientes desatendidos data when date filter changes (including initial load)
+  // Refetch clientes desatendidos when its date filter changes (user interaction only)
   useEffect(() => {
     if (!isAllowed || status !== "authenticated") return;
+    if (clientesDesatendidosDateFilter === "year" && !clientesDesatendidosCustomDateFrom && !clientesDesatendidosCustomDateTo) return;
 
     const { startDate, endDate } = getClientesDesatendidosDateRange();
-    const dateFrom = startDate.toISOString().split("T")[0];
-    const dateTo = endDate.toISOString().split("T")[0];
-
-    console.log("🔄 Fetching clientes desatendidos with date range:", {
-      dateFrom,
-      dateTo,
-    });
-    fetchClientesDesatendidosData(dateFrom, dateTo);
+    fetchClientesDesatendidosData(startDate.toISOString().split("T")[0], endDate.toISOString().split("T")[0]);
   }, [
     clientesDesatendidosDateFilter,
     clientesDesatendidosCustomDateFrom,
@@ -2596,7 +2598,7 @@ export default function ClientesPage() {
 
   return (
     <div
-      className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50 font-sans w-full"
+      className="min-h-screen bg-white font-sans w-full"
       style={{ fontFamily: "Inter, sans-serif", fontSize: "0.8rem" }}
     >
       {/* Error Toast */}
@@ -2883,7 +2885,7 @@ export default function ClientesPage() {
               <div className="space-y-2">
                 {isLoadingTopClients ? (
                   <div className="text-center py-4">
-                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto mb-2"></div>
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900 mx-auto mb-2"></div>
                     <p className="text-sm text-gray-500">
                       Cargando clientes...
                     </p>
@@ -3085,7 +3087,7 @@ export default function ClientesPage() {
               <div className="space-y-2">
                 {isLoadingTopCodigos ? (
                   <div className="text-center py-4">
-                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto mb-2"></div>
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900 mx-auto mb-2"></div>
                     <p className="text-sm text-gray-500">Cargando códigos...</p>
                   </div>
                 ) : topCodigosData?.topCodigos &&
@@ -3282,7 +3284,7 @@ export default function ClientesPage() {
               <div className="space-y-2">
                 {isLoadingTopProducts ? (
                   <div className="text-center py-4">
-                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto mb-2"></div>
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900 mx-auto mb-2"></div>
                     <p className="text-sm text-gray-500">
                       Cargando productos...
                     </p>
@@ -3362,7 +3364,7 @@ export default function ClientesPage() {
               <div className="space-y-2">
                 {isLoadingAnalytics ? (
                   <div className="text-center py-4">
-                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto mb-2"></div>
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900 mx-auto mb-2"></div>
                     <p className="text-sm text-gray-500">
                       Cargando tendencias...
                     </p>

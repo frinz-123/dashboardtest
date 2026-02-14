@@ -13,6 +13,10 @@ const DB_NAME = "elrey-submissions";
 const STORE_NAME = "pending-orders";
 const PHOTO_DB_NAME = "elrey-photo-store";
 const PHOTO_STORE_NAME = "cley-photos";
+const MAX_RETRIES = 5;
+const REQUEST_TIMEOUT_MS = 10000; // 10 seconds per network attempt
+const PHOTO_UPLOAD_TIMEOUT_MS = 15000; // 15 seconds per photo upload
+const STALE_SENDING_MS = 45000; // Recover "sending" items after 45 seconds
 
 // Install event - activate immediately
 self.addEventListener("install", (_event) => {
@@ -160,6 +164,19 @@ async function getPendingSubmissions() {
   });
 }
 
+async function getAllSubmissions() {
+  const db = await openDatabase();
+
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([STORE_NAME], "readonly");
+    const store = transaction.objectStore(STORE_NAME);
+    const request = store.getAll();
+
+    request.onsuccess = () => resolve(request.result || []);
+    request.onerror = () => reject(request.error);
+  });
+}
+
 /**
  * Update a submission's status in IndexedDB
  */
@@ -205,23 +222,88 @@ async function removeSubmission(id) {
   });
 }
 
+async function fetchWithTimeout(input, init, timeoutMs) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => {
+    controller.abort();
+  }, timeoutMs);
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw new Error("Tiempo de espera agotado");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+async function recoverStaleSendingSubmissions() {
+  const now = Date.now();
+  const all = await getAllSubmissions();
+  const staleSending = all.filter((submission) => {
+    if (submission.status !== "sending") return false;
+    const lastAttemptAt = submission.lastAttemptAt || submission.createdAt;
+    return now - lastAttemptAt > STALE_SENDING_MS;
+  });
+
+  for (const submission of staleSending) {
+    const nextRetryCount = (submission.retryCount || 0) + 1;
+    const timeoutMessage = "Tiempo de espera agotado. Pulsa Volver a intentar.";
+
+    if (nextRetryCount >= MAX_RETRIES) {
+      await updateSubmission(submission.id, {
+        status: "failed",
+        retryCount: nextRetryCount,
+        errorMessage: timeoutMessage,
+      });
+      console.error(
+        `[SW] ${submission.id} recovered from stale sending -> failed`,
+        { retryCount: nextRetryCount },
+      );
+      continue;
+    }
+
+    await updateSubmission(submission.id, {
+      status: "pending",
+      retryCount: nextRetryCount,
+      errorMessage: timeoutMessage,
+    });
+    console.warn(
+      `[SW] ${submission.id} recovered from stale sending -> pending`,
+      {
+        retryCount: nextRetryCount,
+      },
+    );
+  }
+}
+
 /**
  * Send a single submission to the server
  */
 async function sendSubmission(submission) {
-  const response = await fetch("/api/submit-form", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
+  const response = await fetchWithTimeout(
+    "/api/submit-form",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        ...submission.payload,
+        queuedAt: submission.payload?.queuedAt ?? submission.createdAt,
+        submissionId: submission.id,
+        attemptNumber: submission.retryCount + 1,
+        fromBackgroundSync: true,
+      }),
     },
-    body: JSON.stringify({
-      ...submission.payload,
-      queuedAt: submission.payload?.queuedAt ?? submission.createdAt,
-      submissionId: submission.id,
-      attemptNumber: submission.retryCount + 1,
-      fromBackgroundSync: true,
-    }),
-  });
+    REQUEST_TIMEOUT_MS,
+  );
 
   const data = await response.json();
 
@@ -243,10 +325,14 @@ async function uploadPhotoBlob(photoId, submissionId) {
   formData.append("photoId", photoId);
   formData.append("submissionId", submissionId);
 
-  const response = await fetch("/api/upload-photo", {
-    method: "POST",
-    body: formData,
-  });
+  const response = await fetchWithTimeout(
+    "/api/upload-photo",
+    {
+      method: "POST",
+      body: formData,
+    },
+    PHOTO_UPLOAD_TIMEOUT_MS,
+  );
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
@@ -320,6 +406,7 @@ async function processQueuedOrders() {
   };
 
   try {
+    await recoverStaleSendingSubmissions();
     const pending = await getPendingSubmissions();
     console.log(`[SW] Found ${pending.length} pending submissions`);
 
@@ -383,7 +470,6 @@ async function processQueuedOrders() {
           errorMessage.startsWith("DUPLICATE_PHOTO:");
 
         const newRetryCount = (submission.retryCount || 0) + 1;
-        const MAX_RETRIES = 5;
 
         if (isDuplicate) {
           const cleanMessage = errorMessage

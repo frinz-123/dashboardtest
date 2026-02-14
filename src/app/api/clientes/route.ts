@@ -1,5 +1,5 @@
 import { google } from "googleapis";
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 
 // Force dynamic rendering for this API route
 export const dynamic = "force-dynamic";
@@ -52,6 +52,9 @@ const PRODUCT_COLUMNS = {
 };
 
 export async function GET(req: Request) {
+  const logs: Array<[string, ...unknown[]]> = [];
+  const log = (...args: [string, ...unknown[]]) => { logs.push(args); };
+
   try {
     const { searchParams } = new URL(req.url);
     const action = searchParams.get("action");
@@ -83,6 +86,10 @@ export async function GET(req: Request) {
       return NextResponse.json({
         success: true,
         data: Object.keys(clients).sort(),
+      }, {
+        headers: {
+          "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
+        },
       });
     }
 
@@ -189,16 +196,20 @@ export async function GET(req: Request) {
           salesTrend,
           totalEntries: clientEntries.length,
         },
+      }, {
+        headers: {
+          "Cache-Control": "public, s-maxage=30, stale-while-revalidate=60",
+        },
       });
     }
 
     if (action === "seller-analytics") {
-      console.log("👥 Seller Analytics endpoint called");
+      log("👥 Seller Analytics endpoint called");
 
       // Get date range parameters
       const dateFrom = searchParams.get("dateFrom");
       const dateTo = searchParams.get("dateTo");
-      console.log("📅 Date filters:", { dateFrom, dateTo });
+      log("📅 Date filters:", { dateFrom, dateTo });
 
       // Get seller-specific analytics
       const sellerSalesData = await sheets.spreadsheets.values.get({
@@ -206,7 +217,7 @@ export async function GET(req: Request) {
         range: `${sheetName}!A:AN`,
       });
 
-      console.log(
+      log(
         "👥 Seller Analytics - Google Sheets response:",
         sellerSalesData.data.values?.length,
         "rows",
@@ -216,26 +227,28 @@ export async function GET(req: Request) {
         !sellerSalesData.data.values ||
         sellerSalesData.data.values.length < 2
       ) {
-        console.log("⚠️ No data available for seller analytics");
-        return NextResponse.json({
+        log("⚠️ No data available for seller analytics");
+        const response = NextResponse.json({
           success: true,
           data: {
             sellers: [],
             totalSellers: 0,
           },
         });
+        after(() => { for (const l of logs) console.log(...l); });
+        return response;
       }
 
       // Get all rows for processing (like the working analytics API)
       const allRows = sellerSalesData.data.values.slice(1);
       // ✅ CORRECTED: Use Column AN (index 39) where vendedor is actually stored
       const anIndexForVendedor = columnToIndex("AN"); // Column AN where vendedor assignments are stored
-      console.log(
+      log(
         "👥 Seller Analytics - Using Column AN (index",
         anIndexForVendedor,
         ") for vendedor data",
       );
-      console.log(
+      log(
         "👥 Seller Analytics - Headers around Column AN:",
         sellerSalesData.data.values[0]?.slice(37, 42),
       );
@@ -252,11 +265,11 @@ export async function GET(req: Request) {
           clientVendedores[name] = vendedor;
           foundVendedores++;
           if (foundVendedores <= 5) {
-            console.log(`👤 Client: ${name} -> Vendedor: ${vendedor}`);
+            log(`👤 Client: ${name} -> Vendedor: ${vendedor}`);
           }
         }
       }
-      console.log(
+      log(
         "📋 Total client-vendedor mappings found:",
         Object.keys(clientVendedores).length,
       );
@@ -281,13 +294,13 @@ export async function GET(req: Request) {
 
         // Debug first few entries
         if (rowIndex < 3) {
-          console.log(
+          log(
             `👥 Row ${rowIndex} client:`,
             clientName,
             "vendedor from Column AN:",
             vendedor,
           );
-          console.log(
+          log(
             `👥 Row ${rowIndex} has products:`,
             Object.keys(products).length > 0,
           );
@@ -307,17 +320,17 @@ export async function GET(req: Request) {
         };
       });
 
-      console.log("👥 All entries before filtering:", entries.length);
+      log("👥 All entries before filtering:", entries.length);
 
       const entriesWithVendedor = entries.filter(
         (entry) => entry.vendedor && entry.vendedor !== "Sin Asignar",
       );
-      console.log("👥 Entries with vendedor:", entriesWithVendedor.length);
+      log("👥 Entries with vendedor:", entriesWithVendedor.length);
 
       const entriesWithProducts = entries.filter(
         (entry) => Object.keys(entry.products).length > 0,
       );
-      console.log("👥 Entries with products:", entriesWithProducts.length);
+      log("👥 Entries with products:", entriesWithProducts.length);
 
       const filteredEntries = entries.filter(
         (entry) =>
@@ -325,7 +338,7 @@ export async function GET(req: Request) {
           entry.vendedor !== "Sin Asignar" &&
           Object.keys(entry.products).length > 0,
       );
-      console.log(
+      log(
         "👥 Entries with both vendedor and products:",
         filteredEntries.length,
       );
@@ -349,15 +362,15 @@ export async function GET(req: Request) {
         return entryDate >= fromDate && entryDate <= toDate;
       });
 
-      console.log(
+      log(
         "👥 Seller Analytics - Total entries after parsing:",
         entries.length,
       );
-      console.log(
+      log(
         "👥 Seller Analytics - Date filtered entries:",
         dateFilteredEntries.length,
       );
-      console.log("👥 Date range used:", {
+      log("👥 Date range used:", {
         from: fromDate.toISOString().split("T")[0],
         to: toDate.toISOString().split("T")[0],
       });
@@ -365,7 +378,7 @@ export async function GET(req: Request) {
       // Generate seller analytics
       const sellerAnalytics = generateSellerAnalytics(dateFilteredEntries);
 
-      console.log("👥 Generated seller analytics:", {
+      log("👥 Generated seller analytics:", {
         totalSellers: sellerAnalytics.totalSellers,
         sellersCount: sellerAnalytics.sellers.length,
       });
@@ -375,21 +388,27 @@ export async function GET(req: Request) {
           ? `${dateFrom || defaultDateFrom} al ${dateTo || defaultDateTo}`
           : "Año actual";
 
-      return NextResponse.json({
+      const response = NextResponse.json({
         success: true,
         data: {
           sellers: sellerAnalytics.sellers,
           totalSellers: sellerAnalytics.totalSellers,
           period: periodLabel,
         },
+      }, {
+        headers: {
+          "Cache-Control": "public, s-maxage=30, stale-while-revalidate=60",
+        },
       });
+      after(() => { for (const l of logs) console.log(...l); });
+      return response;
     }
 
     if (action === "analytics") {
       // Get date range parameters
       const dateFrom = searchParams.get("dateFrom");
       const dateTo = searchParams.get("dateTo");
-      console.log("📅 Analytics date filters:", { dateFrom, dateTo });
+      log("📅 Analytics date filters:", { dateFrom, dateTo });
 
       // Get overall analytics
       const salesData = await sheets.spreadsheets.values.get({
@@ -397,47 +416,47 @@ export async function GET(req: Request) {
         range: `${sheetName}!A:AN`,
       });
 
-      console.log(
+      log(
         "📊 Google Sheets response:",
         salesData.data.values?.length,
         "rows",
       );
 
-      console.log("🔍 Full Google Sheets data structure:");
-      console.log(
+      log("🔍 Full Google Sheets data structure:");
+      log(
         "   Total values array length:",
         salesData.data.values?.length,
       );
-      console.log("   First row (headers):", salesData.data.values?.[0]);
-      console.log("   Second row (first data):", salesData.data.values?.[1]);
-      console.log(
+      log("   First row (headers):", salesData.data.values?.[0]);
+      log("   Second row (first data):", salesData.data.values?.[1]);
+      log(
         "   Last row:",
         salesData.data.values?.[salesData.data.values.length - 1],
       );
 
       // Check if we have headers and data
       if (!salesData.data.values || salesData.data.values.length < 2) {
-        console.log("⚠️  No data or insufficient rows in sheet");
+        log("⚠️  No data or insufficient rows in sheet");
       } else {
-        console.log("✅ Sheet has headers and data rows");
+        log("✅ Sheet has headers and data rows");
       }
 
       // Debug: Show column structure
       if (salesData.data.values && salesData.data.values.length > 0) {
         const headerRow = salesData.data.values[0];
-        console.log("🔍 Sheet headers (first 15):", headerRow.slice(0, 15));
-        console.log("🔍 Total columns:", headerRow.length);
-        console.log("🔍 Column indices for products:");
+        log("🔍 Sheet headers (first 15):", headerRow.slice(0, 15));
+        log("🔍 Total columns:", headerRow.length);
+        log("🔍 Column indices for products:");
         Object.entries(PRODUCT_COLUMNS).forEach(([col, _productName]) => {
           const colIndex = columnToIndex(col);
-          console.log(
+          log(
             `  ${col} -> Index ${colIndex} -> Header: ${headerRow[colIndex] || "MISSING"}`,
           );
         });
       }
 
       if (!salesData.data.values) {
-        return NextResponse.json({
+        const response = NextResponse.json({
           success: true,
           data: {
             totalSales: 0,
@@ -448,6 +467,8 @@ export async function GET(req: Request) {
             clientStats: {},
           },
         });
+        after(() => { for (const l of logs) console.log(...l); });
+        return response;
       }
 
       const afIndexForCode = columnToIndex("AF");
@@ -474,12 +495,12 @@ export async function GET(req: Request) {
 
           // Debug: Log products for first few rows
           if (rowIndex < 5) {
-            console.log(`\n🚨 Row ${rowIndex + 1} Analysis:`);
-            console.log(`   Client: ${row[0]}`);
-            console.log(`   Date: ${row[32]}`);
-            console.log(`   Total: ${row[33]}`);
-            console.log(`   Has products: ${Object.keys(products).length > 0}`);
-            console.log(`   🎯 Final products:`, products);
+            log(`\n🚨 Row ${rowIndex + 1} Analysis:`);
+            log(`   Client: ${row[0]}`);
+            log(`   Date: ${row[32]}`);
+            log(`   Total: ${row[33]}`);
+            log(`   Has products: ${Object.keys(products).length > 0}`);
+            log(`   🎯 Final products:`, products);
           }
 
           return {
@@ -510,7 +531,7 @@ export async function GET(req: Request) {
         const startDate = new Date(dateFrom);
         const endDate = new Date(dateTo);
         endDate.setHours(23, 59, 59, 999); // Include the entire end date
-        console.log("📅 Filtering by custom date range:", {
+        log("📅 Filtering by custom date range:", {
           startDate,
           endDate,
         });
@@ -529,18 +550,12 @@ export async function GET(req: Request) {
       } else {
         // Default to current year
         const currentYear = new Date().getFullYear();
-        console.log("📅 Filtering for year:", currentYear);
+        log("📅 Filtering for year:", currentYear);
 
         // Filter ALL entries (including $0 visits) by current year
         yearlyEntries = entries.filter((entry) => {
           const entryDate = new Date(entry.date);
-          const isCurrentYear = entryDate.getFullYear() === currentYear;
-          if (!isCurrentYear && Math.random() < 0.1) {
-            console.log(
-              `❌ Filtered out entry from ${entryDate.getFullYear()}: ${entry.date}`,
-            );
-          }
-          return isCurrentYear;
+          return entryDate.getFullYear() === currentYear;
         });
 
         // Filter only sales entries by current year (for product stats)
@@ -550,8 +565,8 @@ export async function GET(req: Request) {
         });
       }
 
-      console.log("📈 Total visits (all entries):", yearlyEntries.length);
-      console.log("📈 Visits with sales:", yearlySalesEntries.length);
+      log("📈 Total visits (all entries):", yearlyEntries.length);
+      log("📈 Visits with sales:", yearlySalesEntries.length);
 
       const totalSales = yearlyEntries.reduce(
         (sum, entry) => sum + entry.total,
@@ -637,7 +652,7 @@ export async function GET(req: Request) {
         );
       });
 
-      console.log(
+      log(
         "📊 Sample client stats:",
         Object.entries(clientStats)
           .slice(0, 3)
@@ -670,7 +685,7 @@ export async function GET(req: Request) {
 
           // Log suspiciously high quantities
           if (quantity > 1000) {
-            console.log(
+            log(
               `🚨 High quantity detected: ${product} = ${quantity} in entry ${entryIndex} (${entry.clientName})`,
             );
           }
@@ -684,13 +699,12 @@ export async function GET(req: Request) {
         .sort((a, b) => b.quantity - a.quantity)
         .slice(0, 10);
 
-      console.log("Product statistics:", productStats);
-      console.log("Top products calculated:", topProducts);
+      log("Product statistics:", productStats);
+      log("Top products calculated:", topProducts);
 
       // If no products were found (all filtered out), provide fallback data
       if (topProducts.length === 0) {
-        console.log("⚠️  No valid products found, using fallback data");
-        // This will help identify if the issue is with all data being filtered out
+        log("⚠️  No valid products found, using fallback data");
       }
 
       // Monthly trend
@@ -714,51 +728,7 @@ export async function GET(req: Request) {
 
       // Build client vendedor mapping from ALL sheet data (not just current year)
       const anIndex = columnToIndex("AN");
-      console.log("🔍 AN column index calculation:");
-      console.log('  - columnToIndex("AN"):', anIndex);
-      console.log("  - Manual calculation: A=1, N=14, 1*26+14=40, 40-1=39");
-      console.log("  - Should be 39 for column AN");
-      console.log(
-        "🔍 Total columns in sheet:",
-        salesData.data.values?.[0]?.length,
-      );
-      console.log(
-        "🔍 Headers array length:",
-        salesData.data.values?.[0]?.length,
-      );
-      console.log("🔍 All headers:", salesData.data.values?.[0]);
-      console.log(
-        "🔍 Sample header row for AN column:",
-        salesData.data.values?.[0]?.[anIndex],
-      );
-      console.log("🔍 Column AF index:", columnToIndex("AF"));
-      console.log(
-        "🔍 Column AF header:",
-        salesData.data.values?.[0]?.[columnToIndex("AF")],
-      );
-
-      // Debug: Check what columns exist beyond AK
-      const akIndex = columnToIndex("AK");
-      console.log("🔍 Column AK index:", akIndex);
-      console.log(
-        "🔍 Column AK header:",
-        salesData.data.values?.[0]?.[akIndex],
-      );
-      console.log("🔍 Column AL index:", columnToIndex("AL"));
-      console.log(
-        "🔍 Column AL header:",
-        salesData.data.values?.[0]?.[columnToIndex("AL")],
-      );
-      console.log("🔍 Column AM index:", columnToIndex("AM"));
-      console.log(
-        "🔍 Column AM header:",
-        salesData.data.values?.[0]?.[columnToIndex("AM")],
-      );
-      console.log("🔍 Column AN index:", columnToIndex("AN"));
-      console.log(
-        "🔍 Column AN header:",
-        salesData.data.values?.[0]?.[columnToIndex("AN")],
-      );
+      log("🔍 AN column index:", anIndex);
 
       const clientVendedores: Record<string, string> = {};
       let foundVendedores = 0;
@@ -770,19 +740,14 @@ export async function GET(req: Request) {
         if (name && vendedor && !clientVendedores[name]) {
           clientVendedores[name] = vendedor;
           foundVendedores++;
-          console.log(`👤 Client: ${name} -> Vendedor: ${vendedor}`);
         }
       }
 
-      console.log(
+      log(
         "📋 Total client-vendedor mappings found:",
         Object.keys(clientVendedores).length,
       );
-      console.log("📋 Vendedores found during processing:", foundVendedores);
-      console.log(
-        "📋 Sample mappings:",
-        Object.entries(clientVendedores).slice(0, 5),
-      );
+      log("📋 Vendedores found during processing:", foundVendedores);
 
       // Aggregate products by per-row code (AF), normalized - use only sales entries
       const productsByCode: Record<string, Record<string, number>> = {};
@@ -840,7 +805,7 @@ export async function GET(req: Request) {
         .sort((a, b) => b.totalSales - a.totalSales)
         .slice(0, 50);
 
-      console.log("📊 Top Codigos calculated:", topCodigos.slice(0, 5));
+      log("📊 Top Codigos calculated:", topCodigos.slice(0, 5));
 
       const responseData = {
         totalSales,
@@ -854,11 +819,16 @@ export async function GET(req: Request) {
         productsByCode,
         topCodigos,
       };
-      console.log("Final analytics response:", responseData);
-      return NextResponse.json({
+      const response = NextResponse.json({
         success: true,
         data: responseData,
+      }, {
+        headers: {
+          "Cache-Control": "public, s-maxage=30, stale-while-revalidate=60",
+        },
       });
+      after(() => { for (const l of logs) console.log(...l); });
+      return response;
     }
 
     return NextResponse.json(

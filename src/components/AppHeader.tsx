@@ -3,10 +3,11 @@
 import type { LucideIcon } from "lucide-react";
 import { Menu } from "lucide-react";
 import Link from "next/link";
-import { signOut } from "next-auth/react";
+import { signOut, useSession } from "next-auth/react";
 import type React from "react";
 import { useMemo, useState } from "react";
 import { useBuzonNotifications } from "@/hooks/useBuzonNotifications";
+import { isMasterAccount } from "@/utils/auth";
 
 interface NavItem {
   href: string;
@@ -31,6 +32,7 @@ const DEFAULT_NAV_ITEMS: NavItem[] = [
   { href: "/inventario-carro", label: "Inventario Carro" },
   { href: "/admin", label: "Admin" },
   { href: "/navegar", label: "Navegar" },
+  { href: "/transacciones", label: "Transacciones" },
   { href: "/buzon", label: "Buzon" },
   { href: "/inspector-periodos", label: "Inspector Periodos" },
 ];
@@ -43,7 +45,19 @@ export default function AppHeader({
   navItems = DEFAULT_NAV_ITEMS,
 }: AppHeaderProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const { data: session } = useSession();
   const { unseenCount } = useBuzonNotifications();
+  const isMaster = useMemo(
+    () => isMasterAccount(session?.user?.email),
+    [session?.user?.email],
+  );
+  const visibleNavItems = useMemo(
+    () =>
+      navItems.filter(
+        (item) => item.href !== "/transacciones" || Boolean(isMaster),
+      ),
+    [isMaster, navItems],
+  );
   const buzonBadge = useMemo(() => {
     if (unseenCount <= 0) return "";
     return unseenCount > 99 ? "99+" : String(unseenCount);
@@ -101,7 +115,7 @@ export default function AppHeader({
                   />
                   <div className="absolute right-0 mt-2 w-52 rounded-xl bg-white shadow-lg shadow-slate-200/50 border border-slate-200/50 overflow-hidden header-menu-animate origin-top-right z-50">
                     <div className="py-2">
-                      {navItems.map((item) => (
+                      {visibleNavItems.map((item) => (
                         <Link
                           key={item.href}
                           href={item.href}

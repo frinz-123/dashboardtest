@@ -1,20 +1,26 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
+import { Inter } from "next/font/google";
 import "./globals.css";
-import { Agentation } from "agentation";
 import ClientDataPrefetcher from "@/components/ClientDataPrefetcher";
 import AuthProvider from "@/components/providers/AuthProvider";
 import { ZoomPrevention } from "@/components/ZoomPrevention";
+import DevAgentation from "@/components/DevAgentation";
+
+const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "Dashboard El rey",
   description: "Sales dashboard for El rey",
   manifest: "/manifest.json",
-  themeColor: "#14b8a6",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
     title: "Dashboard El rey",
   },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#14b8a6",
 };
 
 export default function RootLayout({
@@ -23,10 +29,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" className={inter.className}>
       <head>
-        <link rel="preconnect" href="https://rsms.me/" />
-        <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
         <link rel="icon" type="image/svg+xml" href="/icons/favicon.svg" />
         <link rel="icon" href="/icons/favicon.ico" sizes="any" />
         <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
@@ -53,6 +57,15 @@ export default function RootLayout({
             document.addEventListener('touchstart', function() {}, {passive: true});
             document.addEventListener('touchmove', function() {}, {passive: true});
             document.addEventListener('wheel', function() {}, {passive: true});
+            if ('serviceWorker' in navigator) {
+              window.addEventListener('load', function() {
+                navigator.serviceWorker.register('/service-worker.js').then(function(reg) {
+                  console.log('[SW] Registered:', reg.scope);
+                }).catch(function(err) {
+                  console.log('[SW] Registration failed:', err);
+                });
+              });
+            }
           `,
           }}
         />
@@ -61,7 +74,7 @@ export default function RootLayout({
         <ZoomPrevention />
         <ClientDataPrefetcher />
         <AuthProvider>{children}</AuthProvider>
-        {process.env.NODE_ENV === "development" && <Agentation />}
+        <DevAgentation />
       </body>
     </html>
   );

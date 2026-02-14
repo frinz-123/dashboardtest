@@ -1,8 +1,23 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { redirect } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { PanelDeInventarioComponent } from "@/components/panel-de-inventario";
+
+const PanelDeInventarioComponent = dynamic(
+  () =>
+    import("@/components/panel-de-inventario").then((m) => ({
+      default: m.PanelDeInventarioComponent,
+    })),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+      </div>
+    ),
+  },
+);
 
 const AUTHORIZED_EMAILS = [
   "cesar.reyes.ochoa@gmail.com",
@@ -18,7 +33,7 @@ export default function InventarioPage() {
 
   // Protect the route - only allow access if logged in and authorized
   if (status === "unauthenticated") {
-    redirect("/api/auth/signin");
+    redirect("/auth/signin");
   }
 
   // Check if user is authorized

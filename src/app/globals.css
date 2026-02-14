@@ -4,25 +4,7 @@
 @tailwind utilities;
 /* eslint-enable */
 
-/* Inter font from rsms.me */
-:root {
-    font-family: Inter, sans-serif;
-    font-feature-settings:
-        "liga" 1,
-        "calt" 1; /* fix for Chrome */
-    --font-inter:
-        "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-        Roboto, Oxygen, Ubuntu, Cantarell, "Open Sans", "Helvetica Neue",
-        sans-serif;
-}
-@supports (font-variation-settings: normal) {
-    :root {
-        font-family: InterVariable, sans-serif;
-    }
-}
-
 body {
-    font-family: var(--font-inter);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
 }
@@ -60,8 +42,8 @@ body {
         --accent-foreground: 0 0% 9%;
         --destructive: 0 84.2% 60.2%;
         --destructive-foreground: 0 0% 98%;
-        --border: 0 0% 89.8%;
-        --input: 0 0% 89.8%;
+        --border: 0 0% 0% / 0.10;
+        --input: 0 0% 0% / 0.10;
         --ring: 0 0% 3.9%;
         --radius: 0.5rem;
         --chart-1: 12 76% 61%;
@@ -106,6 +88,15 @@ body {
     body {
         @apply bg-background text-foreground;
     }
+}
+
+/* Hairline 0.5px borders globally */
+@layer utilities {
+    .border { border-width: 0.5px; }
+    .border-b { border-bottom-width: 0.5px; }
+    .border-t { border-top-width: 0.5px; }
+    .border-l { border-left-width: 0.5px; }
+    .border-r { border-right-width: 0.5px; }
 }
 
 /* Add these styles at the end of the file */

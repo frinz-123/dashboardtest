@@ -1,7 +1,6 @@
 import { google } from "googleapis";
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { auth } from "@/auth";
 import { isMasterAccount } from "@/utils/auth";
 import { sheetsAuth } from "@/utils/googleAuth";
 
@@ -127,7 +126,7 @@ export async function POST(request: Request) {
 // PATCH - Update seenBy
 export async function PATCH(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     const sessionEmail = session?.user?.email?.toLowerCase().trim() || "";
 
     if (!sessionEmail) {
