@@ -857,19 +857,36 @@ function debounce<Args extends unknown[]>(
   };
 }
 
+function getClientDataCache(): { names: string[]; locations: Record<string, { lat: number; lng: number }> } | null {
+  try {
+    const cached = localStorage.getItem("clientData");
+    if (cached) {
+      const parsed = JSON.parse(cached);
+      if (parsed?.names && parsed?.locations) return parsed;
+    }
+  } catch {}
+  return null;
+}
+
 export default function FormPage() {
   const { data: session } = useSession();
   const { toast, success, error, hideToast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
-  const [clientNames, setClientNames] = useState<string[]>([]);
+  const [clientNames, setClientNames] = useState<string[]>(() => {
+    const cache = getClientDataCache();
+    return cache ? cache.names : [];
+  });
   const [filteredClients, setFilteredClients] = useState<string[]>([]);
   const [selectedClient, setSelectedClient] = useState<string>("");
   const [total, setTotal] = useState("0.00");
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [clientLocations, setClientLocations] = useState<
     Record<string, { lat: number; lng: number }>
-  >({});
+  >(() => {
+    const cache = getClientDataCache();
+    return cache ? cache.locations : {};
+  });
   const [currentLocation, setCurrentLocation] = useState<{
     lat: number;
     lng: number;
@@ -879,7 +896,7 @@ export default function FormPage() {
   const [locationAlert, setLocationAlert] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [key, setKey] = useState(0);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() => !getClientDataCache());
   const [cleyOrderValue, setCleyOrderValue] = useState<string>("1");
   const [cleyPhotos, setCleyPhotos] = useState<CleyPhotoPreview[]>([]);
   const [cleyPhotoError, setCleyPhotoError] = useState<string | null>(null);
@@ -1256,7 +1273,6 @@ export default function FormPage() {
 
   // Modify fetchClientNames to handle errors better
   const fetchClientNames = useCallback(async (signal?: AbortSignal) => {
-    setIsLoading(true);
     try {
       const response = await fetch(
         `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:C?key=${googleApiKey}`,
@@ -1342,20 +1358,6 @@ export default function FormPage() {
   }, [clearQueue, queueState.pendingCount, success, error]);
 
   useEffect(() => {
-    try {
-      const cached = localStorage.getItem("clientData");
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (parsed?.names && parsed?.locations) {
-          setClientNames(parsed.names);
-          setClientLocations(parsed.locations);
-          setIsLoading(false);
-        }
-      }
-    } catch (_e) {
-      // ignore cache errors
-    }
-
     const controller = new AbortController();
     fetchClientNames(controller.signal);
     return () => controller.abort();
