@@ -1,5 +1,4 @@
 "use client";
-import { motion } from "motion/react";
 import {
   BarChart2,
   CheckCircle2,
@@ -12,6 +11,7 @@ import {
   TrendingUp,
   Users,
 } from "lucide-react";
+import { motion } from "motion/react";
 import { useSession } from "next-auth/react";
 import React, { useEffect, useState } from "react";
 import { Area, AreaChart, ResponsiveContainer, Tooltip } from "recharts";
@@ -50,6 +50,80 @@ type DateRange = {
 };
 
 const PERIODS: TimePeriod[] = ["Diario", "Ayer", "Semanal", "Mensual"];
+const LIVE_REFRESH_INTERVAL_MS = 15000;
+const FULL_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+
+const parseSheetSales = (
+  values: string[][],
+  options: { includeProducts: boolean },
+): Sale[] => {
+  if (!Array.isArray(values) || values.length <= 1) {
+    return [];
+  }
+
+  const headers = values[0] ?? [];
+  const rows = values.slice(1);
+
+  return rows.map((row) => {
+    const products: Record<string, number> = {};
+
+    if (options.includeProducts) {
+      for (let i = 8; i <= 29; i++) {
+        if (row[i] && row[i] !== "0") {
+          products[headers[i]] = Number.parseInt(row[i], 10);
+        }
+      }
+
+      for (let i = 34; i <= 36; i++) {
+        if (row[i] && row[i] !== "0") {
+          products[headers[i]] = Number.parseInt(row[i], 10);
+        }
+      }
+    }
+
+    const parsedVenta = Number.parseFloat(row[33] ?? "0");
+
+    return {
+      clientName: row[0] || "Unknown",
+      venta: Number.isFinite(parsedVenta) ? parsedVenta : 0,
+      codigo: row[31] || "",
+      fechaSinHora: row[32] || "",
+      email: row[7] || "",
+      products,
+      submissionTime: row[4] && row[4].trim() !== "" ? row[4] : undefined,
+    };
+  });
+};
+
+const getSaleTimestamp = (sale: Sale): number => {
+  const date = new Date(sale.fechaSinHora);
+  if (Number.isNaN(date.getTime())) {
+    return 0;
+  }
+
+  if (sale.submissionTime) {
+    const [hours, minutes, seconds = "0"] = sale.submissionTime.split(":");
+    const h = Number.parseInt(hours ?? "", 10);
+    const m = Number.parseInt(minutes ?? "", 10);
+    const s = Number.parseInt(seconds ?? "", 10);
+
+    if (
+      Number.isFinite(h) &&
+      Number.isFinite(m) &&
+      Number.isFinite(s) &&
+      h >= 0 &&
+      h <= 23 &&
+      m >= 0 &&
+      m <= 59 &&
+      s >= 0 &&
+      s <= 59
+    ) {
+      date.setHours(h, m, s, 0);
+    }
+  }
+
+  return date.getTime();
+};
 
 const getTimeDifference = (period: TimePeriod) => {
   switch (period) {
@@ -148,12 +222,16 @@ export default function Dashboard() {
   const [selectedPeriod, setSelectedPeriod] = useState<TimePeriod>("Diario");
   const [selectedEmail, setSelectedEmail] = useState<string>("");
   const [salesData, setSalesData] = useState<Sale[]>([]);
+  const [liveSalesData, setLiveSalesData] = useState<Sale[]>([]);
+  const [lastLiveRefreshAt, setLastLiveRefreshAt] = useState<Date | null>(null);
   const [showAllSales, setShowAllSales] = useState(false);
   const [selectedClient, setSelectedClient] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
   const [isGoalDetailsOpen, setIsGoalDetailsOpen] = useState(false);
   const clientHistoryRef = React.useRef<HTMLDivElement | null>(null);
+  const isFullRefreshInFlightRef = React.useRef(false);
+  const isLiveRefreshInFlightRef = React.useRef(false);
 
   const _todayKey = new Date().toDateString();
   const periodReferenceDate = React.useMemo(() => new Date(), []);
@@ -170,15 +248,20 @@ export default function Dashboard() {
     [selectedPeriod, periodReferenceDate],
   );
 
+  const emailSourceData = React.useMemo(
+    () => (liveSalesData.length > 0 ? liveSalesData : salesData),
+    [liveSalesData, salesData],
+  );
+
   const emails = React.useMemo(() => {
     const uniqueEmails = new Set<string>();
-    for (const sale of salesData) {
+    for (const sale of emailSourceData) {
       if (sale.email) {
         uniqueEmails.add(sale.email);
       }
     }
     return Array.from(uniqueEmails);
-  }, [salesData]);
+  }, [emailSourceData]);
 
   const emailsSet = React.useMemo(() => new Set(emails), [emails]);
 
@@ -224,40 +307,190 @@ export default function Dashboard() {
     [currencyFormatter],
   );
 
-  const fetchData = React.useCallback(async () => {
-    const response = await fetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:AK?key=${googleApiKey}`,
-    );
-    const data = await response.json();
-    const rows = data.values.slice(1); // Remove header row
-    const sales: Sale[] = rows.map((row: string[]) => {
-      const products: Record<string, number> = {};
-      for (let i = 8; i <= 29; i++) {
-        if (row[i] && row[i] !== "0") {
-          products[data.values[0][i]] = parseInt(row[i], 10);
-        }
+  const fetchSalesFromSheets = React.useCallback(
+    async ({
+      range,
+      includeProducts,
+      forceFresh,
+      mode,
+    }: {
+      range: string;
+      includeProducts: boolean;
+      forceFresh: boolean;
+      mode: "full" | "live";
+    }): Promise<Sale[]> => {
+      if (!googleApiKey || !spreadsheetId || !sheetName) {
+        console.error(
+          "[Dashboard] Missing Google Sheets config, skipping dashboard refresh",
+          {
+            hasApiKey: !!googleApiKey,
+            hasSpreadsheetId: !!spreadsheetId,
+            hasSheetName: !!sheetName,
+            mode,
+          },
+        );
+        return [];
       }
-      for (let i = 34; i <= 36; i++) {
-        if (row[i] && row[i] !== "0") {
-          products[data.values[0][i]] = parseInt(row[i], 10);
-        }
+
+      const url = new URL(
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}`,
+      );
+      url.searchParams.set("key", googleApiKey);
+      if (forceFresh) {
+        url.searchParams.set("_ts", Date.now().toString());
       }
-      return {
-        clientName: row[0] || "Unknown",
-        venta: parseFloat(row[33]),
-        codigo: row[31],
-        fechaSinHora: row[32],
-        email: row[7],
-        products: products,
-        submissionTime: row[4] && row[4].trim() !== "" ? row[4] : undefined,
+
+      const startedAt = Date.now();
+      console.log("[Dashboard] Fetching sales", { mode, forceFresh, range });
+
+      const response = await fetch(url.toString(), {
+        cache: forceFresh ? "no-store" : "default",
+      });
+
+      if (!response.ok) {
+        throw new Error(`Sheets request failed (${response.status})`);
+      }
+
+      const data = (await response.json()) as {
+        values?: string[][];
       };
-    });
-    setSalesData(sales);
-  }, []);
+      const values = Array.isArray(data.values) ? data.values : [];
+      const sales = parseSheetSales(values, { includeProducts });
+
+      console.log("[Dashboard] Sales refresh complete", {
+        mode,
+        rows: sales.length,
+        elapsedMs: Date.now() - startedAt,
+      });
+
+      return sales;
+    },
+    [],
+  );
+
+  const refreshFullSales = React.useCallback(
+    async (reason: string) => {
+      if (isFullRefreshInFlightRef.current) {
+        return;
+      }
+      isFullRefreshInFlightRef.current = true;
+
+      try {
+        const fullSales = await fetchSalesFromSheets({
+          range: `${sheetName}!A:AK`,
+          includeProducts: true,
+          forceFresh: false,
+          mode: "full",
+        });
+
+        setSalesData(fullSales);
+      } catch (error) {
+        console.error("[Dashboard] Full refresh failed", {
+          reason,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      } finally {
+        isFullRefreshInFlightRef.current = false;
+      }
+    },
+    [fetchSalesFromSheets],
+  );
+
+  const refreshLiveSales = React.useCallback(
+    async (reason: string) => {
+      if (isLiveRefreshInFlightRef.current) {
+        return;
+      }
+      isLiveRefreshInFlightRef.current = true;
+
+      try {
+        const liveSales = await fetchSalesFromSheets({
+          range: `${sheetName}!A:AH`,
+          includeProducts: false,
+          forceFresh: true,
+          mode: "live",
+        });
+
+        setLiveSalesData(liveSales);
+        setLastLiveRefreshAt(new Date());
+      } catch (error) {
+        console.error("[Dashboard] Live refresh failed", {
+          reason,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      } finally {
+        isLiveRefreshInFlightRef.current = false;
+      }
+    },
+    [fetchSalesFromSheets],
+  );
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    void refreshFullSales("initial");
+  }, [refreshFullSales]);
+
+  useEffect(() => {
+    void refreshLiveSales("initial");
+
+    const refreshInterval = window.setInterval(() => {
+      void refreshLiveSales("interval");
+    }, LIVE_REFRESH_INTERVAL_MS);
+
+    const handleFocus = () => {
+      void refreshLiveSales("focus");
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void refreshLiveSales("visible");
+      }
+    };
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(refreshInterval);
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [refreshLiveSales]);
+
+  useEffect(() => {
+    const fullRefreshInterval = window.setInterval(() => {
+      void refreshFullSales("interval");
+    }, FULL_REFRESH_INTERVAL_MS);
+
+    return () => {
+      window.clearInterval(fullRefreshInterval);
+    };
+  }, [refreshFullSales]);
+
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) {
+      return;
+    }
+
+    const handleServiceWorkerMessage = (
+      event: MessageEvent<{ type?: string }>,
+    ) => {
+      if (event.data?.type === "SUBMISSION_SUCCESS") {
+        void refreshLiveSales("submission-success");
+      }
+    };
+
+    navigator.serviceWorker.addEventListener(
+      "message",
+      handleServiceWorkerMessage,
+    );
+
+    return () => {
+      navigator.serviceWorker.removeEventListener(
+        "message",
+        handleServiceWorkerMessage,
+      );
+    };
+  }, [refreshLiveSales]);
 
   useEffect(() => {
     if (emails.length === 0) {
@@ -298,9 +531,31 @@ export default function Dashboard() {
     });
   }, [salesData, selectedEmail, selectedPeriodRange]);
 
+  const filteredLiveSales = React.useMemo(() => {
+    if (!selectedEmail) {
+      return [];
+    }
+    return liveSalesData.filter((sale) => {
+      if (sale.email !== selectedEmail) {
+        return false;
+      }
+      return isSaleInRange(sale, selectedPeriodRange);
+    });
+  }, [liveSalesData, selectedEmail, selectedPeriodRange]);
+
+  const realtimeSales = React.useMemo(
+    () => (filteredLiveSales.length > 0 ? filteredLiveSales : filteredSales),
+    [filteredLiveSales, filteredSales],
+  );
+
   const totalSales = React.useMemo(
-    () => filteredSales.reduce((sum, sale) => sum + sale.venta, 0),
-    [filteredSales],
+    () => realtimeSales.reduce((sum, sale) => sum + sale.venta, 0),
+    [realtimeSales],
+  );
+
+  const salesDataForComparison = React.useMemo(
+    () => (liveSalesData.length > 0 ? liveSalesData : salesData),
+    [liveSalesData, salesData],
   );
 
   const previousPeriodTotal = React.useMemo(() => {
@@ -309,7 +564,7 @@ export default function Dashboard() {
     }
     const { startDate, endDate } = previousPeriodRange;
     let total = 0;
-    for (const sale of salesData) {
+    for (const sale of salesDataForComparison) {
       if (sale.email !== selectedEmail) {
         continue;
       }
@@ -319,7 +574,24 @@ export default function Dashboard() {
       }
     }
     return total;
-  }, [previousPeriodRange, salesData, selectedEmail]);
+  }, [previousPeriodRange, salesDataForComparison, selectedEmail]);
+
+  const recentSales = React.useMemo(() => {
+    if (realtimeSales.length === 0) {
+      return [];
+    }
+
+    return [...realtimeSales].sort(
+      (a, b) => getSaleTimestamp(b) - getSaleTimestamp(a),
+    );
+  }, [realtimeSales]);
+
+  const liveRefreshLabel = React.useMemo(() => {
+    if (!lastLiveRefreshAt) {
+      return "Actualizando datos en vivo...";
+    }
+    return `Actualizado ${lastLiveRefreshAt.toLocaleTimeString("es-ES")}`;
+  }, [lastLiveRefreshAt]);
 
   const percentageDifference =
     previousPeriodTotal !== 0
@@ -790,6 +1062,7 @@ export default function Dashboard() {
                 {periodInfo.weekInPeriod}
               </p>
             )}
+            <p className="text-[10px] text-gray-400 mt-1">{liveRefreshLabel}</p>
           </div>
           <div className="mt-3 h-[180px] w-full">
             <ResponsiveContainer width="100%" height="100%">
@@ -1140,7 +1413,10 @@ export default function Dashboard() {
               Señales para decidir tu próxima visita
             </p>
             <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-500">
-              <span>{clientInsights.attentionClients.length} atención (umbral {clientInsights.attentionThreshold} días)</span>
+              <span>
+                {clientInsights.attentionClients.length} atención (umbral{" "}
+                {clientInsights.attentionThreshold} días)
+              </span>
               <span>·</span>
               <span>{clientInsights.topGrowth.length} en crecimiento</span>
               <span>·</span>
@@ -1178,10 +1454,14 @@ export default function Dashboard() {
                     >
                       <div>
                         <p className="text-xs font-medium">{client.client}</p>
-                        <p className="text-xxs text-gray-500">Sin compra reciente</p>
+                        <p className="text-xxs text-gray-500">
+                          Sin compra reciente
+                        </p>
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <span className="text-xs text-gray-500">{client.daysSinceLastPurchase}d</span>
+                        <span className="text-xs text-gray-500">
+                          {client.daysSinceLastPurchase}d
+                        </span>
                         <ChevronRight className="h-4 w-3 text-gray-400" />
                       </div>
                     </button>
@@ -1223,10 +1503,17 @@ export default function Dashboard() {
                     >
                       <div>
                         <p className="text-xs font-medium">{client.client}</p>
-                        <p className="text-xxs text-gray-500">Aumentó vs compra anterior</p>
+                        <p className="text-xxs text-gray-500">
+                          Aumentó vs compra anterior
+                        </p>
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <span className="text-xs text-gray-500 whitespace-nowrap">+{formatCurrency(client.deltaFromPreviousSale as number)}</span>
+                        <span className="text-xs text-gray-500 whitespace-nowrap">
+                          +
+                          {formatCurrency(
+                            client.deltaFromPreviousSale as number,
+                          )}
+                        </span>
                         <ChevronRight className="h-4 w-3 text-gray-400" />
                       </div>
                     </button>
@@ -1242,9 +1529,7 @@ export default function Dashboard() {
             {/* En Riesgo */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <h3 className="text-xs font-medium text-gray-700">
-                  En Riesgo
-                </h3>
+                <h3 className="text-xs font-medium text-gray-700">En Riesgo</h3>
                 <span className="text-xs text-gray-500">
                   {clientInsights.topDecline.length}
                 </span>
@@ -1268,10 +1553,16 @@ export default function Dashboard() {
                     >
                       <div>
                         <p className="text-xs font-medium">{client.client}</p>
-                        <p className="text-xxs text-gray-500">Cayó vs compra anterior</p>
+                        <p className="text-xxs text-gray-500">
+                          Cayó vs compra anterior
+                        </p>
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <span className="text-xs text-gray-500 whitespace-nowrap">{formatCurrency(client.deltaFromPreviousSale as number)}</span>
+                        <span className="text-xs text-gray-500 whitespace-nowrap">
+                          {formatCurrency(
+                            client.deltaFromPreviousSale as number,
+                          )}
+                        </span>
                         <ChevronRight className="h-4 w-3 text-gray-400" />
                       </div>
                     </button>
@@ -1302,9 +1593,8 @@ export default function Dashboard() {
             </div>
           </div>
           <div className="px-3">
-            {filteredSales
-              .slice(0, showAllSales ? undefined : 4)
-              .map((sale) => (
+            {recentSales.length > 0 ? (
+              recentSales.slice(0, showAllSales ? undefined : 4).map((sale) => (
                 <button
                   key={`${sale.codigo}-${sale.fechaSinHora}-${sale.submissionTime ?? ""}-${sale.venta}`}
                   type="button"
@@ -1328,7 +1618,12 @@ export default function Dashboard() {
                     <ChevronRight className="h-4 w-3 text-gray-400" />
                   </div>
                 </button>
-              ))}
+              ))
+            ) : (
+              <p className="text-xs text-gray-500 text-center py-4">
+                No hay ventas recientes para este periodo.
+              </p>
+            )}
           </div>
         </div>
 
