@@ -3,7 +3,7 @@
 import { ShoppingCart } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useSession } from "next-auth/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import AppHeader from "@/components/AppHeader";
 import CleyPhotoCapture, {
   type CleyPhotoPreview,
@@ -873,20 +873,14 @@ export default function FormPage() {
   const { toast, success, error, hideToast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
-  const [clientNames, setClientNames] = useState<string[]>(() => {
-    const cache = getClientDataCache();
-    return cache ? cache.names : [];
-  });
+  const [clientNames, setClientNames] = useState<string[]>([]);
   const [filteredClients, setFilteredClients] = useState<string[]>([]);
   const [selectedClient, setSelectedClient] = useState<string>("");
   const [total, setTotal] = useState("0.00");
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [clientLocations, setClientLocations] = useState<
     Record<string, { lat: number; lng: number }>
-  >(() => {
-    const cache = getClientDataCache();
-    return cache ? cache.locations : {};
-  });
+  >({});
   const [currentLocation, setCurrentLocation] = useState<{
     lat: number;
     lng: number;
@@ -896,7 +890,7 @@ export default function FormPage() {
   const [locationAlert, setLocationAlert] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [key, setKey] = useState(0);
-  const [isLoading, setIsLoading] = useState(() => !getClientDataCache());
+  const [isLoading, setIsLoading] = useState(true);
   const [cleyOrderValue, setCleyOrderValue] = useState<string>("1");
   const [cleyPhotos, setCleyPhotos] = useState<CleyPhotoPreview[]>([]);
   const [cleyPhotoError, setCleyPhotoError] = useState<string | null>(null);
@@ -1356,6 +1350,17 @@ export default function FormPage() {
       error("No se pudo limpiar", "Intenta de nuevo.", 3000);
     }
   }, [clearQueue, queueState.pendingCount, success, error]);
+
+  // Populate from localStorage cache before browser paints to avoid skeleton flash.
+  // useLayoutEffect is not called on the server, so hydration stays stable.
+  useLayoutEffect(() => {
+    const cache = getClientDataCache();
+    if (cache) {
+      setClientNames(cache.names);
+      setClientLocations(cache.locations);
+      setIsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
