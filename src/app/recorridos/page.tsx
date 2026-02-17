@@ -1219,7 +1219,7 @@ export default function RecorridosPage() {
   // ===== RENDER =====
   if (status === "loading" || loading || !dataLoaded) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex flex-col items-center justify-center gap-4">
+      <div className="min-h-screen bg-white flex flex-col items-center justify-center gap-4">
         <div className="relative">
           <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/25">
             <Route className="h-8 w-8 text-white animate-pulse" />
@@ -1260,7 +1260,7 @@ export default function RecorridosPage() {
       />
 
       <div
-        className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50"
+        className="min-h-screen bg-white"
         style={{
           fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
         }}

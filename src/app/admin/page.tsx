@@ -461,7 +461,7 @@ export default function AdminPage() {
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center px-4 sm:px-6 lg:px-8">
+      <div className="min-h-screen bg-white flex items-center justify-center px-4 sm:px-6 lg:px-8">
         <div className="max-w-md w-full space-y-8">
           <div>
             <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
@@ -511,7 +511,7 @@ export default function AdminPage() {
 
   return (
     <div
-      className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50 font-sans w-full"
+      className="min-h-screen bg-white font-sans w-full"
       style={{ fontFamily: "Inter, sans-serif", fontSize: "0.8rem" }}
     >
       <AppHeader title="Admin" icon={BarChart2} />

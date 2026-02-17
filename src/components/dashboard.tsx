@@ -1,5 +1,5 @@
 "use client";
-import { motion } from "framer-motion";
+import { motion } from "motion/react";
 import {
   BarChart2,
   CheckCircle2,
@@ -716,7 +716,7 @@ export default function Dashboard() {
 
   return (
     <div
-      className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-50 font-sans w-full"
+      className="min-h-screen bg-white font-sans w-full"
       style={{ fontFamily: "Inter, sans-serif", fontSize: "0.82rem" }}
     >
       <AppHeader title="Dashboard" icon={BarChart2}>
@@ -1131,332 +1131,158 @@ export default function Dashboard() {
           )}
         </div>
 
-        <div className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_0_rgba(15,23,42,0.04),0_12px_28px_rgba(15,23,42,0.06)] mb-3">
-          <div className="relative flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <div className="min-w-0">
-                  <h2 className="text-sm font-semibold text-slate-900 tracking-tight">
-                    Clientes a Visitar
-                  </h2>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Señales para decidir tu próxima visita
-                  </p>
-                </div>
-              </div>
-
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700 ring-1 ring-inset ring-amber-200/60">
-                  <Clock className="h-3.5 w-3.5" />
-                  {clientInsights.attentionClients.length} atención (umbral{" "}
-                  {clientInsights.attentionThreshold} días)
-                </span>
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200/60">
-                  <TrendingUp className="h-3.5 w-3.5" />
-                  {clientInsights.topGrowth.length} en crecimiento
-                </span>
-                <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-700 ring-1 ring-inset ring-rose-200/60">
-                  <TrendingDown className="h-3.5 w-3.5" />
-                  {clientInsights.topDecline.length} en riesgo
-                </span>
-              </div>
-            </div>
-
-            <div className="flex shrink-0 items-center gap-2">
-              <span className="hidden sm:inline-flex items-center rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 ring-1 ring-inset ring-slate-200/70">
-                Inteligencia
-              </span>
+        <div className="bg-white rounded-lg mb-3 border border-[#E2E4E9]">
+          <div className="p-3 pb-1.5">
+            <h2 className="text-gray-700 font-medium flex items-center text-sm">
+              <Clock className="mr-1.5 h-4 w-4" /> Clientes a Visitar
+            </h2>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Señales para decidir tu próxima visita
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+              <span>{clientInsights.attentionClients.length} atención (umbral {clientInsights.attentionThreshold} días)</span>
+              <span>·</span>
+              <span>{clientInsights.topGrowth.length} en crecimiento</span>
+              <span>·</span>
+              <span>{clientInsights.topDecline.length} en riesgo</span>
             </div>
           </div>
 
-          <div className="relative mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-40px" }}
-              transition={{ duration: 0.35, ease: "easeOut" }}
-              className="rounded-2xl bg-white ring-1 ring-inset ring-amber-200/60 shadow-sm"
-            >
-              <div className="flex items-start justify-between gap-3 p-4">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <div className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-amber-100 text-amber-700">
-                      <Clock className="h-4 w-4" />
-                    </div>
-                    <div>
-                      <h3 className="text-xs font-semibold text-slate-900 uppercase tracking-wide">
-                        Necesitan Atención
-                      </h3>
-                      <p className="text-[11px] text-slate-500 mt-0.5">
-                        Umbral: {clientInsights.attentionThreshold} días sin
-                        compra
-                      </p>
-                    </div>
-                  </div>
-                </div>
-                <span className="inline-flex items-center rounded-full bg-white/70 px-2 py-1 text-[11px] font-semibold text-amber-700 ring-1 ring-inset ring-amber-200/60">
+          <div className="px-3 pb-3 space-y-3">
+            {/* Necesitan Atención */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <h3 className="text-xs font-medium text-gray-700">
+                  Necesitan Atención
+                </h3>
+                <span className="text-xs text-gray-500">
                   {clientInsights.attentionClients.length}
                 </span>
               </div>
-
-              <div className="px-2 pb-2">
-                {clientInsights.attentionClients.length > 0 ? (
-                  <div className="space-y-2">
-                    {clientInsights.attentionClients.map((client, idx) => (
-                      <button
-                        key={client.client}
-                        type="button"
-                        onClick={() => {
-                          setSelectedClient(client.client);
-                          clientHistoryRef.current?.scrollIntoView({
-                            behavior: "smooth",
-                            block: "start",
-                          });
-                        }}
-                        className={`group w-full rounded-xl px-3 py-3 text-left ring-1 ring-inset hover:bg-white hover:ring-slate-300/70 hover:shadow-sm transition ${
-                          selectedClient === client.client
-                            ? "bg-white ring-slate-300/70 shadow-sm"
-                            : "bg-white/70 ring-slate-200/60"
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex min-w-0 items-start gap-3">
-                            <div className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white text-[11px] font-bold">
-                              {client.client.substring(0, 2).toUpperCase()}
-                            </div>
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-2">
-                                <p className="text-sm font-semibold text-slate-900 truncate">
-                                  {client.client}
-                                </p>
-                                <span className="inline-flex items-center rounded-full bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600 ring-1 ring-inset ring-slate-200/70">
-                                  #{idx + 1}
-                                </span>
-                              </div>
-                              <p className="text-[11px] text-slate-500 mt-0.5">
-                                Sin compra reciente
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-2">
-                            <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700 ring-1 ring-inset ring-amber-200/60">
-                              {client.daysSinceLastPurchase} d
-                            </span>
-                            <ChevronRight className="h-4 w-4 text-slate-400 group-hover:text-slate-700 transition-colors" />
-                          </div>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center py-10 text-center">
-                    <div className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-white/70 ring-1 ring-inset ring-slate-200/70 shadow-sm">
-                      <CheckCircle2 className="h-5 w-5 text-slate-400" />
-                    </div>
-                    <p className="text-xs text-slate-700 font-semibold mt-3">
-                      Todo bajo control
-                    </p>
-                    <p className="text-[11px] text-slate-500 mt-0.5">
-                      No hay clientes fuera del umbral
-                    </p>
-                  </div>
-                )}
-              </div>
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-40px" }}
-              transition={{ duration: 0.35, ease: "easeOut", delay: 0.05 }}
-              className="rounded-2xl bg-white ring-1 ring-inset ring-emerald-200/60 shadow-sm"
-            >
-              <div className="flex items-start justify-between gap-3 p-4">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <div className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700">
-                      <TrendingUp className="h-4 w-4" />
-                    </div>
-                    <div>
-                      <h3 className="text-xs font-semibold text-slate-900 uppercase tracking-wide">
-                        En Crecimiento
-                      </h3>
-                      <p className="text-[11px] text-slate-500 mt-0.5">
-                        Oportunidad para aumentar ticket
-                      </p>
-                    </div>
-                  </div>
+              {clientInsights.attentionClients.length > 0 ? (
+                <div>
+                  {clientInsights.attentionClients.map((client, idx) => (
+                    <button
+                      key={client.client}
+                      type="button"
+                      onClick={() => {
+                        setSelectedClient(client.client);
+                        clientHistoryRef.current?.scrollIntoView({
+                          behavior: "smooth",
+                          block: "start",
+                        });
+                      }}
+                      className={`w-full flex items-center justify-between py-2 border-b last:border-b-0 hover:bg-gray-50 text-left transition ${
+                        selectedClient === client.client ? "bg-gray-50" : ""
+                      }`}
+                    >
+                      <div>
+                        <p className="text-xs font-medium">{client.client}</p>
+                        <p className="text-xxs text-gray-500">Sin compra reciente</p>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs text-gray-500">{client.daysSinceLastPurchase}d</span>
+                        <ChevronRight className="h-4 w-3 text-gray-400" />
+                      </div>
+                    </button>
+                  ))}
                 </div>
-                <span className="inline-flex items-center rounded-full bg-white/70 px-2 py-1 text-[11px] font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200/60">
+              ) : (
+                <p className="text-xs text-gray-500 py-3 text-center">
+                  Todo bajo control — no hay clientes fuera del umbral
+                </p>
+              )}
+            </div>
+
+            {/* En Crecimiento */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <h3 className="text-xs font-medium text-gray-700">
+                  En Crecimiento
+                </h3>
+                <span className="text-xs text-gray-500">
                   {clientInsights.topGrowth.length}
                 </span>
               </div>
-
-              <div className="px-2 pb-2">
-                {clientInsights.topGrowth.length > 0 ? (
-                  <div className="space-y-2">
-                    {clientInsights.topGrowth.map((client, idx) => (
-                      <button
-                        key={client.client}
-                        type="button"
-                        onClick={() => {
-                          setSelectedClient(client.client);
-                          clientHistoryRef.current?.scrollIntoView({
-                            behavior: "smooth",
-                            block: "start",
-                          });
-                        }}
-                        className={`group w-full rounded-xl px-3 py-3 text-left ring-1 ring-inset hover:bg-white hover:ring-slate-300/70 hover:shadow-sm transition ${
-                          selectedClient === client.client
-                            ? "bg-white ring-slate-300/70 shadow-sm"
-                            : "bg-white/70 ring-slate-200/60"
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex min-w-0 items-start gap-3">
-                            <div className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-700 text-white text-[11px] font-bold shadow-sm">
-                              +
-                            </div>
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-2">
-                                <p className="text-sm font-semibold text-slate-900 truncate">
-                                  {client.client}
-                                </p>
-                                <span className="inline-flex items-center rounded-full bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600 ring-1 ring-inset ring-slate-200/70">
-                                  #{idx + 1}
-                                </span>
-                              </div>
-                              <p className="text-[11px] text-slate-500 mt-0.5">
-                                Aumentó vs compra anterior
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-2">
-                            <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-200/60 whitespace-nowrap">
-                              +
-                              {formatCurrency(
-                                client.deltaFromPreviousSale as number,
-                              )}
-                            </span>
-                            <ChevronRight className="h-4 w-4 text-slate-400 group-hover:text-slate-700 transition-colors" />
-                          </div>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center py-10 text-center">
-                    <div className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-white/70 ring-1 ring-inset ring-slate-200/70 shadow-sm">
-                      <TrendingUp className="h-5 w-5 text-slate-400" />
-                    </div>
-                    <p className="text-xs text-slate-700 font-semibold mt-3">
-                      Sin señales de crecimiento
-                    </p>
-                    <p className="text-[11px] text-slate-500 mt-0.5">
-                      Vuelve a revisar el siguiente periodo
-                    </p>
-                  </div>
-                )}
-              </div>
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-40px" }}
-              transition={{ duration: 0.35, ease: "easeOut", delay: 0.1 }}
-              className="rounded-2xl bg-white ring-1 ring-inset ring-rose-200/60 shadow-sm sm:col-span-2"
-            >
-              <div className="flex items-start justify-between gap-3 p-4">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <div className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-rose-100 text-rose-700">
-                      <TrendingDown className="h-4 w-4" />
-                    </div>
-                    <div>
-                      <h3 className="text-xs font-semibold text-slate-900 uppercase tracking-wide">
-                        En Riesgo
-                      </h3>
-                      <p className="text-[11px] text-slate-500 mt-0.5">
-                        Prioriza un contacto
-                      </p>
-                    </div>
-                  </div>
+              {clientInsights.topGrowth.length > 0 ? (
+                <div>
+                  {clientInsights.topGrowth.map((client, idx) => (
+                    <button
+                      key={client.client}
+                      type="button"
+                      onClick={() => {
+                        setSelectedClient(client.client);
+                        clientHistoryRef.current?.scrollIntoView({
+                          behavior: "smooth",
+                          block: "start",
+                        });
+                      }}
+                      className={`w-full flex items-center justify-between py-2 border-b last:border-b-0 hover:bg-gray-50 text-left transition ${
+                        selectedClient === client.client ? "bg-gray-50" : ""
+                      }`}
+                    >
+                      <div>
+                        <p className="text-xs font-medium">{client.client}</p>
+                        <p className="text-xxs text-gray-500">Aumentó vs compra anterior</p>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs text-gray-500 whitespace-nowrap">+{formatCurrency(client.deltaFromPreviousSale as number)}</span>
+                        <ChevronRight className="h-4 w-3 text-gray-400" />
+                      </div>
+                    </button>
+                  ))}
                 </div>
-                <span className="inline-flex items-center rounded-full bg-white/70 px-2 py-1 text-[11px] font-semibold text-rose-700 ring-1 ring-inset ring-rose-200/60">
+              ) : (
+                <p className="text-xs text-gray-500 py-3 text-center">
+                  Sin señales de crecimiento
+                </p>
+              )}
+            </div>
+
+            {/* En Riesgo */}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <h3 className="text-xs font-medium text-gray-700">
+                  En Riesgo
+                </h3>
+                <span className="text-xs text-gray-500">
                   {clientInsights.topDecline.length}
                 </span>
               </div>
-
-              <div className="px-2 pb-2">
-                {clientInsights.topDecline.length > 0 ? (
-                  <div className="space-y-2">
-                    {clientInsights.topDecline.map((client, idx) => (
-                      <button
-                        key={client.client}
-                        type="button"
-                        onClick={() => {
-                          setSelectedClient(client.client);
-                          clientHistoryRef.current?.scrollIntoView({
-                            behavior: "smooth",
-                            block: "start",
-                          });
-                        }}
-                        className={`group w-full rounded-xl px-3 py-3 text-left ring-1 ring-inset hover:bg-white hover:ring-slate-300/70 hover:shadow-sm transition ${
-                          selectedClient === client.client
-                            ? "bg-white ring-slate-300/70 shadow-sm"
-                            : "bg-white/70 ring-slate-200/60"
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex min-w-0 items-start gap-3">
-                            <div className="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-rose-700 text-white text-[11px] font-bold shadow-sm">
-                              -
-                            </div>
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-2">
-                                <p className="text-sm font-semibold text-slate-900 truncate">
-                                  {client.client}
-                                </p>
-                                <span className="inline-flex items-center rounded-full bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600 ring-1 ring-inset ring-slate-200/70">
-                                  #{idx + 1}
-                                </span>
-                              </div>
-                              <p className="text-[11px] text-slate-500 mt-0.5">
-                                Cayó vs compra anterior
-                              </p>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-2">
-                            <span className="inline-flex items-center rounded-full bg-rose-50 px-2 py-1 text-[11px] font-semibold text-rose-700 ring-1 ring-inset ring-rose-200/60 whitespace-nowrap">
-                              {formatCurrency(
-                                client.deltaFromPreviousSale as number,
-                              )}
-                            </span>
-                            <ChevronRight className="h-4 w-4 text-slate-400 group-hover:text-slate-700 transition-colors" />
-                          </div>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center justify-center py-10 text-center">
-                    <div className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-white/70 ring-1 ring-inset ring-slate-200/70 shadow-sm">
-                      <CheckCircle2 className="h-5 w-5 text-slate-400" />
-                    </div>
-                    <p className="text-xs text-slate-700 font-semibold mt-3">
-                      Sin caídas significativas
-                    </p>
-                    <p className="text-[11px] text-slate-500 mt-0.5">
-                      Mantén el seguimiento
-                    </p>
-                  </div>
-                )}
-              </div>
-            </motion.div>
+              {clientInsights.topDecline.length > 0 ? (
+                <div>
+                  {clientInsights.topDecline.map((client, idx) => (
+                    <button
+                      key={client.client}
+                      type="button"
+                      onClick={() => {
+                        setSelectedClient(client.client);
+                        clientHistoryRef.current?.scrollIntoView({
+                          behavior: "smooth",
+                          block: "start",
+                        });
+                      }}
+                      className={`w-full flex items-center justify-between py-2 border-b last:border-b-0 hover:bg-gray-50 text-left transition ${
+                        selectedClient === client.client ? "bg-gray-50" : ""
+                      }`}
+                    >
+                      <div>
+                        <p className="text-xs font-medium">{client.client}</p>
+                        <p className="text-xxs text-gray-500">Cayó vs compra anterior</p>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs text-gray-500 whitespace-nowrap">{formatCurrency(client.deltaFromPreviousSale as number)}</span>
+                        <ChevronRight className="h-4 w-3 text-gray-400" />
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-gray-500 py-3 text-center">
+                  Sin caídas significativas
+                </p>
+              )}
+            </div>
           </div>
         </div>
 

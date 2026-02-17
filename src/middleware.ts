@@ -1,14 +1,15 @@
-export { default } from "next-auth/middleware";
+import { auth } from "@/auth";
+
+export default auth((req) => {
+  if (!req.auth) {
+    const signInUrl = new URL("/auth/signin", req.url);
+    signInUrl.searchParams.set("callbackUrl", req.url);
+    return Response.redirect(signInUrl);
+  }
+});
 
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - api/auth (auth endpoints)
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     */
-    "/((?!api/auth|_next/static|_next/image|favicon.ico).*)",
+    "/((?!api/auth|auth/signin|auth/error|login|_next/static|_next/image|favicon.ico|icons|manifest.json|service-worker.js).*)",
   ],
 };

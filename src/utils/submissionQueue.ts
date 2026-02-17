@@ -50,7 +50,7 @@ export interface QueuedSubmission {
     actorEmail: string | null;
     isAdminOverride: boolean;
     overrideTargetEmail: string | null;
-    date: string;
+    date: string | null;
     cleyOrderValue: string | null;
     overridePeriod: string | null;
     overrideMonthCode: string | null;

@@ -1,7 +1,6 @@
 import { google } from "googleapis";
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { auth } from "@/auth";
 import { isMasterAccount } from "@/utils/auth";
 import { sheetsAuth } from "@/utils/googleAuth";
 
@@ -24,7 +23,7 @@ const parseSeenBy = (value?: string): Set<string> => {
 
 export async function GET() {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     const email = session?.user?.email?.toLowerCase().trim() || "";
 
     if (!email) {

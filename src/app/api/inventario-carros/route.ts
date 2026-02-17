@@ -1,7 +1,6 @@
 import { google } from "googleapis";
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { auth } from "@/auth";
 import { EMAIL_TO_VENDOR_LABELS, isInventarioCarroAdmin } from "@/utils/auth";
 import { getCurrentPeriodInfo } from "@/utils/dateUtils";
 import { sheetsAuth } from "@/utils/googleAuth";
@@ -154,7 +153,7 @@ const normalizeRow = (row: string[], rowNumber: number): LedgerRow => ({
 });
 
 const getSessionEmail = async () => {
-  const session = await getServerSession(authOptions);
+  const session = await auth();
   return session?.user?.email?.toLowerCase().trim() || "";
 };
 
