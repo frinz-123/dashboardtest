@@ -1212,10 +1212,10 @@ export default function InventarioCarroPage() {
     <div className="min-h-screen bg-white">
       <AppHeader title="Inventario Carro" icon={Truck} />
       <main className="px-4 py-5 max-w-5xl mx-auto space-y-4">
-        <h1 className="text-[28px] md:text-[64px] font-bold tracking-[-0.03em] leading-none text-slate-900">
+        <h1 className="text-[28px] md:text-[64px] font-bold tracking-[-0.03em] leading-none text-slate-900 px-4">
           <Calligraph>{selectedSellerDisplayName}</Calligraph>
         </h1>
-        <section className="bg-white rounded-2xl border border-slate-200 p-4 space-y-3 shadow-sm">
+        <section className="bg-white rounded-2xl p-4 space-y-3">
           <div className="flex flex-wrap items-center gap-3 justify-between">
             <div>
               <h2 className="text-lg font-semibold text-slate-900">
@@ -1230,10 +1230,10 @@ export default function InventarioCarroPage() {
               <button
                 type="button"
                 onClick={handleRefresh}
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-700 hover:bg-slate-100"
+                className="inline-flex items-center justify-center px-3 py-2 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-100"
+                aria-label="Actualizar"
               >
                 <RefreshCcw className="h-4 w-4" />
-                Actualizar
               </button>
               <button
                 type="button"
@@ -1332,7 +1332,8 @@ export default function InventarioCarroPage() {
           )}
         </section>
 
-        <section className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
+        {selectedSeller && <>
+        <section className="bg-white rounded-2xl p-4">
           <p className="text-xs text-slate-500">Valor de inventario</p>
           <p className="text-2xl font-semibold text-slate-900">
             ${formatNumber(valorInventario)}
@@ -1480,6 +1481,7 @@ export default function InventarioCarroPage() {
             </table>
           </div>
         </section>
+        </>}
       </main>
 
       <Dialog
