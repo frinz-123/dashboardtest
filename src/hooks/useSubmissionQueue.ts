@@ -280,17 +280,30 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
           index++
         ) {
           const photoId = photoIds[index];
+
+          // Pre-check: is the blob still in IndexedDB?
+          const stored = await getPhoto(photoId);
+          if (!stored) {
+            const err = new Error(
+              `Foto perdida (${index + 1}/${photoIds.length}). Elimina este pedido y crealo de nuevo.`,
+            ) as Error & { code?: string };
+            err.code = "PHOTO_LOST";
+            throw err;
+          }
+
           const url = await uploadPhoto(photoId, item.id);
           existingUrls.push(url);
+
+          // Save progress after EACH successful upload
+          await submissionQueue.update(item.id, {
+            payload: { ...item.payload, photoUrls: [...existingUrls] },
+          });
         }
 
         const updatedPayload = {
           ...item.payload,
           photoUrls: existingUrls,
         };
-        await submissionQueue.update(item.id, {
-          payload: updatedPayload,
-        });
 
         return {
           success: true,
@@ -298,10 +311,11 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
         };
       } catch (error: unknown) {
         const isDuplicate = getErrorCode(error) === "DUPLICATE_PHOTO";
+        const isPhotoLost = getErrorCode(error) === "PHOTO_LOST";
         return {
           success: false,
           error: getErrorMessage(error) || "No se pudieron subir las fotos",
-          fatal: isDuplicate,
+          fatal: isDuplicate || isPhotoLost,
         };
       }
     },

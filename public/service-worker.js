@@ -362,13 +362,24 @@ async function ensurePhotoUploads(submission) {
 
   for (let index = existingUrls.length; index < photoIds.length; index++) {
     const photoId = photoIds[index];
+
+    // Pre-check: is the blob still in IndexedDB?
+    const record = await getPhotoRecord(photoId);
+    if (!record || !record.blob) {
+      throw new Error(
+        `PHOTO_LOST:Foto perdida (${index + 1}/${photoIds.length}). Elimina este pedido y crealo de nuevo.`,
+      );
+    }
+
     const url = await uploadPhotoBlob(photoId, submission.id);
     existingUrls.push(url);
+
+    // Save progress after EACH successful upload
+    const progressPayload = { ...submission.payload, photoUrls: [...existingUrls] };
+    await updateSubmission(submission.id, { payload: progressPayload });
   }
 
   const updatedPayload = { ...submission.payload, photoUrls: existingUrls };
-  await updateSubmission(submission.id, { payload: updatedPayload });
-
   return { ...submission, payload: updatedPayload };
 }
 
@@ -468,23 +479,29 @@ async function processQueuedOrders() {
         const isDuplicate =
           typeof errorMessage === "string" &&
           errorMessage.startsWith("DUPLICATE_PHOTO:");
+        const isPhotoLost =
+          typeof errorMessage === "string" &&
+          errorMessage.startsWith("PHOTO_LOST:");
 
         const newRetryCount = (submission.retryCount || 0) + 1;
 
-        if (isDuplicate) {
+        if (isDuplicate || isPhotoLost) {
           const cleanMessage = errorMessage
-            .replace(/^DUPLICATE_PHOTO:/, "")
+            .replace(/^(DUPLICATE_PHOTO|PHOTO_LOST):/, "")
             .trim();
+          const fallbackMessage = isPhotoLost
+            ? "Foto perdida. Elimina este pedido y crealo de nuevo."
+            : "Foto duplicada. Toma una nueva.";
           await updateSubmission(submission.id, {
             status: "failed",
             retryCount: newRetryCount,
-            errorMessage: cleanMessage || "Foto duplicada. Toma una nueva.",
+            errorMessage: cleanMessage || fallbackMessage,
           });
 
           notifyClients({
             type: "SUBMISSION_FAILED",
             submissionId: submission.id,
-            error: cleanMessage || "Foto duplicada. Toma una nueva.",
+            error: cleanMessage || fallbackMessage,
           });
 
           results.failed++;
