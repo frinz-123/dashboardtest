@@ -232,7 +232,7 @@ export default function Dashboard() {
     const rows = data.values.slice(1); // Remove header row
     const sales: Sale[] = rows.map((row: string[]) => {
       const products: Record<string, number> = {};
-      for (let i = 8; i <= 30; i++) {
+      for (let i = 8; i <= 29; i++) {
         if (row[i] && row[i] !== "0") {
           products[data.values[0][i]] = parseInt(row[i], 10);
         }

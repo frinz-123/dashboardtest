@@ -510,7 +510,7 @@ export default function InspectorPeriodosPage() {
 
       const sales: Sale[] = rows.map((row: string[]) => {
         const products: Record<string, number> = {};
-        for (let i = 8; i <= 30; i++) {
+        for (let i = 8; i <= 29; i++) {
           if (row[i] && row[i] !== "0") {
             products[headers[i]] = parseInt(row[i], 10);
           }
