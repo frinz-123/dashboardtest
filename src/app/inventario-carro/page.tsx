@@ -706,14 +706,12 @@ export default function InventarioCarroPage() {
     () => Object.entries(EMAIL_TO_VENDOR_LABELS),
     [],
   );
-
-  useEffect(() => {
-    if (selectedSeller) return;
-    const firstSeller = vendorOptions[0]?.[0] || "";
-    if (firstSeller) {
-      setSelectedSeller(firstSeller);
+  const selectedSellerDisplayName = useMemo(() => {
+    if (selectedSeller) {
+      return EMAIL_TO_VENDOR_LABELS[selectedSeller] || selectedSeller;
     }
-  }, [selectedSeller, vendorOptions]);
+    return "Selecciona un vendedor";
+  }, [selectedSeller]);
 
   useEffect(() => {
     if (status !== "authenticated" || !isAdmin) return;
@@ -1213,6 +1211,9 @@ export default function InventarioCarroPage() {
     <div className="min-h-screen bg-white">
       <AppHeader title="Inventario Carro" icon={Truck} />
       <main className="px-4 py-5 max-w-5xl mx-auto space-y-4">
+        <h1 className="text-[28px] md:text-[64px] font-bold tracking-[-0.03em] leading-none text-slate-900">
+          {selectedSellerDisplayName}
+        </h1>
         <section className="bg-white rounded-2xl border border-slate-200 p-4 space-y-3 shadow-sm">
           <div className="flex flex-wrap items-center gap-3 justify-between">
             <div>
@@ -1264,9 +1265,12 @@ export default function InventarioCarroPage() {
               <select
                 id="filter-seller"
                 value={selectedSeller || ""}
-                onChange={(event) => setSelectedSeller(event.target.value)}
+                onChange={(event) =>
+                  setSelectedSeller(event.target.value || null)
+                }
                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
               >
+                <option value="">Selecciona un vendedor</option>
                 {vendorOptions.map(([email, label]) => (
                   <option key={email} value={email}>
                     {label}
