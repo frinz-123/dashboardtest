@@ -21,6 +21,7 @@ mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
 const _DEFAULT_CENTER = { lng: -110.962, lat: 29.072 }; // Hermosillo, Sonora, MX
 const FALLBACK_CENTER = { lng: -107.394, lat: 24.8091 }; // Culiacán, Sinaloa
 const DEBUG_AREA_SELECTION = process.env.NODE_ENV !== "production";
+const DEBUG_MARKER_TOUCH = process.env.NODE_ENV !== "production";
 
 // Function to get pin color based on codigo
 const getPinColor = (codigo?: string, isSelected: boolean = false) => {
@@ -472,7 +473,9 @@ const NavegarMap = forwardRef(function NavegarMap(
   // Add/Update markers
   useEffect(() => {
     if (!map.current) return;
-    markers.current.forEach((m) => m.remove());
+    markers.current.forEach((m) => {
+      m.remove();
+    });
     markers.current = [];
     // Add client markers
     clients.forEach((client) => {
@@ -501,10 +504,63 @@ const NavegarMap = forwardRef(function NavegarMap(
       const isManualDrawingActive = showDibujo && isManualDibujo;
       el.style.pointerEvents = isManualDrawingActive ? "none" : "auto";
       if (!isManualDrawingActive) {
-        el.onclick = (e) => {
-          e.stopPropagation();
+        const selectClient = () => {
+          if (DEBUG_MARKER_TOUCH) {
+            console.debug("[NavegarMap][marker] select", client.name);
+          }
           onSelectClient?.(client.name);
         };
+
+        el.onclick = (e) => {
+          e.stopPropagation();
+          selectClient();
+        };
+
+        let touchStartPoint: { x: number; y: number } | null = null;
+
+        el.addEventListener(
+          "touchstart",
+          (event) => {
+            const touch = event.touches[0];
+            if (!touch) return;
+            touchStartPoint = { x: touch.clientX, y: touch.clientY };
+            if (DEBUG_MARKER_TOUCH) {
+              console.debug("[NavegarMap][marker] touchstart", {
+                client: client.name,
+                x: touch.clientX,
+                y: touch.clientY,
+              });
+            }
+          },
+          { passive: true },
+        );
+
+        el.addEventListener("touchend", (event) => {
+          const changedTouch = event.changedTouches[0];
+          if (!changedTouch || !touchStartPoint) return;
+
+          const dx = Math.abs(changedTouch.clientX - touchStartPoint.x);
+          const dy = Math.abs(changedTouch.clientY - touchStartPoint.y);
+          const TAP_MAX_MOVE = 12;
+          const isTap = dx <= TAP_MAX_MOVE && dy <= TAP_MAX_MOVE;
+          touchStartPoint = null;
+
+          if (DEBUG_MARKER_TOUCH) {
+            console.debug("[NavegarMap][marker] touchend", {
+              client: client.name,
+              dx,
+              dy,
+              isTap,
+            });
+          }
+
+          if (!isTap) return;
+
+          // Avoid map pan gesture finishing into click suppression.
+          event.preventDefault();
+          event.stopPropagation();
+          selectClient();
+        });
       }
       const marker = new mapboxgl.Marker(el)
         .setLngLat([client.lng, client.lat])
