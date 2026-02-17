@@ -1,5 +1,6 @@
 "use client";
 
+import { Calligraph } from "calligraph";
 import {
   Calendar,
   Check,
@@ -1213,6 +1214,7 @@ export default function InventarioCarroPage() {
       <main className="px-4 py-5 max-w-5xl mx-auto space-y-4">
         <h1 className="text-[28px] md:text-[64px] font-bold tracking-[-0.03em] leading-none text-slate-900">
           {selectedSellerDisplayName}
+          <Calligraph>{selectedSellerDisplayName}</Calligraph>
         </h1>
         <section className="bg-white rounded-2xl border border-slate-200 p-4 space-y-3 shadow-sm">
           <div className="flex flex-wrap items-center gap-3 justify-between">
