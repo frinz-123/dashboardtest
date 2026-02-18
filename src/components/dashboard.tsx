@@ -223,7 +223,7 @@ export default function Dashboard() {
   const [selectedEmail, setSelectedEmail] = useState<string>("");
   const [salesData, setSalesData] = useState<Sale[]>([]);
   const [liveSalesData, setLiveSalesData] = useState<Sale[]>([]);
-  const [lastLiveRefreshAt, setLastLiveRefreshAt] = useState<Date | null>(null);
+  const [isLiveRefreshing, setIsLiveRefreshing] = useState(false);
   const [showAllSales, setShowAllSales] = useState(false);
   const [selectedClient, setSelectedClient] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -402,6 +402,7 @@ export default function Dashboard() {
         return;
       }
       isLiveRefreshInFlightRef.current = true;
+      setIsLiveRefreshing(true);
 
       try {
         const liveSales = await fetchSalesFromSheets({
@@ -412,13 +413,13 @@ export default function Dashboard() {
         });
 
         setLiveSalesData(liveSales);
-        setLastLiveRefreshAt(new Date());
       } catch (error) {
         console.error("[Dashboard] Live refresh failed", {
           reason,
           error: error instanceof Error ? error.message : String(error),
         });
       } finally {
+        setIsLiveRefreshing(false);
         isLiveRefreshInFlightRef.current = false;
       }
     },
@@ -585,13 +586,6 @@ export default function Dashboard() {
       (a, b) => getSaleTimestamp(b) - getSaleTimestamp(a),
     );
   }, [realtimeSales]);
-
-  const liveRefreshLabel = React.useMemo(() => {
-    if (!lastLiveRefreshAt) {
-      return "Actualizando datos en vivo...";
-    }
-    return `Actualizado ${lastLiveRefreshAt.toLocaleTimeString("es-ES")}`;
-  }, [lastLiveRefreshAt]);
 
   const percentageDifference =
     previousPeriodTotal !== 0
@@ -1062,7 +1056,11 @@ export default function Dashboard() {
                 {periodInfo.weekInPeriod}
               </p>
             )}
-            <p className="text-[10px] text-gray-400 mt-1">{liveRefreshLabel}</p>
+            {isLiveRefreshing ? (
+              <p className="text-[10px] text-gray-400 mt-1">
+                Actualizando datos en vivo...
+              </p>
+            ) : null}
           </div>
           <div className="mt-3 h-[180px] w-full">
             <ResponsiveContainer width="100%" height="100%">
