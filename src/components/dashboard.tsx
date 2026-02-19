@@ -20,10 +20,18 @@ import {
   getWeekDates,
   isDateInPeriod,
 } from "@/utils/dateUtils";
+import {
+  getDashboardSnapshot,
+  getSellerSelection,
+  setDashboardSnapshot,
+  setSellerSelection,
+} from "@/utils/dashboardSessionCache";
 import { getSellerGoal } from "@/utils/sellerGoals";
 import AppHeader from "./AppHeader";
 import dynamic from "next/dynamic";
-const GoalDetailsDialog = dynamic(() => import("./goal-details-dialog"), { ssr: false });
+const GoalDetailsDialog = dynamic(() => import("./goal-details-dialog"), {
+  ssr: false,
+});
 import SaleDetailsPopup from "./SaleDetailsPopup";
 import StatisticCard11 from "./statistic-card-11";
 import { CountingNumber } from "./ui/counting-number";
@@ -53,6 +61,8 @@ type DateRange = {
 const PERIODS: TimePeriod[] = ["Diario", "Ayer", "Semanal", "Mensual"];
 const LIVE_REFRESH_INTERVAL_MS = 15000;
 const FULL_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+const DASHBOARD_CACHE_TTL_MS = 30 * 1000;
+const SELLER_SELECTION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 const parseSheetSales = (
   values: string[][],
@@ -218,6 +228,13 @@ const emailLabels: Record<string, { label: string; role: Role }> = {
   "bodegaelrey034@gmail.com": { label: "Bodega", role: "Bodeguero" },
 };
 
+const getRoleForEmail = (email?: string): Role => {
+  if (!email) {
+    return "vendedor";
+  }
+  return emailLabels[email]?.role || "vendedor";
+};
+
 export default function Dashboard() {
   const { data: session } = useSession();
   const [selectedPeriod, setSelectedPeriod] = useState<TimePeriod>("Diario");
@@ -233,6 +250,10 @@ export default function Dashboard() {
   const clientHistoryRef = React.useRef<HTMLDivElement | null>(null);
   const isFullRefreshInFlightRef = React.useRef(false);
   const isLiveRefreshInFlightRef = React.useRef(false);
+  const salesDataRef = React.useRef<Sale[]>([]);
+  const liveSalesDataRef = React.useRef<Sale[]>([]);
+  const sessionEmailRef = React.useRef<string | null>(null);
+  const hydratedUserRef = React.useRef<string | null>(null);
 
   const _todayKey = new Date().toDateString();
   const periodReferenceDate = React.useMemo(() => new Date(), []);
@@ -277,6 +298,51 @@ export default function Dashboard() {
   }, [salesData]);
 
   const normalizedSearchTerm = searchTerm.trim().toLowerCase();
+
+  useEffect(() => {
+    salesDataRef.current = salesData;
+  }, [salesData]);
+
+  useEffect(() => {
+    liveSalesDataRef.current = liveSalesData;
+  }, [liveSalesData]);
+
+  useEffect(() => {
+    sessionEmailRef.current = session?.user?.email ?? null;
+  }, [session?.user?.email]);
+
+  const persistDashboardSnapshot = React.useCallback(
+    (
+      reason: string,
+      nextValues?: {
+        salesData?: Sale[];
+        liveSalesData?: Sale[];
+      },
+    ) => {
+      const sessionEmail = sessionEmailRef.current;
+      if (!sessionEmail) {
+        return;
+      }
+
+      const nextSalesData = nextValues?.salesData ?? salesDataRef.current;
+      const nextLiveSalesData =
+        nextValues?.liveSalesData ?? liveSalesDataRef.current;
+
+      setDashboardSnapshot(sessionEmail, {
+        salesData: nextSalesData,
+        liveSalesData: nextLiveSalesData,
+        cachedAt: Date.now(),
+      });
+
+      console.log("[DashboardCache] snapshot saved", {
+        reason,
+        userEmail: sessionEmail,
+        salesRows: nextSalesData.length,
+        liveRows: nextLiveSalesData.length,
+      });
+    },
+    [],
+  );
 
   const filteredClientNames = React.useMemo(() => {
     if (!normalizedSearchTerm) {
@@ -385,6 +451,10 @@ export default function Dashboard() {
         });
 
         setSalesData(fullSales);
+        salesDataRef.current = fullSales;
+        persistDashboardSnapshot(`full:${reason}`, {
+          salesData: fullSales,
+        });
       } catch (error) {
         console.error("[Dashboard] Full refresh failed", {
           reason,
@@ -394,7 +464,7 @@ export default function Dashboard() {
         isFullRefreshInFlightRef.current = false;
       }
     },
-    [fetchSalesFromSheets],
+    [fetchSalesFromSheets, persistDashboardSnapshot],
   );
 
   const refreshLiveSales = React.useCallback(
@@ -418,6 +488,12 @@ export default function Dashboard() {
         });
 
         setLiveSalesData(liveSales);
+        liveSalesDataRef.current = liveSales;
+        if (reason !== "interval") {
+          persistDashboardSnapshot(`live:${reason}`, {
+            liveSalesData: liveSales,
+          });
+        }
       } catch (error) {
         // Live refresh is non-critical — the dashboard falls back to the last
         // loaded data. Log as warn (not error) so it doesn't trigger alerts.
@@ -428,8 +504,73 @@ export default function Dashboard() {
         isLiveRefreshInFlightRef.current = false;
       }
     },
-    [fetchSalesFromSheets],
+    [fetchSalesFromSheets, persistDashboardSnapshot],
   );
+
+  useEffect(() => {
+    const sessionEmail = session?.user?.email;
+    if (!sessionEmail || hydratedUserRef.current === sessionEmail) {
+      return;
+    }
+    hydratedUserRef.current = sessionEmail;
+
+    const cachedSnapshot = getDashboardSnapshot<Sale>(sessionEmail);
+    if (cachedSnapshot) {
+      const ageMs = Date.now() - cachedSnapshot.cachedAt;
+      if (ageMs <= DASHBOARD_CACHE_TTL_MS) {
+        setSalesData(cachedSnapshot.salesData);
+        setLiveSalesData(cachedSnapshot.liveSalesData);
+        salesDataRef.current = cachedSnapshot.salesData;
+        liveSalesDataRef.current = cachedSnapshot.liveSalesData;
+        console.log("[DashboardCache] snapshot hit", {
+          userEmail: sessionEmail,
+          ageMs,
+          salesRows: cachedSnapshot.salesData.length,
+          liveRows: cachedSnapshot.liveSalesData.length,
+        });
+      } else {
+        console.log("[DashboardCache] snapshot stale", {
+          userEmail: sessionEmail,
+          ageMs,
+          maxAgeMs: DASHBOARD_CACHE_TTL_MS,
+        });
+      }
+    } else {
+      console.log("[DashboardCache] snapshot miss", {
+        userEmail: sessionEmail,
+      });
+    }
+
+    const role = getRoleForEmail(sessionEmail);
+    if (role === "vendedor") {
+      setSelectedEmail(sessionEmail);
+      setSellerSelection(sessionEmail, sessionEmail);
+      console.log("[DashboardBootstrap] enforced seller", {
+        userEmail: sessionEmail,
+      });
+      return;
+    }
+
+    const cachedSeller = getSellerSelection(sessionEmail);
+    if (cachedSeller) {
+      const ageMs = Date.now() - cachedSeller.updatedAt;
+      if (ageMs <= SELLER_SELECTION_TTL_MS) {
+        setSelectedEmail(cachedSeller.selectedEmail);
+        console.log("[DashboardBootstrap] seller from cache", {
+          userEmail: sessionEmail,
+          selectedEmail: cachedSeller.selectedEmail,
+          ageMs,
+        });
+        return;
+      }
+    }
+
+    setSelectedEmail(sessionEmail);
+    console.log("[DashboardBootstrap] seller from session", {
+      userEmail: sessionEmail,
+      selectedEmail: sessionEmail,
+    });
+  }, [session?.user?.email]);
 
   useEffect(() => {
     void refreshFullSales("initial");
@@ -503,16 +644,52 @@ export default function Dashboard() {
       return;
     }
     setSelectedEmail((prevSelectedEmail) => {
+      const sessionEmail = session?.user?.email;
+      const currentRole = getRoleForEmail(sessionEmail);
+
+      if (currentRole === "vendedor" && sessionEmail) {
+        if (prevSelectedEmail !== sessionEmail) {
+          console.log("[DashboardSelection] forcing seller to session user", {
+            selectedEmail: sessionEmail,
+            sessionEmail,
+          });
+        }
+        return sessionEmail;
+      }
+
       if (prevSelectedEmail && emailsSet.has(prevSelectedEmail)) {
         return prevSelectedEmail;
       }
-      const sessionEmail = session?.user?.email;
+
+      const cachedSeller = sessionEmail
+        ? getSellerSelection(sessionEmail)
+        : null;
+      if (
+        cachedSeller &&
+        Date.now() - cachedSeller.updatedAt <= SELLER_SELECTION_TTL_MS &&
+        emailsSet.has(cachedSeller.selectedEmail)
+      ) {
+        return cachedSeller.selectedEmail;
+      }
+
       if (sessionEmail && emailsSet.has(sessionEmail)) {
         return sessionEmail;
       }
       return emails[0];
     });
-  }, [emails, emailsSet, session]);
+  }, [emails, emailsSet, session?.user?.email]);
+
+  useEffect(() => {
+    const sessionEmail = session?.user?.email;
+    if (!sessionEmail || !selectedEmail) {
+      return;
+    }
+
+    const currentRole = getRoleForEmail(sessionEmail);
+    const valueToPersist =
+      currentRole === "vendedor" ? sessionEmail : selectedEmail;
+    setSellerSelection(sessionEmail, valueToPersist);
+  }, [selectedEmail, session?.user?.email]);
 
   useEffect(() => {
     if (!normalizedSearchTerm || filteredClientNames.length === 0) {
@@ -976,14 +1153,43 @@ export default function Dashboard() {
     if (!session?.user?.email) return emails;
 
     const currentUserEmail = session.user.email;
-    const currentUserRole = emailLabels[currentUserEmail]?.role || "vendedor";
+    const currentUserRole = getRoleForEmail(currentUserEmail);
 
     if (currentUserRole === "vendedor") {
       return emails.filter((email) => email === currentUserEmail);
     }
 
     return emails;
-  }, [emails, session]);
+  }, [emails, session?.user?.email]);
+
+  const handleSellerChange = React.useCallback(
+    (email: string) => {
+      const sessionEmail = session?.user?.email;
+      if (!sessionEmail) {
+        setSelectedEmail(email);
+        return;
+      }
+
+      const currentRole = getRoleForEmail(sessionEmail);
+      if (currentRole === "vendedor") {
+        setSelectedEmail(sessionEmail);
+        setSellerSelection(sessionEmail, sessionEmail);
+        console.log("[DashboardSelection] blocked seller change for vendor", {
+          requestedEmail: email,
+          selectedEmail: sessionEmail,
+        });
+        return;
+      }
+
+      setSelectedEmail(email);
+      setSellerSelection(sessionEmail, email);
+      console.log("[DashboardSelection] seller changed", {
+        sessionEmail,
+        selectedEmail: email,
+      });
+    },
+    [session?.user?.email],
+  );
 
   return (
     <div
@@ -995,7 +1201,7 @@ export default function Dashboard() {
           <select
             className="appearance-none text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl pl-3 pr-8 py-2.5 text-xs font-medium border-0 focus:outline-none focus:ring-2 focus:ring-blue-400 transition cursor-pointer"
             value={selectedEmail}
-            onChange={(e) => setSelectedEmail(e.target.value)}
+            onChange={(e) => handleSellerChange(e.target.value)}
           >
             {selectableEmails.map((email) => (
               <option key={email} value={email}>
