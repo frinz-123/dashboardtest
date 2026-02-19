@@ -418,10 +418,10 @@ export default function Dashboard() {
 
         setLiveSalesData(liveSales);
       } catch (error) {
-        console.error("[Dashboard] Live refresh failed", {
-          reason,
-          error: error instanceof Error ? error.message : String(error),
-        });
+        // Live refresh is non-critical — the dashboard falls back to the last
+        // loaded data. Log as warn (not error) so it doesn't trigger alerts.
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn(`[Dashboard] Live refresh failed (${reason}): ${message}`);
       } finally {
         setIsLiveRefreshing(false);
         isLiveRefreshInFlightRef.current = false;
