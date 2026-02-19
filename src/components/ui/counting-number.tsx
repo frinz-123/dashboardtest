@@ -2,7 +2,7 @@
 
 import {
   animate,
-  motion,
+  m,
   type UseInViewOptions,
   useInView,
   useMotionValue,
@@ -61,8 +61,8 @@ export function CountingNumber({
   }, [shouldStart, to, duration, delay, motionValue, onComplete]);
 
   return (
-    <motion.span ref={ref} className={cn("inline-block", className)} {...props}>
+    <m.span ref={ref} className={cn("inline-block", className)} {...props}>
       {format ? format(display) : Math.round(display)}
-    </motion.span>
+    </m.span>
   );
 }

@@ -11,7 +11,7 @@ import {
   TrendingUp,
   Users,
 } from "lucide-react";
-import { motion } from "motion/react";
+import { m } from "motion/react";
 import { useSession } from "next-auth/react";
 import React, { useEffect, useState } from "react";
 import { Area, AreaChart, ResponsiveContainer, Tooltip } from "recharts";
@@ -22,7 +22,8 @@ import {
 } from "@/utils/dateUtils";
 import { getSellerGoal } from "@/utils/sellerGoals";
 import AppHeader from "./AppHeader";
-import GoalDetailsDialog from "./goal-details-dialog";
+import dynamic from "next/dynamic";
+const GoalDetailsDialog = dynamic(() => import("./goal-details-dialog"), { ssr: false });
 import SaleDetailsPopup from "./SaleDetailsPopup";
 import StatisticCard11 from "./statistic-card-11";
 import { CountingNumber } from "./ui/counting-number";
@@ -1021,7 +1022,7 @@ export default function Dashboard() {
                 onClick={() => setSelectedPeriod(period)}
               >
                 {selectedPeriod === period && (
-                  <motion.div
+                  <m.div
                     layoutId="activeTab"
                     className="absolute inset-0 bg-gray-100 rounded-md"
                     transition={{ type: "spring", duration: 0.2, bounce: 0.15 }}
