@@ -57,13 +57,19 @@ export default function RootLayout({
       <body className="antialiased scroll-container">
         <Script id="sw-init" strategy="afterInteractive">{`
           if ('serviceWorker' in navigator) {
-            window.addEventListener('load', function() {
+            var registerServiceWorker = function() {
               navigator.serviceWorker.register('/service-worker.js').then(function(reg) {
                 console.log('[SW] Registered:', reg.scope);
               }).catch(function(err) {
                 console.log('[SW] Registration failed:', err);
               });
-            });
+            };
+
+            if (document.readyState === 'complete') {
+              registerServiceWorker();
+            } else {
+              window.addEventListener('load', registerServiceWorker, { once: true });
+            }
           }
         `}</Script>
         <ZoomPrevention />
