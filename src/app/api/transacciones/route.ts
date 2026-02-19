@@ -157,6 +157,11 @@ export async function GET(request: Request) {
       limit,
       offset,
       filters,
+      filterOptionCounts: {
+        codigos: filterOptions.codigos.length,
+        vendedores: filterOptions.vendedores.length,
+        periodos: filterOptions.periodos.length,
+      },
     });
 
     return NextResponse.json({

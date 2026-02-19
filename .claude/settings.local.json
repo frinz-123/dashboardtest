@@ -46,7 +46,8 @@
       "Bash(npm view:*)",
       "WebFetch(domain:authjs.dev)",
       "Bash(bun pm ls:*)",
-      "Bash(gh pr create:*)"
+      "Bash(gh pr create:*)",
+      "Bash(claude mcp:*)"
     ],
     "deny": [],
     "ask": []
