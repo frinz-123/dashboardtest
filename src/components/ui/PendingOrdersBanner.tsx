@@ -193,6 +193,11 @@ export default function PendingOrdersBanner({
                         </>
                       )}
                     </div>
+                    {item.retryCount > 0 && item.status !== "sending" && (
+                      <div className="text-xs text-amber-700 mt-0.5">
+                        Verifica en el Dashboard si este pedido ya aparece
+                      </div>
+                    )}
                     {item.status === "failed" && item.errorMessage && (
                       <div className="text-xs text-red-600 mt-1">
                         {item.errorMessage}

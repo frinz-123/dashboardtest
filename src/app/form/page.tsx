@@ -11,6 +11,14 @@ import CleyPhotoCapture, {
 import CleyOrderQuestion from "@/components/comp-166";
 import LabelNumbers from "@/components/ui/labelnumbers";
 import PendingOrdersBanner from "@/components/ui/PendingOrdersBanner";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import SearchInput from "@/components/ui/SearchInput";
 import {
   ClientSearchSkeleton,
@@ -902,6 +910,7 @@ export default function FormPage() {
     submit?: string;
   }>({});
   const [isRefreshingLocation, setIsRefreshingLocation] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   // Submission queue for offline-first reliability
   const {
@@ -1336,8 +1345,8 @@ export default function FormPage() {
     // We set a flag so that when location updates, we know to refresh the queue item
   }, []);
 
-  const handleClearQueue = useCallback(async () => {
-    if (queueState.pendingCount === 0) return;
+  const executeClearQueue = useCallback(async () => {
+    setShowClearConfirm(false);
     try {
       await clearQueue();
       success(
@@ -1349,7 +1358,21 @@ export default function FormPage() {
       console.error("Error clearing queue:", err);
       error("No se pudo limpiar", "Intenta de nuevo.", 3000);
     }
-  }, [clearQueue, queueState.pendingCount, success, error]);
+  }, [clearQueue, success, error]);
+
+  const handleClearQueue = useCallback(() => {
+    if (queueState.pendingCount === 0) return;
+    // Warn before clearing if any item is in-flight or has already been retried —
+    // the order may have reached the server even if the queue still shows it.
+    const hasRiskyItems = queueState.items.some(
+      (item) => item.status === "sending" || item.retryCount > 0,
+    );
+    if (hasRiskyItems) {
+      setShowClearConfirm(true);
+    } else {
+      void executeClearQueue();
+    }
+  }, [queueState.pendingCount, queueState.items, executeClearQueue]);
 
   // Populate from localStorage cache before browser paints to avoid skeleton flash.
   // useLayoutEffect is not called on the server, so hydration stays stable.
@@ -1832,6 +1855,36 @@ export default function FormPage() {
         onClearQueue={handleClearQueue}
         isRefreshingLocation={isRefreshingLocation}
       />
+
+      {/* Confirmation dialog before clearing risky queue items */}
+      <Dialog open={showClearConfirm} onOpenChange={setShowClearConfirm}>
+        <DialogContent className="max-w-sm mx-4">
+          <DialogHeader>
+            <DialogTitle>Verificar antes de limpiar</DialogTitle>
+            <DialogDescription>
+              Algunos pedidos podrían haberse enviado ya. Verifica en el
+              Dashboard antes de limpiar para evitar pedidos duplicados o
+              perdidos.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() => setShowClearConfirm(false)}
+              className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={() => void executeClearQueue()}
+              className="flex-1 px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
+            >
+              Limpiar de todas formas
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Add top padding when banner is visible */}
       <div

@@ -305,13 +305,29 @@ async function sendSubmission(submission) {
     REQUEST_TIMEOUT_MS,
   );
 
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(data.error || `Server error: ${response.status}`);
+  // If the server returned 2xx, treat as success even if body parsing fails.
+  // Network can drop mid-transfer after headers arrive but before the body
+  // completes — throwing here would leave the item in "pending" even though
+  // the server already wrote the order to Google Sheets.
+  if (response.ok) {
+    let data = {};
+    try {
+      data = await response.json();
+    } catch {
+      console.warn(
+        "[SW] HTTP 200 but body parse failed — treating as success",
+      );
+    }
+    return data;
   }
 
-  return data;
+  let errorData = {};
+  try {
+    errorData = await response.json();
+  } catch {
+    // Ignore body parse errors on error responses
+  }
+  throw new Error(errorData.error || `Server error: ${response.status}`);
 }
 
 async function uploadPhotoBlob(photoId, submissionId) {
