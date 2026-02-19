@@ -153,6 +153,40 @@ describe("transacciones utils", () => {
     expect(filtered[0].clientName).toBe("Cliente Dos");
   });
 
+  it("supports comma-separated values for option filters", () => {
+    const records = [
+      buildRecord({
+        sheetRowNumber: 2,
+        codigo: "EFT",
+        email: "ventas1productoselrey@gmail.com",
+        periodWeekCode: "P20S1",
+      }),
+      buildRecord({
+        sheetRowNumber: 3,
+        codigo: "CLEY",
+        email: "ventas2productoselrey@gmail.com",
+        periodWeekCode: "P19S4",
+      }),
+      buildRecord({
+        sheetRowNumber: 4,
+        codigo: "MAY",
+        email: "ventas3productoselrey@gmail.com",
+        periodWeekCode: "P18S2",
+      }),
+    ];
+
+    const filtered = applyTransactionFilters(records, {
+      code: "eft, cley",
+      email: "ventas1productoselrey@gmail.com,ventas2productoselrey@gmail.com",
+      period: "p20s1,p19s4",
+    });
+
+    expect(filtered).toHaveLength(2);
+    expect(filtered.map((record) => record.codigo)).toEqual(
+      expect.arrayContaining(["EFT", "CLEY"]),
+    );
+  });
+
   it("sorts by timestamp desc and then sheet row desc", () => {
     const sameTime = Date.parse("2025-12-01T10:00:00");
 

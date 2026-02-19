@@ -118,6 +118,15 @@ const normalizeText = (value: string): string => {
     .replace(/[\u0300-\u036f]/g, "");
 };
 
+const parseNormalizedCsv = (value: string): string[] => {
+  if (!value) return [];
+
+  return value
+    .split(",")
+    .map((entry) => normalizeText(entry))
+    .filter(Boolean);
+};
+
 const hashString = (value: string): string => {
   let hash = 0;
   for (let i = 0; i < value.length; i += 1) {
@@ -487,11 +496,11 @@ export const applyTransactionFilters = (
 ): TransactionRecord[] => {
   const from = (filters.from || "").trim();
   const to = (filters.to || "").trim();
-  const code = normalizeText(filters.code || "");
+  const codeTerms = parseNormalizedCsv(filters.code || "");
   const client = normalizeText(filters.client || "");
-  const email = normalizeText(filters.email || "");
+  const emailTerms = parseNormalizedCsv(filters.email || "");
   const saleId = normalizeText(filters.saleId || "");
-  const period = normalizeText(filters.period || "");
+  const periodTerms = parseNormalizedCsv(filters.period || "");
   const monthCode = normalizeText(filters.monthCode || "");
   const product = normalizeText(filters.product || "");
 
@@ -522,7 +531,10 @@ export const applyTransactionFilters = (
 
     const normalized = getNormalizedSet(record);
 
-    if (code && !normalized.code.includes(code)) {
+    if (
+      codeTerms.length > 0 &&
+      !codeTerms.some((term) => normalized.code.includes(term))
+    ) {
       continue;
     }
 
@@ -530,7 +542,10 @@ export const applyTransactionFilters = (
       continue;
     }
 
-    if (email && !normalized.email.includes(email)) {
+    if (
+      emailTerms.length > 0 &&
+      !emailTerms.some((term) => normalized.email.includes(term))
+    ) {
       continue;
     }
 
@@ -541,7 +556,10 @@ export const applyTransactionFilters = (
       continue;
     }
 
-    if (period && !normalized.period.includes(period)) {
+    if (
+      periodTerms.length > 0 &&
+      !periodTerms.some((term) => normalized.period.includes(term))
+    ) {
       continue;
     }
 

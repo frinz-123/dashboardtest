@@ -305,13 +305,29 @@ async function sendSubmission(submission) {
     REQUEST_TIMEOUT_MS,
   );
 
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(data.error || `Server error: ${response.status}`);
+  // If the server returned 2xx, treat as success even if body parsing fails.
+  // Network can drop mid-transfer after headers arrive but before the body
+  // completes — throwing here would leave the item in "pending" even though
+  // the server already wrote the order to Google Sheets.
+  if (response.ok) {
+    let data = {};
+    try {
+      data = await response.json();
+    } catch {
+      console.warn(
+        "[SW] HTTP 200 but body parse failed — treating as success",
+      );
+    }
+    return data;
   }
 
-  return data;
+  let errorData = {};
+  try {
+    errorData = await response.json();
+  } catch {
+    // Ignore body parse errors on error responses
+  }
+  throw new Error(errorData.error || `Server error: ${response.status}`);
 }
 
 async function uploadPhotoBlob(photoId, submissionId) {
@@ -362,13 +378,24 @@ async function ensurePhotoUploads(submission) {
 
   for (let index = existingUrls.length; index < photoIds.length; index++) {
     const photoId = photoIds[index];
+
+    // Pre-check: is the blob still in IndexedDB?
+    const record = await getPhotoRecord(photoId);
+    if (!record || !record.blob) {
+      throw new Error(
+        `PHOTO_LOST:Foto perdida (${index + 1}/${photoIds.length}). Elimina este pedido y crealo de nuevo.`,
+      );
+    }
+
     const url = await uploadPhotoBlob(photoId, submission.id);
     existingUrls.push(url);
+
+    // Save progress after EACH successful upload
+    const progressPayload = { ...submission.payload, photoUrls: [...existingUrls] };
+    await updateSubmission(submission.id, { payload: progressPayload });
   }
 
   const updatedPayload = { ...submission.payload, photoUrls: existingUrls };
-  await updateSubmission(submission.id, { payload: updatedPayload });
-
   return { ...submission, payload: updatedPayload };
 }
 
@@ -468,23 +495,29 @@ async function processQueuedOrders() {
         const isDuplicate =
           typeof errorMessage === "string" &&
           errorMessage.startsWith("DUPLICATE_PHOTO:");
+        const isPhotoLost =
+          typeof errorMessage === "string" &&
+          errorMessage.startsWith("PHOTO_LOST:");
 
         const newRetryCount = (submission.retryCount || 0) + 1;
 
-        if (isDuplicate) {
+        if (isDuplicate || isPhotoLost) {
           const cleanMessage = errorMessage
-            .replace(/^DUPLICATE_PHOTO:/, "")
+            .replace(/^(DUPLICATE_PHOTO|PHOTO_LOST):/, "")
             .trim();
+          const fallbackMessage = isPhotoLost
+            ? "Foto perdida. Elimina este pedido y crealo de nuevo."
+            : "Foto duplicada. Toma una nueva.";
           await updateSubmission(submission.id, {
             status: "failed",
             retryCount: newRetryCount,
-            errorMessage: cleanMessage || "Foto duplicada. Toma una nueva.",
+            errorMessage: cleanMessage || fallbackMessage,
           });
 
           notifyClients({
             type: "SUBMISSION_FAILED",
             submissionId: submission.id,
-            error: cleanMessage || "Foto duplicada. Toma una nueva.",
+            error: cleanMessage || fallbackMessage,
           });
 
           results.failed++;

@@ -1,6 +1,17 @@
 "use client";
 
-import { ChevronDown, ChevronUp, RefreshCw } from "lucide-react";
+import {
+  Calendar,
+  Camera,
+  ChevronDown,
+  ChevronUp,
+  DollarSign,
+  Hash,
+  Mail,
+  Package,
+  Tag,
+  User,
+} from "lucide-react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import {
@@ -10,9 +21,13 @@ import {
   useMemo,
   useRef,
   useState,
-  useTransition,
 } from "react";
 import AppHeader from "@/components/AppHeader";
+import {
+  DataTableFilter,
+  useDataTableFilters,
+} from "@/components/data-table-filter";
+import { createColumnConfigHelper } from "@/components/data-table-filter/core/filters";
 import {
   Table,
   TableBody,
@@ -29,41 +44,10 @@ import type {
 
 const PAGE_SIZE = 30;
 
-type HasPhotosFilter = "all" | "with" | "without";
 type SelectOptions = {
   codigos: string[];
   vendedores: string[];
   periodos: string[];
-};
-
-type FilterState = {
-  from: string;
-  to: string;
-  code: string;
-  client: string;
-  email: string;
-  saleId: string;
-  minTotal: string;
-  maxTotal: string;
-  period: string;
-  monthCode: string;
-  product: string;
-  hasPhotos: HasPhotosFilter;
-};
-
-const DEFAULT_FILTERS: FilterState = {
-  from: "",
-  to: "",
-  code: "",
-  client: "",
-  email: "",
-  saleId: "",
-  minTotal: "",
-  maxTotal: "",
-  period: "",
-  monthCode: "",
-  product: "",
-  hasPhotos: "all",
 };
 
 const currencyFormatter = new Intl.NumberFormat("es-MX", {
@@ -72,22 +56,6 @@ const currencyFormatter = new Intl.NumberFormat("es-MX", {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
-
-function useDebouncedValue<T>(value: T, delayMs: number): T {
-  const [debounced, setDebounced] = useState<T>(value);
-
-  useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      setDebounced(value);
-    }, delayMs);
-
-    return () => {
-      window.clearTimeout(timeoutId);
-    };
-  }, [value, delayMs]);
-
-  return debounced;
-}
 
 const parseTimeLabel = (submissionTime: string): string => {
   if (!submissionTime) return "-";
@@ -132,13 +100,24 @@ const formatDateTimeLabel = (isoDate: string): string => {
   });
 };
 
-const inputClassName =
-  "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100";
+const sortUniqueValues = (values: string[]): string[] => {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))].sort(
+    (a, b) => a.localeCompare(b, "es", { sensitivity: "base" }),
+  );
+};
+
+const mergeSelectOptions = (
+  primary: string[],
+  fallback: string[],
+): string[] => {
+  return sortUniqueValues([...primary, ...fallback]);
+};
+
+const dtf = createColumnConfigHelper<TransactionRecord>();
 
 export default function TransaccionesPage() {
   const { data: session, status } = useSession();
   const sessionEmail = session?.user?.email || "";
-  const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
   const [rows, setRows] = useState<TransactionRecord[]>([]);
   const [selectOptions, setSelectOptions] = useState<SelectOptions>({
     codigos: [],
@@ -153,56 +132,224 @@ export default function TransaccionesPage() {
   const [error, setError] = useState("");
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [lastUpdatedAt, setLastUpdatedAt] = useState("");
-  const [isPending, startTransition] = useTransition();
 
   const requestControllerRef = useRef<AbortController | null>(null);
 
   const isMaster = useMemo(() => isMasterAccount(sessionEmail), [sessionEmail]);
 
-  const debouncedClient = useDebouncedValue(filters.client, 250);
-  const debouncedSaleId = useDebouncedValue(filters.saleId, 250);
-  const debouncedProduct = useDebouncedValue(filters.product, 250);
+  const fallbackSelectOptions = useMemo(
+    () => ({
+      codigos: sortUniqueValues(rows.map((row) => row.codigo)),
+      vendedores: sortUniqueValues(rows.map((row) => row.email)),
+      periodos: sortUniqueValues(rows.map((row) => row.periodWeekCode)),
+    }),
+    [rows],
+  );
+
+  const resolvedSelectOptions = useMemo(
+    () => ({
+      codigos: mergeSelectOptions(
+        selectOptions.codigos,
+        fallbackSelectOptions.codigos,
+      ),
+      vendedores: mergeSelectOptions(
+        selectOptions.vendedores,
+        fallbackSelectOptions.vendedores,
+      ),
+      periodos: mergeSelectOptions(
+        selectOptions.periodos,
+        fallbackSelectOptions.periodos,
+      ),
+    }),
+    [fallbackSelectOptions, selectOptions],
+  );
+
+  // Build column config with options baked in directly — avoids the options-prop merging layer
+  const columnsConfig = useMemo(
+    () => [
+      dtf
+        .date()
+        .id("fechaSinHora")
+        .accessor((r) => new Date(r.fechaSinHora || Date.now()))
+        .displayName("Fecha")
+        .icon(Calendar)
+        .build(),
+      dtf
+        .option()
+        .id("codigo")
+        .accessor((r) => r.codigo)
+        .displayName("Codigo")
+        .icon(Tag)
+        .options(resolvedSelectOptions.codigos.map((c) => ({ label: c, value: c })))
+        .build(),
+      dtf
+        .text()
+        .id("clientName")
+        .accessor((r) => r.clientName)
+        .displayName("Cliente")
+        .icon(User)
+        .build(),
+      dtf
+        .option()
+        .id("email")
+        .accessor((r) => r.email)
+        .displayName("Vendedor")
+        .icon(Mail)
+        .options(
+          resolvedSelectOptions.vendedores.map((e) => ({
+            label: getVendorLabel(e) ? `${getVendorLabel(e)} (${e})` : e,
+            value: e,
+          })),
+        )
+        .build(),
+      dtf
+        .text()
+        .id("saleId")
+        .accessor((r) => r.saleId)
+        .displayName("Sale ID")
+        .icon(Hash)
+        .build(),
+      dtf
+        .number()
+        .id("venta")
+        .accessor((r) => r.venta)
+        .displayName("Total")
+        .icon(DollarSign)
+        .min(0)
+        .max(100000)
+        .build(),
+      dtf
+        .option()
+        .id("periodWeekCode")
+        .accessor((r) => r.periodWeekCode)
+        .displayName("Periodo")
+        .icon(Calendar)
+        .options(resolvedSelectOptions.periodos.map((p) => ({ label: p, value: p })))
+        .build(),
+      dtf
+        .text()
+        .id("monthYearCode")
+        .accessor((r) => r.monthYearCode)
+        .displayName("Mes")
+        .icon(Calendar)
+        .build(),
+      dtf
+        .option()
+        .id("hasPhotos")
+        .accessor((r) => String(r.hasPhotos))
+        .displayName("Fotos")
+        .icon(Camera)
+        .options([
+          { label: "Con fotos", value: "true" },
+          { label: "Sin fotos", value: "false" },
+        ])
+        .build(),
+      dtf
+        .text()
+        .id("product")
+        .accessor((r) => r.productEntries.map((e) => e.name).join(" "))
+        .displayName("Producto")
+        .icon(Package)
+        .build(),
+    ],
+    [resolvedSelectOptions],
+  );
+
+  // Faceted min/max for number column derived from current page data
+  const dtfFaceted = useMemo(() => {
+    const ventas = rows.map((r) => r.venta || 0);
+    const maxVenta =
+      ventas.length > 0 ? Math.ceil(Math.max(...ventas)) : 100000;
+    return { venta: [0, Math.max(maxVenta, 1000)] as [number, number] };
+  }, [rows]);
+
+  const {
+    columns,
+    filters: dtFilters,
+    actions,
+    strategy,
+  } = useDataTableFilters({
+    strategy: "server",
+    data: rows,
+    columnsConfig,
+    faceted: dtfFaceted,
+  });
 
   const queryParams = useMemo(() => {
     const params = new URLSearchParams();
     params.set("limit", String(PAGE_SIZE));
 
-    if (filters.from) params.set("from", filters.from);
-    if (filters.to) params.set("to", filters.to);
-    if (filters.code.trim()) params.set("code", filters.code.trim());
-    if (debouncedClient.trim()) params.set("client", debouncedClient.trim());
-    if (filters.email.trim()) params.set("email", filters.email.trim());
-    if (debouncedSaleId.trim()) params.set("saleId", debouncedSaleId.trim());
-    if (filters.minTotal.trim())
-      params.set("minTotal", filters.minTotal.trim());
-    if (filters.maxTotal.trim())
-      params.set("maxTotal", filters.maxTotal.trim());
-    if (filters.period.trim()) params.set("period", filters.period.trim());
-    if (filters.monthCode.trim())
-      params.set("monthCode", filters.monthCode.trim());
-    if (debouncedProduct.trim()) params.set("product", debouncedProduct.trim());
-
-    if (filters.hasPhotos === "with") {
-      params.set("hasPhotos", "true");
-    } else if (filters.hasPhotos === "without") {
-      params.set("hasPhotos", "false");
+    for (const f of dtFilters) {
+      switch (f.columnId) {
+        case "fechaSinHora": {
+          const vals = f.values as Date[];
+          if (vals[0]) params.set("from", vals[0].toISOString().split("T")[0]);
+          if (vals[1]) params.set("to", vals[1].toISOString().split("T")[0]);
+          else if (vals[0])
+            params.set("to", vals[0].toISOString().split("T")[0]);
+          break;
+        }
+        case "codigo":
+          {
+            const values = (f.values as string[]).filter(Boolean);
+            if (values.length > 0) {
+              params.set("code", values.join(","));
+            }
+          }
+          break;
+        case "clientName": {
+          const v = (f.values as string[])[0]?.trim();
+          if (v) params.set("client", v);
+          break;
+        }
+        case "email":
+          {
+            const values = (f.values as string[]).filter(Boolean);
+            if (values.length > 0) {
+              params.set("email", values.join(","));
+            }
+          }
+          break;
+        case "saleId": {
+          const v = (f.values as string[])[0]?.trim();
+          if (v) params.set("saleId", v);
+          break;
+        }
+        case "venta": {
+          const [min, max] = f.values as number[];
+          if (min != null) params.set("minTotal", String(min));
+          if (max != null) params.set("maxTotal", String(max));
+          break;
+        }
+        case "periodWeekCode":
+          {
+            const values = (f.values as string[]).filter(Boolean);
+            if (values.length > 0) {
+              params.set("period", values.join(","));
+            }
+          }
+          break;
+        case "monthYearCode": {
+          const v = (f.values as string[])[0]?.trim();
+          if (v) params.set("monthCode", v);
+          break;
+        }
+        case "hasPhotos": {
+          const v = (f.values as string[])[0];
+          if (v === "true") params.set("hasPhotos", "true");
+          else if (v === "false") params.set("hasPhotos", "false");
+          break;
+        }
+        case "product": {
+          const v = (f.values as string[])[0]?.trim();
+          if (v) params.set("product", v);
+          break;
+        }
+      }
     }
 
     return params;
-  }, [
-    debouncedClient,
-    debouncedProduct,
-    debouncedSaleId,
-    filters.code,
-    filters.email,
-    filters.from,
-    filters.hasPhotos,
-    filters.maxTotal,
-    filters.minTotal,
-    filters.monthCode,
-    filters.period,
-    filters.to,
-  ]);
+  }, [dtFilters]);
 
   const fetchTransactions = useCallback(
     async (nextOffset: number, mode: "reset" | "append") => {
@@ -243,6 +390,19 @@ export default function TransaccionesPage() {
         }
 
         const data = (await response.json()) as TransactionsApiResponse;
+        const optionCounts = {
+          codigos: data.filterOptions?.codigos?.length || 0,
+          vendedores: data.filterOptions?.vendedores?.length || 0,
+          periodos: data.filterOptions?.periodos?.length || 0,
+        };
+
+        if (mode === "reset") {
+          console.log("📊 Transacciones filtros recibidos:", {
+            fetchedItems: data.items.length,
+            total: data.total,
+            optionCounts,
+          });
+        }
 
         setRows((prev) =>
           mode === "append" ? [...prev, ...data.items] : data.items,
@@ -300,16 +460,6 @@ export default function TransaccionesPage() {
     };
   }, [fetchTransactions, isMaster, sessionEmail]);
 
-  const updateFilter = useCallback((key: keyof FilterState, value: string) => {
-    setFilters((prev) => ({ ...prev, [key]: value }));
-  }, []);
-
-  const handleResetFilters = useCallback(() => {
-    startTransition(() => {
-      setFilters({ ...DEFAULT_FILTERS });
-    });
-  }, []);
-
   const handleToggleExpanded = useCallback((rowKey: string) => {
     setExpandedRows((prev) => {
       const next = new Set(prev);
@@ -326,10 +476,6 @@ export default function TransaccionesPage() {
     if (!hasMore || isLoading || isLoadingMore) return;
     fetchTransactions(offset + PAGE_SIZE, "append");
   }, [fetchTransactions, hasMore, isLoading, isLoadingMore, offset]);
-
-  const handleRefresh = useCallback(() => {
-    fetchTransactions(0, "reset");
-  }, [fetchTransactions]);
 
   if (status === "loading") {
     return (
@@ -383,217 +529,24 @@ export default function TransaccionesPage() {
       />
 
       <main className="px-4 py-4 max-w-[95rem] mx-auto space-y-4">
-        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-sm font-semibold text-slate-900">Filtros</h2>
-              <p className="text-xs text-slate-500">
-                Mostrando por defecto las ultimas {PAGE_SIZE} transacciones.
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={handleResetFilters}
-                className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-              >
-                Limpiar filtros
-              </button>
-              <button
-                type="button"
-                onClick={handleRefresh}
-                disabled={isLoading || isLoadingMore}
-                className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-60"
-              >
-                <RefreshCw
-                  className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`}
-                />
-                Refrescar
-              </button>
-            </div>
+        <section className="py-2">
+          <div className="mb-3">
+            <h2 className="text-sm font-semibold text-slate-900">Filtros</h2>
+            <p className="text-xs text-slate-500">
+              Mostrando por defecto las ultimas {PAGE_SIZE} transacciones.
+            </p>
           </div>
 
-          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-4">
-            <label className="space-y-1">
-              <span className="text-xs font-medium text-slate-600">
-                Fecha desde
-              </span>
-              <input
-                type="date"
-                className={inputClassName}
-                value={filters.from}
-                onChange={(event) => updateFilter("from", event.target.value)}
-              />
-            </label>
-
-            <label className="space-y-1">
-              <span className="text-xs font-medium text-slate-600">
-                Fecha hasta
-              </span>
-              <input
-                type="date"
-                className={inputClassName}
-                value={filters.to}
-                onChange={(event) => updateFilter("to", event.target.value)}
-              />
-            </label>
-
-            <label className="space-y-1">
-              <span className="text-xs font-medium text-slate-600">Codigo</span>
-              <select
-                className={inputClassName}
-                value={filters.code}
-                onChange={(event) => updateFilter("code", event.target.value)}
-              >
-                <option value="">Todos</option>
-                {selectOptions.codigos.map((codigo) => (
-                  <option key={codigo} value={codigo}>
-                    {codigo}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="space-y-1">
-              <span className="text-xs font-medium text-slate-600">
-                Cliente
-              </span>
-              <input
-                type="text"
-                className={inputClassName}
-                placeholder="Nombre del cliente"
-                value={filters.client}
-                onChange={(event) => updateFilter("client", event.target.value)}
-              />
-            </label>
-
-            <label className="space-y-1">
-              <span className="text-xs font-medium text-slate-600">
-                Vendedor (email)
-              </span>
-              <select
-                className={inputClassName}
-                value={filters.email}
-                onChange={(event) => updateFilter("email", event.target.value)}
-              >
-                <option value="">Todos</option>
-                {selectOptions.vendedores.map((email) => (
-                  <option key={email} value={email}>
-                    {getVendorLabel(email)} ({email})
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="space-y-1">
-              <span className="text-xs font-medium text-slate-600">
-                Sale ID
-              </span>
-              <input
-                type="text"
-                className={inputClassName}
-                placeholder="email|fecha|cliente"
-                value={filters.saleId}
-                onChange={(event) => updateFilter("saleId", event.target.value)}
-              />
-            </label>
-
-            <label className="space-y-1">
-              <span className="text-xs font-medium text-slate-600">
-                Total minimo
-              </span>
-              <input
-                type="number"
-                className={inputClassName}
-                placeholder="0"
-                value={filters.minTotal}
-                onChange={(event) =>
-                  updateFilter("minTotal", event.target.value)
-                }
-              />
-            </label>
-
-            <label className="space-y-1">
-              <span className="text-xs font-medium text-slate-600">
-                Total maximo
-              </span>
-              <input
-                type="number"
-                className={inputClassName}
-                placeholder="5000"
-                value={filters.maxTotal}
-                onChange={(event) =>
-                  updateFilter("maxTotal", event.target.value)
-                }
-              />
-            </label>
-
-            <label className="space-y-1">
-              <span className="text-xs font-medium text-slate-600">
-                Periodo (AL)
-              </span>
-              <select
-                className={inputClassName}
-                value={filters.period}
-                onChange={(event) => updateFilter("period", event.target.value)}
-              >
-                <option value="">Todos</option>
-                {selectOptions.periodos.map((periodo) => (
-                  <option key={periodo} value={periodo}>
-                    {periodo}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="space-y-1">
-              <span className="text-xs font-medium text-slate-600">
-                Mes codigo (AO)
-              </span>
-              <input
-                type="text"
-                className={inputClassName}
-                placeholder="NOV_25"
-                value={filters.monthCode}
-                onChange={(event) =>
-                  updateFilter("monthCode", event.target.value)
-                }
-              />
-            </label>
-
-            <label className="space-y-1">
-              <span className="text-xs font-medium text-slate-600">
-                Producto
-              </span>
-              <input
-                type="text"
-                className={inputClassName}
-                placeholder="Michela, Habanero, Chiltepin..."
-                value={filters.product}
-                onChange={(event) =>
-                  updateFilter("product", event.target.value)
-                }
-              />
-            </label>
-
-            <label className="space-y-1">
-              <span className="text-xs font-medium text-slate-600">Fotos</span>
-              <select
-                className={inputClassName}
-                value={filters.hasPhotos}
-                onChange={(event) =>
-                  updateFilter(
-                    "hasPhotos",
-                    event.target.value as HasPhotosFilter,
-                  )
-                }
-              >
-                <option value="all">Todas</option>
-                <option value="with">Con fotos</option>
-                <option value="without">Sin fotos</option>
-              </select>
-            </label>
-          </div>
+          {lastUpdatedAt ? (
+            <DataTableFilter
+              columns={columns}
+              filters={dtFilters}
+              actions={actions}
+              strategy={strategy}
+            />
+          ) : (
+            <div className="h-7 w-32 rounded-md bg-slate-100 animate-pulse" />
+          )}
         </section>
 
         <section className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
@@ -606,7 +559,6 @@ export default function TransaccionesPage() {
               {lastUpdatedAt
                 ? `Actualizado: ${formatDateTimeLabel(lastUpdatedAt)}`
                 : "Sin datos cargados"}
-              {isPending ? " · actualizando filtros..." : ""}
             </div>
           </div>
 

@@ -185,16 +185,34 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
           REQUEST_TIMEOUT_MS,
         );
 
-        const data = await response.json();
-
-        if (!response.ok) {
-          return {
-            success: false,
-            error: data.error || `Server error: ${response.status}`,
-          };
+        // If the server returned 2xx, treat as success even if body parsing
+        // fails. Network can drop mid-transfer after headers arrive but before
+        // the body completes — throwing here would leave the item in "pending"
+        // even though the server already wrote the order to Google Sheets.
+        if (response.ok) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          let data: any = {};
+          try {
+            data = await response.json();
+          } catch {
+            console.warn(
+              "[Queue] HTTP 200 but body parse failed — treating as success",
+            );
+          }
+          return { success: true, duplicate: data?.duplicate };
         }
 
-        return { success: true, duplicate: data.duplicate };
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let errorData: any = {};
+        try {
+          errorData = await response.json();
+        } catch {
+          // Ignore body parse errors on error responses
+        }
+        return {
+          success: false,
+          error: errorData?.error || `Error del servidor: ${response.status}`,
+        };
       } catch (error: unknown) {
         // Network error
         if (isFetchTypeError(error)) {
@@ -280,17 +298,30 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
           index++
         ) {
           const photoId = photoIds[index];
+
+          // Pre-check: is the blob still in IndexedDB?
+          const stored = await getPhoto(photoId);
+          if (!stored) {
+            const err = new Error(
+              `Foto perdida (${index + 1}/${photoIds.length}). Elimina este pedido y crealo de nuevo.`,
+            ) as Error & { code?: string };
+            err.code = "PHOTO_LOST";
+            throw err;
+          }
+
           const url = await uploadPhoto(photoId, item.id);
           existingUrls.push(url);
+
+          // Save progress after EACH successful upload
+          await submissionQueue.update(item.id, {
+            payload: { ...item.payload, photoUrls: [...existingUrls] },
+          });
         }
 
         const updatedPayload = {
           ...item.payload,
           photoUrls: existingUrls,
         };
-        await submissionQueue.update(item.id, {
-          payload: updatedPayload,
-        });
 
         return {
           success: true,
@@ -298,10 +329,11 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
         };
       } catch (error: unknown) {
         const isDuplicate = getErrorCode(error) === "DUPLICATE_PHOTO";
+        const isPhotoLost = getErrorCode(error) === "PHOTO_LOST";
         return {
           success: false,
           error: getErrorMessage(error) || "No se pudieron subir las fotos",
-          fatal: isDuplicate,
+          fatal: isDuplicate || isPhotoLost,
         };
       }
     },
@@ -632,27 +664,41 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
     };
 
     const handleVisibilityChange = async () => {
-      if (document.visibilityState === "visible" && navigator.onLine) {
-        console.log("Tab visible, triggering Background Sync...");
+      if (document.visibilityState === "visible") {
+        // Always re-sync UI with IndexedDB when the user returns to the tab.
+        // The SW may have removed the item from IndexedDB while the tab was
+        // backgrounded and the postMessage notification was dropped — this
+        // ensures the banner reflects the real queue state immediately.
+        await loadQueue();
 
-        // Try Background Sync first, fall back to manual processing
-        const syncRegistered = await tryRegisterBackgroundSync();
-        if (!syncRegistered) {
-          processQueue();
+        if (navigator.onLine) {
+          console.log("Tab visible, triggering Background Sync...");
+          const syncRegistered = await tryRegisterBackgroundSync();
+          if (!syncRegistered) {
+            processQueue();
+          }
         }
       }
+    };
+
+    const handleFocus = async () => {
+      // Catchall: window focus covers cases visibilitychange misses
+      // (switching browser windows, returning from a system dialog, etc.)
+      await loadQueue();
     };
 
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
     document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleFocus);
 
     return () => {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleFocus);
     };
-  }, [processQueue, tryRegisterBackgroundSync]);
+  }, [processQueue, tryRegisterBackgroundSync, loadQueue]);
 
   // Detect initial Background Sync support once and prefer SW processing if available.
   useEffect(() => {
@@ -696,6 +742,16 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
       }
     };
   }, [loadQueue, processQueue]);
+
+  // Periodic state refresh — safety net for missed SW postMessages.
+  // Pure IndexedDB read, no network calls. Runs even when Background Sync
+  // is handling processing (hasBackgroundSyncRef.current = true).
+  useEffect(() => {
+    const id = setInterval(() => {
+      loadQueue();
+    }, 15_000);
+    return () => clearInterval(id);
+  }, [loadQueue]);
 
   // Subscribe to queue changes
   useEffect(() => {
