@@ -401,6 +401,10 @@ export default function Dashboard() {
       if (isLiveRefreshInFlightRef.current) {
         return;
       }
+      // Skip silently when offline — fetch would throw and log a noisy error.
+      if (!navigator.onLine) {
+        return;
+      }
       isLiveRefreshInFlightRef.current = true;
       setIsLiveRefreshing(true);
 
