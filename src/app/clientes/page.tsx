@@ -81,10 +81,8 @@ function ScrollableTabs({
     >
       <div
         ref={scrollRef}
-        className="flex overflow-x-auto gap-1 pb-1"
+        className="flex overflow-x-auto gap-1 pb-1 scrollbar-hide"
         style={{
-          scrollbarWidth: "none",
-          msOverflowStyle: "none",
           WebkitOverflowScrolling: "touch",
           scrollBehavior: "smooth",
           touchAction: "pan-x",
@@ -96,11 +94,6 @@ function ScrollableTabs({
           target.style.scrollbarWidth = "none";
         }}
       >
-        <style jsx>{`
-                    div::-webkit-scrollbar {
-                        display: none;
-                    }
-                `}</style>
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;

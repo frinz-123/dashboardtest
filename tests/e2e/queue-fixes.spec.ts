@@ -231,7 +231,7 @@ test.describe("Queue fixes", () => {
     ).not.toBeVisible();
 
     // Queue cleared immediately
-    await expect(page.locator("text=pendiente")).not.toBeVisible({
+    await expect(page.locator(".bg-blue-50")).not.toBeVisible({
       timeout: 5000,
     });
   });

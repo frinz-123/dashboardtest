@@ -9,6 +9,9 @@ import { ZoomPrevention } from "@/components/ZoomPrevention";
 import DevAgentation from "@/components/DevAgentation";
 
 const inter = Inter({ subsets: ["latin"] });
+const SHOULD_REGISTER_SW =
+  process.env.NODE_ENV === "production" ||
+  process.env.NEXT_PUBLIC_ENABLE_SW_DEV === "true";
 
 export const metadata: Metadata = {
   title: "Dashboard El rey",
@@ -56,19 +59,48 @@ export default function RootLayout({
       </head>
       <body className="antialiased scroll-container">
         <Script id="sw-init" strategy="afterInteractive">{`
-          if ('serviceWorker' in navigator) {
-            var registerServiceWorker = function() {
-              navigator.serviceWorker.register('/service-worker.js').then(function(reg) {
-                console.log('[SW] Registered:', reg.scope);
-              }).catch(function(err) {
-                console.log('[SW] Registration failed:', err);
-              });
-            };
+          var shouldRegisterSW = ${JSON.stringify(SHOULD_REGISTER_SW)};
 
-            if (document.readyState === 'complete') {
-              registerServiceWorker();
+          if ('serviceWorker' in navigator) {
+            if (!shouldRegisterSW) {
+              navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                return Promise.all(
+                  registrations.map(function(registration) {
+                    return registration.unregister();
+                  })
+                );
+              }).catch(function(err) {
+                console.log('[SW] Dev unregister failed:', err);
+              });
+
+              if ('caches' in window) {
+                caches.keys().then(function(cacheNames) {
+                  return Promise.all(
+                    cacheNames
+                      .filter(function(name) { return name.indexOf('elrey-') === 0; })
+                      .map(function(name) { return caches.delete(name); })
+                  );
+                }).catch(function(err) {
+                  console.log('[SW] Dev cache cleanup failed:', err);
+                });
+              }
             } else {
-              window.addEventListener('load', registerServiceWorker, { once: true });
+              var registerServiceWorker = function() {
+                navigator.serviceWorker.register('/service-worker.js', {
+                  scope: '/',
+                  updateViaCache: 'none'
+                }).then(function(reg) {
+                  console.log('[SW] Registered:', reg.scope);
+                }).catch(function(err) {
+                  console.log('[SW] Registration failed:', err);
+                });
+              };
+
+              if (document.readyState === 'complete') {
+                registerServiceWorker();
+              } else {
+                window.addEventListener('load', registerServiceWorker, { once: true });
+              }
             }
           }
         `}</Script>

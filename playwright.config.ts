@@ -9,7 +9,7 @@ export default defineConfig({
     serviceWorkers: "allow",
   },
   webServer: {
-    command: "npm run dev",
+    command: "NEXT_PUBLIC_ENABLE_SW_DEV=true npm run dev",
     url: "http://localhost:3000",
     reuseExistingServer: true,
     timeout: 30000,
