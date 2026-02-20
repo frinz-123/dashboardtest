@@ -3,14 +3,20 @@
 import { ShoppingCart } from "lucide-react";
 import dynamic from "next/dynamic";
 import { useSession } from "next-auth/react";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import AppHeader from "@/components/AppHeader";
 import CleyPhotoCapture, {
   type CleyPhotoPreview,
 } from "@/components/CleyPhotoCapture";
 import CleyOrderQuestion from "@/components/comp-166";
-import LabelNumbers from "@/components/ui/labelnumbers";
-import PendingOrdersBanner from "@/components/ui/PendingOrdersBanner";
 import {
   Dialog,
   DialogContent,
@@ -19,6 +25,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import LabelNumbers from "@/components/ui/labelnumbers";
+import PendingOrdersBanner from "@/components/ui/PendingOrdersBanner";
 import SearchInput from "@/components/ui/SearchInput";
 import {
   ClientSearchSkeleton,
@@ -26,6 +34,7 @@ import {
   ProductListSkeleton,
 } from "@/components/ui/SkeletonLoader";
 import Toast, { useToast } from "@/components/ui/Toast";
+import { useOrderSubmitMutation } from "@/hooks/useOrderSubmitMutation";
 import { useSubmissionQueue } from "@/hooks/useSubmissionQueue";
 import { getCurrentPeriodInfo } from "@/utils/dateUtils";
 import { haptics } from "@/utils/haptics";
@@ -105,6 +114,14 @@ const PHOTO_MIN_REQUIRED = 2;
 const PHOTO_MAX = 4;
 const PHOTO_MAX_DIMENSION = 1280;
 const PHOTO_QUALITY = 0.75;
+
+type SearchableClient = {
+  name: string;
+  normalizedName: string;
+};
+
+const SEARCH_DEBOUNCE_MS = 220;
+const MAX_SEARCH_RESULTS = 20;
 
 function normalizeText(value: string): string {
   if (!value) return "";
@@ -851,21 +868,10 @@ const calculateDistance = (
   return R * c;
 };
 
-// Add a debounce utility function near the throttle function at the bottom
-function debounce<Args extends unknown[]>(
-  func: (...args: Args) => void,
-  wait: number,
-) {
-  let timeout: ReturnType<typeof setTimeout>;
-  return (...args: Args) => {
-    clearTimeout(timeout);
-    timeout = setTimeout(() => {
-      func(...args);
-    }, wait);
-  };
-}
-
-function getClientDataCache(): { names: string[]; locations: Record<string, { lat: number; lng: number }> } | null {
+function getClientDataCache(): {
+  names: string[];
+  locations: Record<string, { lat: number; lng: number }>;
+} | null {
   try {
     const cached = localStorage.getItem("clientData");
     if (cached) {
@@ -876,13 +882,114 @@ function getClientDataCache(): { names: string[]; locations: Record<string, { la
   return null;
 }
 
+type ClientSearchFieldProps = {
+  searchableClients: SearchableClient[];
+  selectedClient: string;
+  onSelectClient: (name: string) => void;
+};
+
+const ClientSearchField = memo(function ClientSearchField({
+  searchableClients,
+  selectedClient,
+  onSelectClient,
+}: ClientSearchFieldProps) {
+  const [query, setQuery] = useState(selectedClient);
+  const [debouncedQuery, setDebouncedQuery] = useState(selectedClient);
+
+  useEffect(() => {
+    setQuery(selectedClient);
+    setDebouncedQuery(selectedClient);
+  }, [selectedClient]);
+
+  useEffect(() => {
+    const id = window.setTimeout(() => {
+      setDebouncedQuery(query);
+    }, SEARCH_DEBOUNCE_MS);
+    return () => window.clearTimeout(id);
+  }, [query]);
+
+  const filteredClients = useMemo(() => {
+    if (!debouncedQuery) return [];
+
+    const normalizedSearch = normalizeText(debouncedQuery);
+    const searchTerms = normalizedSearch
+      .split(" ")
+      .map((term) => term.trim())
+      .filter(Boolean);
+    if (searchTerms.length === 0) return [];
+
+    return searchableClients
+      .filter(({ normalizedName }) => {
+        if (normalizedName.includes(NORMALIZED_ARCHIVE_MARKER)) return false;
+        return searchTerms.every((term) => normalizedName.includes(term));
+      })
+      .map(({ name }) => name)
+      .slice(0, MAX_SEARCH_RESULTS);
+  }, [debouncedQuery, searchableClients]);
+
+  const handleSearchChange = useCallback((value: string) => {
+    setQuery(value);
+  }, []);
+
+  const handleClear = useCallback(() => {
+    setQuery("");
+    setDebouncedQuery("");
+    onSelectClient("");
+  }, [onSelectClient]);
+
+  const handleSelect = useCallback(
+    (name: string) => {
+      haptics.light();
+      setQuery(name);
+      setDebouncedQuery("");
+      onSelectClient(name);
+    },
+    [onSelectClient],
+  );
+
+  const shouldShowSuggestions = useMemo(() => {
+    if (filteredClients.length === 0) return false;
+    const normalizedQuery = normalizeText(query);
+    const normalizedSelected = normalizeText(selectedClient);
+    return normalizedQuery !== "" && normalizedQuery !== normalizedSelected;
+  }, [filteredClients.length, query, selectedClient]);
+
+  return (
+    <div className="relative mb-3">
+      <SearchInput
+        value={query}
+        onChange={handleSearchChange}
+        onClear={handleClear}
+        placeholder="Buscar cliente..."
+      />
+      {shouldShowSuggestions && (
+        <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+          {filteredClients.map((name) => (
+            <button
+              key={name}
+              type="button"
+              className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100"
+              onClick={() => handleSelect(name)}
+            >
+              {name}
+            </button>
+          ))}
+          {debouncedQuery && filteredClients.length === MAX_SEARCH_RESULTS && (
+            <div className="px-4 py-2 text-xs text-gray-500 italic">
+              Mostrando primeros {MAX_SEARCH_RESULTS} resultados. Continúa
+              escribiendo para refinar la búsqueda.
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+});
+
 export default function FormPage() {
   const { data: session } = useSession();
   const { toast, success, error, hideToast } = useToast();
-  const [searchTerm, setSearchTerm] = useState("");
-  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
   const [clientNames, setClientNames] = useState<string[]>([]);
-  const [filteredClients, setFilteredClients] = useState<string[]>([]);
   const [selectedClient, setSelectedClient] = useState<string>("");
   const [total, setTotal] = useState("0.00");
   const [quantities, setQuantities] = useState<Record<string, number>>({});
@@ -921,6 +1028,7 @@ export default function FormPage() {
     clearQueue,
     refreshStaleLocation,
   } = useSubmissionQueue();
+  const submitOrder = useOrderSubmitMutation({ addToQueue });
 
   // 🔧 CRITICAL: Ref-based guard for immediate double-click prevention
   const isSubmittingRef = useRef(false);
@@ -1214,18 +1322,14 @@ export default function FormPage() {
     [calculateOrderDetails],
   );
 
-  // Add a debounced search handler
-  const debouncedSearch = useRef(
-    debounce((value: string) => {
-      setDebouncedSearchTerm(value);
-    }, 300),
-  ).current;
-
-  // Update the search term handler
-  const handleSearchChange = (value: string) => {
-    setSearchTerm(value);
-    debouncedSearch(value);
-  };
+  const searchableClients = useMemo<SearchableClient[]>(
+    () =>
+      clientNames.filter(Boolean).map((name) => ({
+        name,
+        normalizedName: normalizeText(name),
+      })),
+    [clientNames],
+  );
 
   // Move hasSignificantMovement inside component
   const hasSignificantMovement = (
@@ -1426,38 +1530,6 @@ export default function FormPage() {
     }
   }, [session, cachedEmail]);
 
-  // Update the search effect to use the debounced search term
-  useEffect(() => {
-    if (debouncedSearchTerm) {
-      const normalizedSearch = normalizeText(debouncedSearchTerm);
-      const searchTerms = normalizedSearch
-        .split(" ")
-        .map((term) => term.trim())
-        .filter(Boolean);
-      const MAX_RESULTS = 20; // Limit to 20 results for better performance
-
-      console.log("🔎 Buscando clientes normalizados:", {
-        originalTerm: debouncedSearchTerm,
-        normalizedTerm: normalizedSearch,
-        timestamp: new Date().toISOString(),
-      });
-
-      const filtered = clientNames
-        .filter((name) => {
-          if (!name) return false;
-          const normalizedName = normalizeText(name);
-          if (normalizedName.includes(NORMALIZED_ARCHIVE_MARKER)) return false;
-          if (!searchTerms.length) return false;
-          return searchTerms.every((term) => normalizedName.includes(term));
-        })
-        .slice(0, MAX_RESULTS);
-
-      setFilteredClients(filtered);
-    } else {
-      setFilteredClients([]);
-    }
-  }, [debouncedSearchTerm, clientNames]);
-
   useEffect(() => {
     if (selectedClient) {
       const clientCode = getClientCode(selectedClient);
@@ -1577,7 +1649,20 @@ export default function FormPage() {
     return email ? OVERRIDE_EMAILS.includes(email) : false;
   };
 
-  // 🔧 QUEUE-BASED SUBMISSION: Guarantees delivery even with poor connectivity
+  const clearSubmittedForm = () => {
+    setSelectedClient("");
+    setQuantities({});
+    setTotal("0.00");
+    setCleyOrderValue("1");
+    resetCleyPhotoUi();
+    setOverrideEmail("");
+    setOverrideDate("");
+    setOverridePeriod("");
+    setOverrideMonthCode("");
+    setKey((prev) => prev + 1);
+  };
+
+  // Hybrid submission: immediate submit with one retry, then queue fallback.
   const handleSubmit = async () => {
     // 🔒 CRITICAL: Immediate ref-based guard against double-clicks
     if (isSubmittingRef.current) {
@@ -1710,7 +1795,7 @@ export default function FormPage() {
         : 0;
       const photoCount = isPhotoRequired ? cleyPhotos.length : 0;
 
-      console.log("📦 QUEUEING SUBMISSION:", {
+      console.log("📦 PREPARING SUBMISSION:", {
         submissionId,
         clientName: selectedClient,
         clientCode,
@@ -1719,8 +1804,7 @@ export default function FormPage() {
         timestamp: new Date().toISOString(),
       });
 
-      // 🔧 ADD TO QUEUE: This guarantees eventual delivery
-      await addToQueue({
+      const submitResult = await submitOrder({
         id: submissionId,
         payload: {
           clientName: selectedClient,
@@ -1750,73 +1834,44 @@ export default function FormPage() {
         isAdmin,
       });
 
-      // ✅ CLEAR FORM IMMEDIATELY (queue handles delivery)
-      console.log("✅ ORDER QUEUED - Clearing form");
-      setSelectedClient("");
-      setSearchTerm("");
-      setDebouncedSearchTerm("");
-      setQuantities({});
-      setFilteredClients([]);
-      setTotal("0.00");
-      setCleyOrderValue("1");
-      resetCleyPhotoUi();
-      setOverrideEmail("");
-      setOverrideDate("");
-      setOverridePeriod("");
-      setOverrideMonthCode("");
-      setKey((prev) => prev + 1);
+      clearSubmittedForm();
 
-      // Show success feedback
-      haptics.success();
-
-      if (navigator.onLine) {
-        success(
-          "Pedido en cola",
-          "Tu pedido se esta enviando automaticamente.",
-          3000,
-        );
+      if (submitResult.outcome === "submitted") {
+        haptics.success();
+        success("Pedido enviado", "El pedido se envio correctamente.", 3000);
+      } else if (submitResult.outcome === "queued") {
+        haptics.success();
+        if (navigator.onLine) {
+          success(
+            "Pedido en cola",
+            "Tu pedido se esta enviando automaticamente.",
+            3000,
+          );
+        } else {
+          success(
+            "Pedido guardado",
+            "Se enviara automaticamente cuando tengas conexion.",
+            4000,
+          );
+        }
       } else {
+        haptics.light();
         success(
-          "Pedido guardado",
-          "Se enviara automaticamente cuando tengas conexion.",
-          4000,
+          "Pedido ya registrado",
+          "Este pedido ya estaba en proceso o ya fue enviado.",
+          3000,
         );
       }
     } catch (err) {
       const errMessage = err instanceof Error ? err.message : String(err);
-      console.error("❌ QUEUE FAILURE:", err);
-
-      // Check if this is a duplicate error
-      if (errMessage.includes("DUPLICATE")) {
-        haptics.light();
-        success(
-          "Pedido ya en cola",
-          "Este pedido ya esta siendo procesado.",
-          3000,
-        );
-        // Still clear the form since the order is already queued
-        setSelectedClient("");
-        setSearchTerm("");
-        setDebouncedSearchTerm("");
-        setQuantities({});
-        setFilteredClients([]);
-        setTotal("0.00");
-        setCleyOrderValue("1");
-        resetCleyPhotoUi();
-        setOverrideEmail("");
-        setOverrideDate("");
-        setOverridePeriod("");
-        setOverrideMonthCode("");
-        setKey((prev) => prev + 1);
-      } else {
-        haptics.error();
-        error(
-          "Error",
-          errMessage ||
-            "No se pudo guardar el pedido. Por favor, intenta de nuevo.",
-          4000,
-        );
-      }
+      console.error("❌ SUBMISSION FAILURE:", err);
+      haptics.error();
+      error(
+        "Error",
+        errMessage ||
+          "No se pudo guardar el pedido. Por favor, intenta de nuevo.",
+        4000,
+      );
     } finally {
       setIsSubmitting(false);
       isSubmittingRef.current = false;
@@ -1899,44 +1954,11 @@ export default function FormPage() {
 
       <AppHeader title="Ventas" icon={ShoppingCart} />
       <main className="px-4 py-4 max-w-2xl mx-auto">
-        <div className="relative mb-3">
-          <SearchInput
-            value={searchTerm}
-            onChange={handleSearchChange}
-            onClear={() => {
-              setSearchTerm("");
-              setDebouncedSearchTerm("");
-              setSelectedClient("");
-              setFilteredClients([]);
-            }}
-            placeholder="Buscar cliente..."
-          />
-          {filteredClients.length > 0 && (
-            <div className="absolute z-10 mt-1 w-full bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
-              {filteredClients.map((name) => (
-                <button
-                  key={name}
-                  type="button"
-                  className="w-full px-4 py-2 text-left text-sm hover:bg-gray-100"
-                  onClick={() => {
-                    haptics.light(); // Haptic feedback for client selection
-                    setSelectedClient(name);
-                    setSearchTerm(name);
-                    setFilteredClients([]);
-                  }}
-                >
-                  {name}
-                </button>
-              ))}
-              {debouncedSearchTerm && filteredClients.length === 20 && (
-                <div className="px-4 py-2 text-xs text-gray-500 italic">
-                  Mostrando primeros 20 resultados. Continúa escribiendo para
-                  refinar la búsqueda.
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+        <ClientSearchField
+          searchableClients={searchableClients}
+          selectedClient={selectedClient}
+          onSelectClient={setSelectedClient}
+        />
         {selectedClient && (
           <div className="text-sm text-gray-600 mb-2 flex items-center justify-between">
             <p>

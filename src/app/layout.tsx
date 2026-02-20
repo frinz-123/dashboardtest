@@ -3,10 +3,11 @@ import { Inter } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 import ClientDataPrefetcher from "@/components/ClientDataPrefetcher";
+import DevAgentation from "@/components/DevAgentation";
 import AuthProvider from "@/components/providers/AuthProvider";
 import { MotionProvider } from "@/components/providers/MotionProvider";
+import QueryProvider from "@/components/providers/QueryProvider";
 import { ZoomPrevention } from "@/components/ZoomPrevention";
-import DevAgentation from "@/components/DevAgentation";
 
 const inter = Inter({ subsets: ["latin"] });
 const SHOULD_REGISTER_SW =
@@ -106,9 +107,11 @@ export default function RootLayout({
         `}</Script>
         <ZoomPrevention />
         <ClientDataPrefetcher />
-        <AuthProvider>
-          <MotionProvider>{children}</MotionProvider>
-        </AuthProvider>
+        <QueryProvider>
+          <AuthProvider>
+            <MotionProvider>{children}</MotionProvider>
+          </AuthProvider>
+        </QueryProvider>
         <DevAgentation />
       </body>
     </html>

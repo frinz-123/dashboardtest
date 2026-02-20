@@ -28,6 +28,38 @@ const HIGH_ACCURACY_THRESHOLD = 40; // meters
 const HIGH_ACCURACY_TIMEOUT = 12000;
 const MAX_AUTO_RETRIES = 3;
 const AUTO_RETRY_BASE_DELAY_MS = 1000;
+const GEOLOCATION_PERMISSION_DENIED = 1;
+const GEOLOCATION_POSITION_UNAVAILABLE = 2;
+const GEOLOCATION_TIMEOUT = 3;
+
+function parseGeolocationError(error: GeolocationPositionError | Error): {
+  code: number | null;
+  message: string;
+} {
+  const code =
+    "code" in error && typeof error.code === "number" ? error.code : null;
+
+  const messageFromError =
+    "message" in error && typeof error.message === "string"
+      ? error.message.trim()
+      : "";
+
+  if (messageFromError) {
+    return { code, message: messageFromError };
+  }
+
+  if (code === GEOLOCATION_PERMISSION_DENIED) {
+    return { code, message: "Permiso de ubicación denegado." };
+  }
+  if (code === GEOLOCATION_POSITION_UNAVAILABLE) {
+    return { code, message: "No hay señal de ubicación disponible." };
+  }
+  if (code === GEOLOCATION_TIMEOUT) {
+    return { code, message: "La solicitud de ubicación excedió el tiempo." };
+  }
+
+  return { code, message: "Error desconocido de geolocalización." };
+}
 
 const calculateDistance = (
   lat1: number,
@@ -283,15 +315,18 @@ export default function MapView({
         }
 
         stopWatchingLocation();
-        console.error("Error getting location:", error);
+        const { code, message } = parseGeolocationError(error);
+        if (process.env.NODE_ENV !== "production") {
+          console.warn("Map geolocation failed", {
+            code,
+            message,
+          });
+        }
 
-        const code =
-          "code" in error && typeof error.code === "number" ? error.code : null;
         const isRetryable =
-          code === 2 ||
-          code === 3 ||
-          (error instanceof Error &&
-            error.message.toLowerCase().includes("timed out"));
+          code === GEOLOCATION_POSITION_UNAVAILABLE ||
+          code === GEOLOCATION_TIMEOUT ||
+          message.toLowerCase().includes("timed out");
 
         if (isRetryable && geoRetryCountRef.current < MAX_AUTO_RETRIES) {
           geoRetryCountRef.current += 1;
@@ -311,10 +346,10 @@ export default function MapView({
         let errorMessage =
           "No se pudo obtener ubicación. Revisa GPS y toca Reintentar.";
 
-        if (code === 1) {
-          errorMessage = "Please allow location access to use this feature";
-        } else if (code === 2) {
-          errorMessage = "Location information is unavailable";
+        if (code === GEOLOCATION_PERMISSION_DENIED) {
+          errorMessage = "Permite acceso a tu ubicación para continuar.";
+        } else if (code === GEOLOCATION_POSITION_UNAVAILABLE) {
+          errorMessage = "La información de ubicación no está disponible.";
         }
 
         setLocationError(errorMessage);
