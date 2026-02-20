@@ -1,4 +1,4 @@
-import { google } from "googleapis";
+import { google, type sheets_v4 } from "googleapis";
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { isInventarioCarroAdmin } from "@/utils/auth";
@@ -28,6 +28,27 @@ type TransferItem = {
   product: string;
   quantity: number;
 };
+
+const toCellData = (value: string | number): sheets_v4.Schema$CellData => {
+  if (typeof value === "number") {
+    return { userEnteredValue: { numberValue: value } };
+  }
+
+  return { userEnteredValue: { stringValue: value } };
+};
+
+const toAppendCellsRequest = (
+  sheetId: number,
+  values: Array<Array<string | number>>,
+): sheets_v4.Schema$Request => ({
+  appendCells: {
+    sheetId,
+    rows: values.map((row) => ({
+      values: row.map((cell) => toCellData(cell)),
+    })),
+    fields: "userEnteredValue",
+  },
+});
 
 const getSessionEmail = async () => {
   const session = await auth();
@@ -193,35 +214,55 @@ export async function POST(req: Request) {
       }
     });
 
-    if (carEntries.length > 0) {
-      const carValues = carEntries.map((entry) =>
-        toCarLedgerValues(entry, authCheck.email, now),
-      );
-      await sheets.spreadsheets.values.append({
-        spreadsheetId: SPREADSHEET_ID,
-        range: `${INVENTARIO_CARROS_SHEET_NAME}!A:O`,
-        valueInputOption: "RAW",
-        insertDataOption: "INSERT_ROWS",
-        requestBody: {
-          values: carValues,
-        },
-      });
+    const carValues: Array<Array<string | number>> = carEntries.map((entry) =>
+      toCarLedgerValues(entry, authCheck.email, now),
+    );
+    const bodegaValues: Array<Array<string | number>> = bodegaEntries.map(
+      (entry) => toBodegaLedgerValues(entry, authCheck.email, now),
+    );
+
+    const spreadsheetMetadata = await sheets.spreadsheets.get({
+      spreadsheetId: SPREADSHEET_ID,
+      fields: "sheets.properties(sheetId,title)",
+    });
+
+    const sheetIdByTitle = new Map(
+      (spreadsheetMetadata.data.sheets || [])
+        .map((sheet) => {
+          const title = sheet.properties?.title;
+          const sheetId = sheet.properties?.sheetId;
+          if (!title || typeof sheetId !== "number") return null;
+          return [title, sheetId] as const;
+        })
+        .filter((entry): entry is readonly [string, number] => Boolean(entry)),
+    );
+
+    const requests: sheets_v4.Schema$Request[] = [];
+    if (carValues.length > 0) {
+      const carSheetId = sheetIdByTitle.get(INVENTARIO_CARROS_SHEET_NAME);
+      if (typeof carSheetId !== "number") {
+        throw new Error(
+          `Sheet ${INVENTARIO_CARROS_SHEET_NAME} was not found after setup`,
+        );
+      }
+      requests.push(toAppendCellsRequest(carSheetId, carValues));
+    }
+    if (bodegaValues.length > 0) {
+      const bodegaSheetId = sheetIdByTitle.get(INVENTARIO_BODEGA_SHEET_NAME);
+      if (typeof bodegaSheetId !== "number") {
+        throw new Error(
+          `Sheet ${INVENTARIO_BODEGA_SHEET_NAME} was not found after setup`,
+        );
+      }
+      requests.push(toAppendCellsRequest(bodegaSheetId, bodegaValues));
     }
 
-    if (bodegaEntries.length > 0) {
-      const bodegaValues = bodegaEntries.map((entry) =>
-        toBodegaLedgerValues(entry, authCheck.email, now),
-      );
-      await sheets.spreadsheets.values.append({
-        spreadsheetId: SPREADSHEET_ID,
-        range: `${INVENTARIO_BODEGA_SHEET_NAME}!A:P`,
-        valueInputOption: "RAW",
-        insertDataOption: "INSERT_ROWS",
-        requestBody: {
-          values: bodegaValues,
-        },
-      });
-    }
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId: SPREADSHEET_ID,
+      requestBody: {
+        requests,
+      },
+    });
 
     const warnings = await getBodegaWarnings(sheets);
     return NextResponse.json({

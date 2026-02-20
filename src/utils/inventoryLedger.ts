@@ -322,7 +322,7 @@ export const getSheetRows = async (
 
   return {
     hasHeader,
-    rows: dataRows.filter((row) => row.some((cell) => (cell || "").trim())),
+    rows: dataRows,
   };
 };
 
