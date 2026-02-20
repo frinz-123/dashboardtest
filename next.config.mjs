@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  reactCompiler: true,
+  reactCompiler: process.env.NEXT_PUBLIC_ENABLE_REACT_COMPILER === "true",
   reactStrictMode: true,
   typescript: {
     ignoreBuildErrors: true,
