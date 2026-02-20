@@ -4,120 +4,226 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Dashboard El Rey - A Next.js PWA for sales and inventory management with Google Sheets backend integration.
+Dashboard El Rey — A Next.js PWA for sales and inventory management. Google Sheets is the primary database. The app is mobile-first, supports offline use, and is used by a small team of field sales reps in Mexico/Colombia.
 
 ## Essential Commands
 
 ```bash
 # Development
-npm run dev          # Start development server on http://localhost:3000
+npm run dev          # Start dev server on http://localhost:3000
 
-# Production
-npm run build        # Build for production
+# Build & Production
+npm run build        # Production build
 npm run start        # Start production server
-npm run export       # Static export for GitHub Pages deployment
 
-# No test or lint commands currently configured
+# Code Quality (Biome — not ESLint)
+npm run check        # biome check (lint + format check)
+npm run lint         # biome lint
+npm run format       # biome format --write
+
+# Testing
+npm test             # Jest unit tests
+npm run test:watch   # Jest watch mode
+npx playwright test  # E2E tests
 ```
 
-## Architecture Overview
+> There is no `npm run export` that works — `next export` is deprecated in Next.js 16.
 
-### Technology Stack
-- **Framework**: Next.js 14 with App Router
-- **Authentication**: NextAuth.js with Google OAuth (whitelist-based)
-- **Database**: Google Sheets API (primary data store)
-- **UI**: shadcn/ui components with Tailwind CSS
-- **Maps**: Mapbox GL for location tracking
-- **PWA**: next-pwa with comprehensive offline support
+## Tech Stack
 
-### Core Application Structure
+| Layer | Technology |
+|---|---|
+| Framework | Next.js 16, React 19, App Router (primary) |
+| Auth | NextAuth v5 (beta) — Google OAuth, JWT sessions |
+| Database | Google Sheets API via service account |
+| UI | shadcn/ui + Radix UI + Tailwind CSS |
+| Charts | recharts |
+| Animations | `motion/react` (Motion v12) — see LazyMotion note below |
+| Maps | Mapbox GL + @mapbox/mapbox-gl-draw + turf.js |
+| Code Quality | Biome (replaces ESLint + Prettier) |
+| Testing | Jest + Playwright |
+| Node | 20.9.0 (see `.nvmrc`) |
 
-The app is organized around four main business modules:
+## App Routes
 
-1. **Dashboard** (`/src/app/dashboard/`): Real-time sales analytics with time period filtering
-2. **Clients** (`/src/app/clientes/`): Client management and location tracking
-3. **Inventory** (`/src/app/inventario/`): Stock management with entry/exit tracking
-4. **Routes** (`/src/app/recorridos/`, `/rutas/`, `/navegar/`): Sales route planning and tracking
+| Route | Description |
+|---|---|
+| `/` | Main sales dashboard — KPIs, period analytics, goal tracking |
+| `/form` | Sales order form — product entry, GPS validation, photo capture |
+| `/clientes` | Client management — location map, analytics, visit history |
+| `/recorridos` | Sales route management — scheduling, visit tracking |
+| `/rutas` | Route planning interface |
+| `/navegar` | Map-based turn-by-turn client navigation |
+| `/inventario` | Stock management — entries and exits |
+| `/inventario-carro` | Vehicle/car inventory tracking |
+| `/buzon` | Inbox — feed posts and notifications |
+| `/transacciones` | Transaction log with filters |
+| `/inspector-periodos` | Period-based inspection analytics |
+| `/admin` | Admin panel (role-restricted) |
+| `/auth/signin` | Google OAuth sign-in |
+| `/auth/error` | Auth error display |
 
-### API Routes Pattern
+## API Routes (`src/app/api/`)
 
-All API endpoints follow this structure in `/src/app/api/`:
-- Use Google Sheets as backend via service account
-- Return NextResponse with JSON data
-- Handle authentication via NextAuth session checks
+All API routes check auth via `await auth()` and return `NextResponse.json()`. They access Google Sheets via service account.
 
-Example pattern:
+- `submit-form` — Submit sales order (GPS validation, photo upload, deduplication)
+- `clientes` — Client data, analytics, seller analytics
+- `recorridos` — Route CRUD + reschedule + update
+- `transacciones` — Transaction log with pagination/filtering
+- `inventario-carros` — Vehicle inventory data
+- `inventory/add-entrada` — Add inventory entry
+- `upload-photo` — Photo upload to AWS S3 or Google Drive
+- `buzon-unseen` — Unseen notification count
+- `feed-reviews` — Feed posts for inspector
+- `auth/[...nextauth]` — NextAuth OAuth handler
+- `auth/token` — Token management
+
+## Key Files
+
+```
+src/
+  auth.ts                          # NextAuth v5 config — allowed emails list, JWT setup
+  app/layout.tsx                   # Root layout — MotionProvider, AuthProvider, Script (SW)
+  app/globals.css                  # Global styles incl. animation keyframes
+  components/providers/
+    AuthProvider.tsx               # SessionProvider wrapper
+    MotionProvider.tsx             # LazyMotion provider (MUST wrap motion consumers)
+  utils/
+    auth.ts                        # Email→vendor mapping, MASTER_ACCOUNTS, role lists
+    googleAuth.ts                  # Google service account + OAuth2 setup
+    dateUtils.ts                   # Period calculations, Spanish date formatting
+    transacciones.ts               # Transaction row parsing and filtering
+    photoStore.ts                  # IndexedDB photo cache
+    submissionQueue.ts             # Offline form submission queue
+    haptics.ts                     # Mobile haptic feedback
+  hooks/
+    use-mobile.tsx                 # Responsive breakpoint detection
+    useBuzonNotifications.ts       # Polls /api/buzon-unseen every 60s
+    useSubmissionQueue.ts          # Offline queue management
+  lib/utils.ts                     # cn() utility (clsx + tailwind-merge)
+```
+
+## Coding Conventions
+
+### Path Aliases
+Always use `@/` for imports from `src/`:
 ```typescript
-// src/app/api/[module]/route.ts
-export async function GET(request: Request) {
-  const session = await auth();
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  // Google Sheets integration
-  const sheets = google.sheets({ version: 'v4', auth });
-  // ... fetch and process data
-
-  return NextResponse.json(data);
-}
+import { cn } from "@/lib/utils";
+import AppHeader from "@/components/AppHeader";
 ```
 
-### Google Sheets Integration
-
-The app uses specific Google Sheets as its database:
-- **Dashboard**: Sheet ID `1-XStkIoYjYQ_WNjrQV8LIq01NmViQYpNBFMq37a_H6U`
-- **Clients**: Sheet ID `1fyGH2Xpqkw49RLR0BvinN8UzSAiA7d-e5Mf0PAwYPos`
-- **Inventory**: Sheet ID `1Iy8KJOmFsgfU7fcn0eLO70xz7pW-nP_YP6C0MdRz2Ho`
-- **Routes**: Sheet ID `1QSJBRRbKm5fAmJT71oGBfgwsYLAOhZSbqT36c3l_RdU`
-
-### Component Organization
-
-- `/src/components/ui/`: shadcn/ui components (Button, Card, Dialog, etc.)
-- `/src/components/`: Business logic components (VendorSelector, RouteAnalytics, etc.)
-- `/src/components/providers/`: Context providers for state management
-
-### Authentication Flow
-
-NextAuth configuration restricts access to specific email addresses:
+### Animations — LazyMotion Pattern
+`MotionProvider` (in layout.tsx) sets up LazyMotion app-wide. **Always use `m` not `motion`**:
 ```typescript
-// Only allows emails from: src/utils/auth.ts
-const AUTHORIZED_EMAILS = [
-  'ferchosaico26@gmail.com',
-  'ventas1elrey@gmail.com',
-  // ... other authorized emails
-];
+// ✅ Correct
+import { m, AnimatePresence } from "motion/react";
+<m.div animate={{ opacity: 1 }} />
+
+// ❌ Wrong — bypasses LazyMotion, costs ~30kb
+import { motion } from "motion/react";
+<motion.div animate={{ opacity: 1 }} />
 ```
 
-### PWA Configuration
+### Heavy Components — Dynamic Imports
+Lazy-load chart-heavy or conditionally-rendered components:
+```typescript
+import dynamic from "next/dynamic";
+const HeavyChart = dynamic(() => import("./HeavyChart"), { ssr: false });
+```
 
-The app includes comprehensive PWA features:
-- Service worker with offline support
-- App manifest for installability
-- Caching strategies for API routes and assets
-- Background sync capabilities
+### Styling
+Use `cn()` from `@/lib/utils` for conditional Tailwind classes:
+```typescript
+import { cn } from "@/lib/utils";
+className={cn("base-class", condition && "conditional-class")}
+```
 
-### Key Environment Variables
+### Date Localization
+Use Spanish Colombia locale for user-facing dates:
+```typescript
+date.toLocaleDateString('es-CO', { day: 'numeric', month: 'short', year: 'numeric' })
+```
+
+## Authentication & Authorization
+
+- **Config**: `src/auth.ts` — NextAuth v5, Google OAuth provider
+- **Allowed emails**: hardcoded list in `src/auth.ts` (13 addresses + `OVERRIDE_EMAIL` env var)
+- **Roles** (defined in `src/utils/auth.ts`):
+  - `MASTER_ACCOUNTS` — 5 superusers, can view any vendor's data
+  - `INVENTARIO_CARRO_ACCOUNTS` — access to vehicle inventory
+  - `EMAIL_TO_VENDOR_LABELS` — maps email → display name for 13+ sellers
+- **Session check in API routes**: `const session = await auth(); if (!session) return 401`
+
+## Google Sheets Integration
+
+### Sheet IDs
+| Module | Spreadsheet ID |
+|---|---|
+| Sales / Form data | `NEXT_PUBLIC_SPREADSHEET_ID` env var |
+| Clients & Routes | `1QSJBRRbKm5fAmJT71oGBfgwsYLAOhZSbqT36c3l_RdU` |
+| Inventory | `1Iy8KJOmFsgfU7fcn0eLO70xz7pW-nP_YP6C0MdRz2Ho` |
+
+### Sheet Names
+- `Form_Data` — primary sales transaction log (columns A–AQ)
+- `Clientes_Rutas`, `Rutas_Performance`, `Programacion_Semanal`, `Configuracion`, `Metricas_Rutas`, `Visitas_Individuales`, `Visitas_Reprogramadas`
+
+### Auth
+Service account credentials are set up in `src/utils/googleAuth.ts`. The service account JSON is read from environment variables (prefixed `GOOGLE_SERVICE_ACCOUNT_`).
+
+## Environment Variables
 
 Required in `.env.local`:
 ```
-NEXTAUTH_URL=
+# Auth
 NEXTAUTH_SECRET=
+NEXTAUTH_URL=http://localhost:3000
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
-MAPBOX_ACCESS_TOKEN=
+
+# Google Sheets / Drive
+NEXT_PUBLIC_SPREADSHEET_ID=
+NEXT_PUBLIC_SHEET_NAME=Form_Data
+GOOGLE_DRIVE_FOLDER_ID=
+GOOGLE_DRIVE_CLIENT_ID=
+GOOGLE_DRIVE_CLIENT_SECRET=
+GOOGLE_DRIVE_REFRESH_TOKEN=
+GOOGLE_DRIVE_REDIRECT_URI=
+GOOGLE_SERVICE_ACCOUNT_TYPE=
+GOOGLE_SERVICE_ACCOUNT_PROJECT_ID=
+GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY_ID=
+GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY=
+GOOGLE_SERVICE_ACCOUNT_CLIENT_EMAIL=
+GOOGLE_SERVICE_ACCOUNT_CLIENT_ID=
+
+# Maps
+NEXT_PUBLIC_MAPBOX_TOKEN=
+NEXT_PUBLIC_GOOGLE_API_KEY=
+
+# App Config
+NEXT_PUBLIC_OVERRIDE_EMAIL=    # Comma-separated emails to bypass GPS validation
+NEXT_PUBLIC_ADMIN_PASSWORD=
+ADMIN_PASSWORD=
 ```
 
-### Development Considerations
+## PWA & Offline
 
-1. **Mixed Router Architecture**: Both App Router (`/src/app/`) and Pages Router (`/src/pages/`) are present. Prefer App Router for new features.
+- Service worker registered via `next/script` in `layout.tsx` (`strategy="afterInteractive"`)
+- Service worker file at `public/service-worker.js`
+- `ClientDataPrefetcher` component preloads data on mount for offline use
+- `useSubmissionQueue` / `submissionQueue.ts` queue form submissions when offline
+- `photoStore.ts` caches photos in IndexedDB
 
-2. **TypeScript Configuration**: Strict mode is enabled but several rules are disabled in ESLint. Consider enabling them for better type safety.
+## Known Issues / Gotchas
 
-3. **Data Fetching Pattern**: Uses client-side fetching with React hooks. API routes handle Google Sheets integration.
+1. **TypeScript**: `ignoreBuildErrors: true` is set in `next.config.mjs`. There are pre-existing TS errors in `admin/page.tsx`, `api/clientes/route.ts`, and `navegar/page.tsx` — do not attempt to fix them unless explicitly asked.
 
-4. **State Management**: No external state management library. Uses React Context and local state.
+2. **Mixed Router**: App Router (`src/app/`) is primary. Pages Router (`src/pages/`) exists but is mostly legacy. Prefer App Router for new features.
 
-5. **Styling**: Tailwind CSS with custom configuration. Use `cn()` utility from `/src/lib/utils` for conditional classes.
+3. **Linter**: The project uses **Biome**, not ESLint. Run `npm run check` not `npm run lint:eslint`.
 
-6. **Date Handling**: Spanish localization for dates using `toLocaleDateString('es-CO')`.
+4. **No `next export`**: Static export is broken in Next.js 16. Use `npm run build` + `npm run start` for production.
 
-7. **Mobile Optimization**: Extensive mobile-first design with viewport prevention for zoom and touch gestures.
+5. **Large page files**: Several pages (`clientes`, `form`, `inspector-periodos`, `recorridos`) exceed 1000–3000 lines. When editing, read the relevant section first before making changes.
+
+6. **Form validation (GPS)**: `submit-form` API enforces: GPS accuracy ≤100m, location age ≤90s, distance to client ≤450m. Emails in `NEXT_PUBLIC_OVERRIDE_EMAIL` bypass these checks.

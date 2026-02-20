@@ -17,7 +17,7 @@ import {
   Settings2,
   Truck,
 } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, m } from "motion/react";
 import { redirect } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -388,8 +388,8 @@ const DatePicker = ({ value, onChange, id }: DatePickerProps) => {
 
   // Parse value or default to today
   const selectedDate = value ? new Date(`${value}T12:00:00`) : new Date();
-  const [viewMonth, setViewMonth] = useState(selectedDate.getMonth());
-  const [viewYear, setViewYear] = useState(selectedDate.getFullYear());
+  const [viewMonth, setViewMonth] = useState(() => selectedDate.getMonth());
+  const [viewYear, setViewYear] = useState(() => selectedDate.getFullYear());
 
   const formatDisplayDate = (dateStr: string) => {
     if (!dateStr) return "";
@@ -412,7 +412,7 @@ const DatePicker = ({ value, onChange, id }: DatePickerProps) => {
   const handlePrevMonth = () => {
     if (viewMonth === 0) {
       setViewMonth(11);
-      setViewYear(viewYear - 1);
+      setViewYear(prev => prev - 1);
     } else {
       setViewMonth(viewMonth - 1);
     }
@@ -421,7 +421,7 @@ const DatePicker = ({ value, onChange, id }: DatePickerProps) => {
   const handleNextMonth = () => {
     if (viewMonth === 11) {
       setViewMonth(0);
-      setViewYear(viewYear + 1);
+      setViewYear(prev => prev + 1);
     } else {
       setViewMonth(viewMonth + 1);
     }
@@ -1586,7 +1586,7 @@ export default function InventarioCarroPage() {
                 onChange={(date) => setAddForm((prev) => ({ ...prev, date }))}
               />
             </div>
-            <motion.div
+            <m.div
               layout
               className="space-y-3"
               transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
@@ -1597,14 +1597,14 @@ export default function InventarioCarroPage() {
                 </p>
               </div>
 
-              <motion.div
+              <m.div
                 layout
                 className="space-y-2"
                 transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
               >
                 <AnimatePresence initial={false}>
                   {addForm.items.map((item, index) => (
-                    <motion.div
+                    <m.div
                       key={item.id}
                       layout
                       initial={{ opacity: 0, height: 0 }}
@@ -1663,12 +1663,12 @@ export default function InventarioCarroPage() {
                       >
                         <Minus className="h-5 w-5" />
                       </button>
-                    </motion.div>
+                    </m.div>
                   ))}
                 </AnimatePresence>
-              </motion.div>
+              </m.div>
 
-              <motion.button
+              <m.button
                 layout
                 type="button"
                 onClick={handleAddItem}
@@ -1677,10 +1677,10 @@ export default function InventarioCarroPage() {
               >
                 <Plus className="h-3.5 w-3.5" />
                 Agregar producto
-              </motion.button>
-            </motion.div>
+              </m.button>
+            </m.div>
 
-            <motion.div
+            <m.div
               layout
               className="space-y-2"
               transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
@@ -1737,8 +1737,8 @@ export default function InventarioCarroPage() {
                   );
                 })}
               </div>
-            </motion.div>
-            <motion.div
+            </m.div>
+            <m.div
               layout
               className="space-y-1"
               transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
@@ -1761,8 +1761,8 @@ export default function InventarioCarroPage() {
                 rows={3}
                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-base"
               />
-            </motion.div>
-            <motion.div
+            </m.div>
+            <m.div
               layout
               className="flex justify-end gap-2"
               transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
@@ -1782,7 +1782,7 @@ export default function InventarioCarroPage() {
               >
                 Guardar
               </button>
-            </motion.div>
+            </m.div>
           </div>
         </DialogContent>
       </Dialog>

@@ -31,7 +31,8 @@ import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import AppHeader from "@/components/AppHeader";
-import ProductsAreaChart from "@/components/ProductsAreaChart";
+import dynamic from "next/dynamic";
+const ProductsAreaChart = dynamic(() => import("@/components/ProductsAreaChart"), { ssr: false });
 import ErrorToast from "@/components/ui/ErrorToast";
 import InputGray from "@/components/ui/InputGray";
 import SearchInput from "@/components/ui/SearchInput";
@@ -80,10 +81,8 @@ function ScrollableTabs({
     >
       <div
         ref={scrollRef}
-        className="flex overflow-x-auto gap-1 pb-1"
+        className="flex overflow-x-auto gap-1 pb-1 scrollbar-hide"
         style={{
-          scrollbarWidth: "none",
-          msOverflowStyle: "none",
           WebkitOverflowScrolling: "touch",
           scrollBehavior: "smooth",
           touchAction: "pan-x",
@@ -95,11 +94,6 @@ function ScrollableTabs({
           target.style.scrollbarWidth = "none";
         }}
       >
-        <style jsx>{`
-                    div::-webkit-scrollbar {
-                        display: none;
-                    }
-                `}</style>
         {tabs.map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;

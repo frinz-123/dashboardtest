@@ -3,12 +3,28 @@
  *
  * This service worker handles:
  * 1. Background Sync - Process queued orders when connection is restored
- * 2. Background tools for offline support
- *
- * Note: Workbox (next-pwa) handles runtime caching.
+ * 2. Offline app-shell caching for navigation/assets
  */
 
 const SYNC_TAG = "order-submission-sync";
+const CACHE_VERSION = "v2";
+const APP_SHELL_CACHE = `elrey-app-shell-${CACHE_VERSION}`;
+const ASSET_RUNTIME_CACHE = `elrey-assets-${CACHE_VERSION}`;
+const IMAGE_RUNTIME_CACHE = `elrey-images-${CACHE_VERSION}`;
+const CACHE_ALLOWLIST = [APP_SHELL_CACHE, ASSET_RUNTIME_CACHE, IMAGE_RUNTIME_CACHE];
+const OFFLINE_FALLBACK_PATH = "/offline.html";
+const APP_SHELL_PRECACHE_URLS = [
+  OFFLINE_FALLBACK_PATH,
+  "/auth/signin",
+  "/login",
+  "/manifest.json",
+  "/icons/favicon.ico",
+  "/icons/favicon.svg",
+  "/icons/icon-192x192.png",
+  "/icons/icon-512x512.png",
+  "/google.svg",
+];
+
 const DB_NAME = "elrey-submissions";
 const STORE_NAME = "pending-orders";
 const PHOTO_DB_NAME = "elrey-photo-store";
@@ -18,16 +34,170 @@ const REQUEST_TIMEOUT_MS = 10000; // 10 seconds per network attempt
 const PHOTO_UPLOAD_TIMEOUT_MS = 15000; // 15 seconds per photo upload
 const STALE_SENDING_MS = 45000; // Recover "sending" items after 45 seconds
 
-// Install event - activate immediately
-self.addEventListener("install", (_event) => {
+const CACHEABLE_DESTINATIONS = new Set(["script", "style", "font", "worker"]);
+
+const isHttpRequest = (request) => request.url.startsWith("http");
+
+const isCacheableResponse = (response) =>
+  Boolean(response?.ok && (response.type === "basic" || response.type === "cors"));
+
+const isNavigationRequest = (request) => request.mode === "navigate";
+
+const isStaticAssetRequest = (request, url) =>
+  url.pathname.startsWith("/_next/static/") ||
+  CACHEABLE_DESTINATIONS.has(request.destination) ||
+  url.pathname === "/manifest.json" ||
+  url.pathname === "/favicon.ico";
+
+const isImageRequest = (request, url) =>
+  request.destination === "image" ||
+  url.pathname.startsWith("/icons/") ||
+  url.pathname.endsWith(".png") ||
+  url.pathname.endsWith(".jpg") ||
+  url.pathname.endsWith(".jpeg") ||
+  url.pathname.endsWith(".svg") ||
+  url.pathname.endsWith(".ico");
+
+const toNavigationCacheKey = (request) => {
+  const url = new URL(request.url);
+  return new Request(`${url.origin}${url.pathname}`, {
+    method: "GET",
+  });
+};
+
+const shouldBypassCaching = (request, url) => {
+  if (request.method !== "GET") return true;
+  if (!isHttpRequest(request)) return true;
+  if (url.origin !== self.location.origin) return true;
+  if (url.pathname.startsWith("/api/")) return true;
+  if (url.pathname === "/service-worker.js") return true;
+  if (url.pathname.startsWith("/_next/webpack-hmr")) return true;
+  return false;
+};
+
+async function precacheAppShell() {
+  const cache = await caches.open(APP_SHELL_CACHE);
+
+  await Promise.all(
+    APP_SHELL_PRECACHE_URLS.map(async (url) => {
+      try {
+        const response = await fetch(url, { cache: "no-store" });
+        if (isCacheableResponse(response)) {
+          await cache.put(url, response.clone());
+        } else {
+          console.warn("[SW] Skipping non-cacheable precache response:", url);
+        }
+      } catch (error) {
+        console.warn("[SW] Failed to precache:", url, error);
+      }
+    }),
+  );
+}
+
+async function cleanupOutdatedCaches() {
+  const names = await caches.keys();
+  await Promise.all(
+    names
+      .filter((name) => name.startsWith("elrey-") && !CACHE_ALLOWLIST.includes(name))
+      .map((name) => caches.delete(name)),
+  );
+}
+
+async function handleNavigationFetch(request) {
+  const cacheKey = toNavigationCacheKey(request);
+  const cache = await caches.open(APP_SHELL_CACHE);
+
+  try {
+    const networkResponse = await fetch(request);
+    const contentType = networkResponse.headers.get("content-type") || "";
+
+    if (networkResponse.ok && contentType.includes("text/html")) {
+      await cache.put(cacheKey, networkResponse.clone());
+    }
+
+    return networkResponse;
+  } catch (error) {
+    const cached = await cache.match(cacheKey, { ignoreSearch: true });
+    if (cached) return cached;
+
+    const fallback = await cache.match(OFFLINE_FALLBACK_PATH);
+    if (fallback) return fallback;
+
+    return new Response("Sin conexion y sin contenido en cache.", {
+      status: 503,
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+    });
+  }
+}
+
+async function handleCacheFirstAsset(event, request) {
+  const cache = await caches.open(ASSET_RUNTIME_CACHE);
+  const cached = await cache.match(request, { ignoreSearch: true });
+
+  const refresh = fetch(request)
+    .then(async (response) => {
+      if (isCacheableResponse(response)) {
+        await cache.put(request, response.clone());
+      }
+      return response;
+    })
+    .catch(() => null);
+
+  if (cached) {
+    event.waitUntil(refresh);
+    return cached;
+  }
+
+  const networkResponse = await refresh;
+  if (networkResponse) return networkResponse;
+
+  return new Response("Asset unavailable offline", { status: 503 });
+}
+
+async function handleStaleWhileRevalidateImage(event, request) {
+  const cache = await caches.open(IMAGE_RUNTIME_CACHE);
+  const cached = await cache.match(request, { ignoreSearch: true });
+
+  const refresh = fetch(request)
+    .then(async (response) => {
+      if (isCacheableResponse(response)) {
+        await cache.put(request, response.clone());
+      }
+      return response;
+    })
+    .catch(() => null);
+
+  if (cached) {
+    event.waitUntil(refresh);
+    return cached;
+  }
+
+  const networkResponse = await refresh;
+  if (networkResponse) return networkResponse;
+
+  return new Response("", { status: 504 });
+}
+
+// Install event - precache app shell then activate immediately.
+self.addEventListener("install", (event) => {
   console.log("[SW] Service worker installed");
-  self.skipWaiting();
+  event.waitUntil(
+    (async () => {
+      await precacheAppShell();
+      await self.skipWaiting();
+    })(),
+  );
 });
 
-// Activate event - claim clients
+// Activate event - remove old caches and claim clients.
 self.addEventListener("activate", (event) => {
   console.log("[SW] Service worker activated");
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(
+    (async () => {
+      await cleanupOutdatedCaches();
+      await self.clients.claim();
+    })(),
+  );
 });
 
 // Background Sync event - process queued orders
@@ -60,6 +230,34 @@ self.addEventListener("message", (event) => {
 
   if (event.data?.type === "SKIP_WAITING") {
     self.skipWaiting();
+  }
+});
+
+// Fetch event - conservative offline app shell caching only.
+self.addEventListener("fetch", (event) => {
+  const { request } = event;
+
+  if (request.cache === "only-if-cached" && request.mode !== "same-origin") {
+    return;
+  }
+
+  const url = new URL(request.url);
+  if (shouldBypassCaching(request, url)) {
+    return;
+  }
+
+  if (isNavigationRequest(request)) {
+    event.respondWith(handleNavigationFetch(request));
+    return;
+  }
+
+  if (isStaticAssetRequest(request, url)) {
+    event.respondWith(handleCacheFirstAsset(event, request));
+    return;
+  }
+
+  if (isImageRequest(request, url)) {
+    event.respondWith(handleStaleWhileRevalidateImage(event, request));
   }
 });
 

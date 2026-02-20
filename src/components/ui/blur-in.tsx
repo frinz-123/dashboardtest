@@ -1,5 +1,5 @@
 "use client";
-import { motion } from "motion/react";
+import { m } from "motion/react";
 import { cn } from "@/lib/utils";
 
 interface BlurIntProps {
@@ -19,7 +19,7 @@ function BlurIn({ word, className, variant, duration = 1 }: BlurIntProps) {
   const combinedVariants = variant || defaultVariants;
 
   return (
-    <motion.h1
+    <m.h1
       initial="hidden"
       animate="visible"
       transition={{ duration }}
@@ -27,7 +27,7 @@ function BlurIn({ word, className, variant, duration = 1 }: BlurIntProps) {
       className={cn(className, "text-2xl font-medium tracking-tight")}
     >
       {word}
-    </motion.h1>
+    </m.h1>
   );
 }
 

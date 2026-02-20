@@ -615,9 +615,9 @@ export default function AdminPage() {
                     );
                   }}
                 >
-                  {productStats.map((_entry, index) => (
+                  {productStats.map((entry, index) => (
                     <Cell
-                      key={`cell-${index}`}
+                      key={entry.name}
                       fill={COLORS[index % COLORS.length]}
                     />
                   ))}
@@ -635,7 +635,7 @@ export default function AdminPage() {
           <div className="mt-4 space-y-2">
             {productStats.map((product, index) => (
               <div
-                key={index}
+                key={product.name}
                 className="flex items-center justify-between text-xs"
               >
                 <div className="flex items-center">
@@ -667,7 +667,7 @@ export default function AdminPage() {
             {topStores
               .slice(0, isStoresExpanded ? 25 : 5)
               .map((store, index) => (
-                <div key={index} className="relative">
+                <div key={store.name} className="relative">
                   <div className="flex justify-between items-center mb-1 text-xs">
                     <span
                       className="font-medium truncate pr-2"
@@ -718,9 +718,9 @@ export default function AdminPage() {
             </ResponsiveContainer>
           </div>
           <div className="mt-4 space-y-2">
-            {sellerComparison.map((seller, index) => (
+            {sellerComparison.map((seller) => (
               <div
-                key={index}
+                key={seller.name}
                 className="flex items-center justify-between text-xs"
               >
                 <span className="font-medium">{seller.name}</span>
