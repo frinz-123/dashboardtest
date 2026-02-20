@@ -29,6 +29,7 @@ const DEFAULT_NAV_ITEMS: NavItem[] = [
   { href: "/clientes", label: "Clientes" },
   { href: "/recorridos", label: "Recorridos" },
   { href: "/inventario", label: "Inventario" },
+  { href: "/inventario-bodega", label: "Inventario Bodega" },
   { href: "/inventario-carro", label: "Inventario Carro" },
   { href: "/admin", label: "Admin" },
   { href: "/navegar", label: "Navegar" },

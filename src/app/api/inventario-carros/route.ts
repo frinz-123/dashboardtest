@@ -2,155 +2,29 @@ import { google } from "googleapis";
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { EMAIL_TO_VENDOR_LABELS, isInventarioCarroAdmin } from "@/utils/auth";
-import { getCurrentPeriodInfo } from "@/utils/dateUtils";
 import { sheetsAuth } from "@/utils/googleAuth";
+import {
+  BODEGA_LEDGER_HEADER_ROW,
+  BODEGA_LEDGER_LAST_COLUMN,
+  CAR_LEDGER_HEADER_ROW,
+  CAR_LEDGER_LAST_COLUMN,
+  type CarLedgerInput,
+  clearRowValues,
+  ensureHeaderRow,
+  ensureSheetExists,
+  getNegativeStockWarnings,
+  getSheetRows,
+  INVENTARIO_BODEGA_SHEET_NAME,
+  INVENTARIO_CARROS_SHEET_NAME,
+  parseBodegaLedgerRow,
+  parseCarLedgerRow,
+  SPREADSHEET_ID,
+  toBodegaLedgerValues,
+  toCarLedgerValues,
+} from "@/utils/inventoryLedger";
 import { PRODUCT_NAMES } from "@/utils/productCatalog";
 
 export const dynamic = "force-dynamic";
-
-const SPREADSHEET_ID =
-  process.env.NEXT_PUBLIC_SPREADSHEET_ID ||
-  "1a0jZVdKFNWTHDsM-68LT5_OLPMGejAKs9wfCxYqqe_g";
-const SHEET_NAME = "InventarioCarros";
-const MAZATLAN_TZ = "America/Mazatlan";
-const HEADER_ROW = [
-  "id",
-  "date",
-  "periodCode",
-  "weekCode",
-  "sellerEmail",
-  "product",
-  "quantity",
-  "movementType",
-  "notes",
-  "createdBy",
-  "createdAt",
-  "updatedAt",
-];
-
-type LedgerRow = {
-  rowNumber: number;
-  id: string;
-  date: string;
-  periodCode: string;
-  weekCode: string;
-  sellerEmail: string;
-  product: string;
-  quantity: number;
-  movementType: string;
-  notes: string;
-  createdBy: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
-type LedgerInput = {
-  id?: string;
-  date?: string;
-  sellerEmail: string;
-  product: string;
-  quantity: number;
-  movementType: string;
-  notes?: string;
-  createdBy?: string;
-  createdAt?: string;
-  updatedAt?: string;
-};
-
-const ensureHeaderRow = async (sheets: ReturnType<typeof google.sheets>) => {
-  const headerResponse = await sheets.spreadsheets.values.get({
-    spreadsheetId: SPREADSHEET_ID,
-    range: `${SHEET_NAME}!A1:L1`,
-  });
-
-  const header = headerResponse.data.values?.[0] || [];
-
-  if (header.length === 0) {
-    await sheets.spreadsheets.values.append({
-      spreadsheetId: SPREADSHEET_ID,
-      range: `${SHEET_NAME}!A:L`,
-      valueInputOption: "RAW",
-      requestBody: {
-        values: [HEADER_ROW],
-      },
-    });
-    return;
-  }
-
-  if (header[0] !== "id" || header.length < HEADER_ROW.length) {
-    await sheets.spreadsheets.values.update({
-      spreadsheetId: SPREADSHEET_ID,
-      range: `${SHEET_NAME}!A1:L1`,
-      valueInputOption: "RAW",
-      requestBody: {
-        values: [HEADER_ROW],
-      },
-    });
-  }
-};
-
-const parseDateInput = (value?: string): Date => {
-  if (!value) return new Date();
-  const trimmed = value.trim();
-  if (!trimmed) return new Date();
-
-  const parts = trimmed.split("-");
-  if (parts.length === 3) {
-    const [year, month, day] = parts.map((part) => Number(part));
-    if (!Number.isNaN(year) && !Number.isNaN(month) && !Number.isNaN(day)) {
-      return new Date(year, month - 1, day, 12, 0, 0);
-    }
-  }
-
-  const parsed = new Date(trimmed);
-  if (!Number.isNaN(parsed.getTime())) return parsed;
-  return new Date();
-};
-
-const getMazatlanDateParts = (date: Date) => {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: MAZATLAN_TZ,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(date);
-
-  const getPart = (type: Intl.DateTimeFormatPartTypes) =>
-    parts.find((part) => part.type === type)?.value || "";
-
-  return {
-    year: getPart("year"),
-    month: getPart("month"),
-    day: getPart("day"),
-  };
-};
-
-const getPeriodInfoForDate = (date: Date) => {
-  const { year, month, day } = getMazatlanDateParts(date);
-  const periodDate = new Date(Number(year), Number(month) - 1, Number(day));
-  const { periodNumber, weekInPeriod } = getCurrentPeriodInfo(periodDate);
-  return {
-    dateString: `${year}-${month}-${day}`,
-    periodCode: `P${periodNumber}`,
-    weekCode: `P${periodNumber}S${weekInPeriod}`,
-  };
-};
-
-const normalizeRow = (row: string[], rowNumber: number): LedgerRow => ({
-  rowNumber,
-  id: row[0] || "",
-  date: row[1] || "",
-  periodCode: row[2] || "",
-  weekCode: row[3] || "",
-  sellerEmail: row[4] || "",
-  product: row[5] || "",
-  quantity: Number.parseFloat(row[6] || "0") || 0,
-  movementType: row[7] || "",
-  notes: row[8] || "",
-  createdBy: row[9] || "",
-  createdAt: row[10] || "",
-  updatedAt: row[11] || "",
-});
 
 const getSessionEmail = async () => {
   const session = await auth();
@@ -168,6 +42,100 @@ const assertMaster = async () => {
   return { ok: true as const, email };
 };
 
+const getCarRows = async (sheets: ReturnType<typeof google.sheets>) => {
+  const { rows, hasHeader } = await getSheetRows(
+    sheets,
+    INVENTARIO_CARROS_SHEET_NAME,
+    CAR_LEDGER_LAST_COLUMN,
+  );
+  return {
+    hasHeader,
+    rows: rows
+      .map((row, index) => parseCarLedgerRow(row, index + (hasHeader ? 2 : 1)))
+      .filter((row) => row.id),
+  };
+};
+
+const getBodegaRows = async (sheets: ReturnType<typeof google.sheets>) => {
+  const { rows, hasHeader } = await getSheetRows(
+    sheets,
+    INVENTARIO_BODEGA_SHEET_NAME,
+    BODEGA_LEDGER_LAST_COLUMN,
+  );
+  return rows
+    .map((row, index) => parseBodegaLedgerRow(row, index + (hasHeader ? 2 : 1)))
+    .filter((row) => row.id);
+};
+
+const syncBodegaCounterpart = async (
+  sheets: ReturnType<typeof google.sheets>,
+  entry: CarLedgerInput,
+  actorEmail: string,
+) => {
+  if (entry.linkStatus !== "linked" || !entry.linkedEntryId) {
+    return;
+  }
+
+  const bodegaRows = await getBodegaRows(sheets);
+  const counterpart = bodegaRows.find((row) => row.id === entry.linkedEntryId);
+  if (!counterpart) return;
+
+  const now = new Date().toISOString();
+  const values = toBodegaLedgerValues(
+    {
+      id: counterpart.id,
+      date: entry.date,
+      product: entry.product,
+      quantity: Number(entry.quantity || 0),
+      direction: "Salida",
+      movementType: "SalidaCarro",
+      sellerEmail: entry.sellerEmail,
+      notes: entry.notes,
+      linkedEntryId: entry.id || "",
+      linkStatus: "linked",
+      overrideReason: entry.overrideReason,
+      createdBy: counterpart.createdBy || actorEmail,
+      createdAt: counterpart.createdAt || now,
+      updatedAt: now,
+    },
+    actorEmail,
+    now,
+  );
+
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: SPREADSHEET_ID,
+    range: `${INVENTARIO_BODEGA_SHEET_NAME}!A${counterpart.rowNumber}:P${counterpart.rowNumber}`,
+    valueInputOption: "RAW",
+    requestBody: {
+      values: [values],
+    },
+  });
+};
+
+const clearBodegaCounterpart = async (
+  sheets: ReturnType<typeof google.sheets>,
+  linkedEntryId: string,
+) => {
+  if (!linkedEntryId) return;
+  const bodegaRows = await getBodegaRows(sheets);
+  const counterpart = bodegaRows.find((row) => row.id === linkedEntryId);
+  if (!counterpart) return;
+
+  await sheets.spreadsheets.values.update({
+    spreadsheetId: SPREADSHEET_ID,
+    range: `${INVENTARIO_BODEGA_SHEET_NAME}!A${counterpart.rowNumber}:P${counterpart.rowNumber}`,
+    valueInputOption: "RAW",
+    requestBody: {
+      values: [clearRowValues(BODEGA_LEDGER_HEADER_ROW.length)],
+    },
+  });
+};
+
+const getBodegaWarnings = async (sheets: ReturnType<typeof google.sheets>) => {
+  const rows = await getBodegaRows(sheets);
+  return getNegativeStockWarnings(rows);
+};
+
 export async function GET(req: Request) {
   try {
     const authCheck = await assertMaster();
@@ -179,38 +147,38 @@ export async function GET(req: Request) {
     }
 
     const { searchParams } = new URL(req.url);
-    const sellerEmail = searchParams.get("sellerEmail") || "";
+    const sellerEmail = (searchParams.get("sellerEmail") || "")
+      .toLowerCase()
+      .trim();
     const periodCode = searchParams.get("periodCode") || "";
     const weekCode = searchParams.get("weekCode") || "";
+    const movementType = searchParams.get("movementType") || "";
 
     const sheets = google.sheets({ version: "v4", auth: sheetsAuth });
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId: SPREADSHEET_ID,
-      range: `${SHEET_NAME}!A:L`,
-    });
+    await ensureSheetExists(sheets, INVENTARIO_CARROS_SHEET_NAME);
+    const { rows, hasHeader } = await getCarRows(sheets);
 
-    const rows = response.data.values || [];
-    const hasHeader = rows.length > 0 && rows[0][0] === "id";
-    const dataRows = hasHeader ? rows.slice(1) : rows;
-
-    let ledgerRows = dataRows.map((row, index) =>
-      normalizeRow(row, index + (hasHeader ? 2 : 1)),
-    );
-
+    let filteredRows = rows;
     if (sellerEmail) {
-      const normalizedSeller = sellerEmail.toLowerCase().trim();
-      ledgerRows = ledgerRows.filter(
-        (row) => row.sellerEmail.toLowerCase().trim() === normalizedSeller,
+      filteredRows = filteredRows.filter(
+        (row) => row.sellerEmail.toLowerCase().trim() === sellerEmail,
       );
     }
     if (periodCode) {
-      ledgerRows = ledgerRows.filter((row) => row.periodCode === periodCode);
+      filteredRows = filteredRows.filter(
+        (row) => row.periodCode === periodCode,
+      );
     }
     if (weekCode) {
-      ledgerRows = ledgerRows.filter((row) => row.weekCode === weekCode);
+      filteredRows = filteredRows.filter((row) => row.weekCode === weekCode);
+    }
+    if (movementType) {
+      filteredRows = filteredRows.filter(
+        (row) => row.movementType === movementType,
+      );
     }
 
-    return NextResponse.json({ rows: ledgerRows, hasHeader });
+    return NextResponse.json({ rows: filteredRows, hasHeader });
   } catch (error) {
     console.error("Error fetching inventario carros:", error);
     return NextResponse.json(
@@ -234,7 +202,20 @@ export async function POST(req: Request) {
     const action = body?.action || "create";
 
     const sheets = google.sheets({ version: "v4", auth: sheetsAuth });
-    await ensureHeaderRow(sheets);
+    await ensureSheetExists(sheets, INVENTARIO_CARROS_SHEET_NAME);
+    await ensureSheetExists(sheets, INVENTARIO_BODEGA_SHEET_NAME);
+    await ensureHeaderRow(
+      sheets,
+      INVENTARIO_CARROS_SHEET_NAME,
+      CAR_LEDGER_HEADER_ROW,
+      CAR_LEDGER_LAST_COLUMN,
+    );
+    await ensureHeaderRow(
+      sheets,
+      INVENTARIO_BODEGA_SHEET_NAME,
+      BODEGA_LEDGER_HEADER_ROW,
+      BODEGA_LEDGER_LAST_COLUMN,
+    );
 
     if (action === "seed") {
       const seedResult = await seedLedger(sheets, authCheck.email);
@@ -247,7 +228,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, rows: seedResult.rows });
     }
 
-    const entries: LedgerInput[] = Array.isArray(body?.entries)
+    const entries: CarLedgerInput[] = Array.isArray(body?.entries)
       ? body.entries
       : [];
 
@@ -259,32 +240,23 @@ export async function POST(req: Request) {
     }
 
     const now = new Date().toISOString();
-    const values = entries.map((entry) => {
-      const entryDate = parseDateInput(entry.date);
-      const { dateString, periodCode, weekCode } =
-        getPeriodInfoForDate(entryDate);
-      const id = entry.id || crypto.randomUUID();
-      const quantity = Number(entry.quantity || 0);
-
-      return [
-        id,
-        dateString,
-        periodCode,
-        weekCode,
-        (entry.sellerEmail || "").toLowerCase().trim(),
-        entry.product || "",
-        Number.isNaN(quantity) ? 0 : quantity,
-        entry.movementType || "",
-        entry.notes || "",
+    const values = entries.map((entry) =>
+      toCarLedgerValues(
+        {
+          ...entry,
+          id: entry.id || crypto.randomUUID(),
+          createdBy: entry.createdBy || authCheck.email,
+          createdAt: entry.createdAt || now,
+          updatedAt: now,
+        },
         authCheck.email,
         now,
-        now,
-      ];
-    });
+      ),
+    );
 
     const response = await sheets.spreadsheets.values.append({
       spreadsheetId: SPREADSHEET_ID,
-      range: `${SHEET_NAME}!A:L`,
+      range: `${INVENTARIO_CARROS_SHEET_NAME}!A:O`,
       valueInputOption: "RAW",
       insertDataOption: "INSERT_ROWS",
       requestBody: {
@@ -292,7 +264,11 @@ export async function POST(req: Request) {
       },
     });
 
-    return NextResponse.json({ success: true, data: response.data });
+    return NextResponse.json({
+      success: true,
+      data: response.data,
+      warnings: [],
+    });
   } catch (error) {
     console.error("Error creating inventario carros:", error);
     return NextResponse.json(
@@ -314,7 +290,7 @@ export async function PATCH(req: Request) {
 
     const body = await req.json();
     const rowNumber = Number(body?.rowNumber || 0);
-    const entry: LedgerInput | null = body?.entry || null;
+    const entry: CarLedgerInput | null = body?.entry || null;
 
     if (!rowNumber || !entry) {
       return NextResponse.json(
@@ -323,41 +299,50 @@ export async function PATCH(req: Request) {
       );
     }
 
-    const entryDate = parseDateInput(entry.date);
-    const { dateString, periodCode, weekCode } =
-      getPeriodInfoForDate(entryDate);
+    const sheets = google.sheets({ version: "v4", auth: sheetsAuth });
+    await ensureSheetExists(sheets, INVENTARIO_CARROS_SHEET_NAME);
+    await ensureSheetExists(sheets, INVENTARIO_BODEGA_SHEET_NAME);
+    await ensureHeaderRow(
+      sheets,
+      INVENTARIO_CARROS_SHEET_NAME,
+      CAR_LEDGER_HEADER_ROW,
+      CAR_LEDGER_LAST_COLUMN,
+    );
+    await ensureHeaderRow(
+      sheets,
+      INVENTARIO_BODEGA_SHEET_NAME,
+      BODEGA_LEDGER_HEADER_ROW,
+      BODEGA_LEDGER_LAST_COLUMN,
+    );
 
     const updatedAt = new Date().toISOString();
-    const quantity = Number(entry.quantity || 0);
-
-    const values = [
-      entry.id || crypto.randomUUID(),
-      dateString,
-      periodCode,
-      weekCode,
-      (entry.sellerEmail || "").toLowerCase().trim(),
-      entry.product || "",
-      Number.isNaN(quantity) ? 0 : quantity,
-      entry.movementType || "",
-      entry.notes || "",
-      entry.createdBy || authCheck.email,
-      entry.createdAt || updatedAt,
+    const normalizedEntry: CarLedgerInput = {
+      ...entry,
+      id: entry.id || crypto.randomUUID(),
+      createdBy: entry.createdBy || authCheck.email,
+      createdAt: entry.createdAt || updatedAt,
       updatedAt,
-    ];
+    };
 
-    const sheets = google.sheets({ version: "v4", auth: sheetsAuth });
-    await ensureHeaderRow(sheets);
+    const values = toCarLedgerValues(
+      normalizedEntry,
+      authCheck.email,
+      updatedAt,
+    );
 
     await sheets.spreadsheets.values.update({
       spreadsheetId: SPREADSHEET_ID,
-      range: `${SHEET_NAME}!A${rowNumber}:L${rowNumber}`,
+      range: `${INVENTARIO_CARROS_SHEET_NAME}!A${rowNumber}:O${rowNumber}`,
       valueInputOption: "RAW",
       requestBody: {
         values: [values],
       },
     });
 
-    return NextResponse.json({ success: true });
+    await syncBodegaCounterpart(sheets, normalizedEntry, authCheck.email);
+    const warnings = await getBodegaWarnings(sheets);
+
+    return NextResponse.json({ success: true, warnings });
   } catch (error) {
     console.error("Error updating inventario carros:", error);
     return NextResponse.json(
@@ -367,20 +352,83 @@ export async function PATCH(req: Request) {
   }
 }
 
+export async function DELETE(req: Request) {
+  try {
+    const authCheck = await assertMaster();
+    if (!authCheck.ok) {
+      return NextResponse.json(
+        { error: authCheck.message },
+        { status: authCheck.status },
+      );
+    }
+
+    const body = await req.json().catch(() => ({}));
+    const rowNumber = Number(body?.rowNumber || 0);
+    const id = (body?.id || "").trim();
+
+    if (!rowNumber && !id) {
+      return NextResponse.json(
+        { error: "rowNumber or id is required" },
+        { status: 400 },
+      );
+    }
+
+    const sheets = google.sheets({ version: "v4", auth: sheetsAuth });
+    await ensureSheetExists(sheets, INVENTARIO_CARROS_SHEET_NAME);
+    await ensureSheetExists(sheets, INVENTARIO_BODEGA_SHEET_NAME);
+    await ensureHeaderRow(
+      sheets,
+      INVENTARIO_CARROS_SHEET_NAME,
+      CAR_LEDGER_HEADER_ROW,
+      CAR_LEDGER_LAST_COLUMN,
+    );
+    await ensureHeaderRow(
+      sheets,
+      INVENTARIO_BODEGA_SHEET_NAME,
+      BODEGA_LEDGER_HEADER_ROW,
+      BODEGA_LEDGER_LAST_COLUMN,
+    );
+
+    const { rows } = await getCarRows(sheets);
+    const targetRow = rows.find((row) =>
+      rowNumber ? row.rowNumber === rowNumber : row.id === id,
+    );
+
+    if (!targetRow) {
+      return NextResponse.json({ error: "Entry not found" }, { status: 404 });
+    }
+
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `${INVENTARIO_CARROS_SHEET_NAME}!A${targetRow.rowNumber}:O${targetRow.rowNumber}`,
+      valueInputOption: "RAW",
+      requestBody: {
+        values: [clearRowValues(CAR_LEDGER_HEADER_ROW.length)],
+      },
+    });
+
+    if (targetRow.linkStatus === "linked" && targetRow.linkedEntryId) {
+      await clearBodegaCounterpart(sheets, targetRow.linkedEntryId);
+    }
+
+    const warnings = await getBodegaWarnings(sheets);
+    return NextResponse.json({ success: true, warnings });
+  } catch (error) {
+    console.error("Error deleting inventario carros row:", error);
+    return NextResponse.json(
+      { error: "Failed to delete inventario carros row" },
+      { status: 500 },
+    );
+  }
+}
+
 const seedLedger = async (
   sheets: ReturnType<typeof google.sheets>,
   createdBy: string,
 ) => {
-  const response = await sheets.spreadsheets.values.get({
-    spreadsheetId: SPREADSHEET_ID,
-    range: `${SHEET_NAME}!A:L`,
-  });
+  const { rows } = await getCarRows(sheets);
 
-  const rows = response.data.values || [];
-  const hasHeader = rows.length > 0 && rows[0][0] === "id";
-  const dataRows = hasHeader ? rows.slice(1) : rows;
-
-  if (dataRows.length > 0) {
+  if (rows.length > 0) {
     return {
       success: false,
       status: 409,
@@ -390,51 +438,51 @@ const seedLedger = async (
 
   const sellers = Object.keys(EMAIL_TO_VENDOR_LABELS).slice(0, 3);
   const products = PRODUCT_NAMES.slice(0, 5);
-  const now = new Date();
-  const nowIso = now.toISOString();
+  const nowIso = new Date().toISOString();
 
   const values = sellers.flatMap((sellerEmail, sellerIndex) => {
     const baseQuantity = 18 + sellerIndex * 4;
     return products.flatMap((product, productIndex) => {
       const quantity = baseQuantity + productIndex * 2;
-      const initialInfo = getPeriodInfoForDate(now);
-      const cargaInfo = getPeriodInfoForDate(new Date());
+
       return [
-        [
-          crypto.randomUUID(),
-          initialInfo.dateString,
-          initialInfo.periodCode,
-          initialInfo.weekCode,
-          sellerEmail,
-          product,
-          quantity,
-          "InventarioInicial",
-          "Seed demo",
+        toCarLedgerValues(
+          {
+            id: crypto.randomUUID(),
+            sellerEmail,
+            product,
+            quantity,
+            movementType: "InventarioInicial",
+            notes: "Seed demo",
+            createdBy,
+            createdAt: nowIso,
+            updatedAt: nowIso,
+          },
           createdBy,
           nowIso,
-          nowIso,
-        ],
-        [
-          crypto.randomUUID(),
-          cargaInfo.dateString,
-          cargaInfo.periodCode,
-          cargaInfo.weekCode,
-          sellerEmail,
-          product,
-          Math.max(4, Math.round(quantity / 3)),
-          "Carga",
-          "Seed demo carga",
+        ),
+        toCarLedgerValues(
+          {
+            id: crypto.randomUUID(),
+            sellerEmail,
+            product,
+            quantity: Math.max(4, Math.round(quantity / 3)),
+            movementType: "Carga",
+            notes: "Seed demo carga",
+            createdBy,
+            createdAt: nowIso,
+            updatedAt: nowIso,
+          },
           createdBy,
           nowIso,
-          nowIso,
-        ],
+        ),
       ];
     });
   });
 
   await sheets.spreadsheets.values.append({
     spreadsheetId: SPREADSHEET_ID,
-    range: `${SHEET_NAME}!A:L`,
+    range: `${INVENTARIO_CARROS_SHEET_NAME}!A:O`,
     valueInputOption: "RAW",
     insertDataOption: "INSERT_ROWS",
     requestBody: {
