@@ -946,9 +946,14 @@ export default function InventarioCarroPage() {
       );
       const responsePayload = await response.json();
       if (!response.ok) {
-        throw new Error(
-          responsePayload?.error || "No se pudo guardar la carga",
-        );
+        const detailText =
+          typeof responsePayload?.details === "string"
+            ? responsePayload.details
+            : "";
+        const errorText =
+          [responsePayload?.error, detailText].filter(Boolean).join(" | ") ||
+          "No se pudo guardar la carga";
+        throw new Error(errorText);
       }
       setWarnings(parseWarnings(responsePayload));
       await fetchLedger();

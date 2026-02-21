@@ -29,6 +29,136 @@ type TransferItem = {
   quantity: number;
 };
 
+const getErrorMessage = (error: unknown) => {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  return "Unknown error";
+};
+
+const appendValuesWithRollback = async (
+  sheets: ReturnType<typeof google.sheets>,
+  carValues: Array<Array<string | number>>,
+  bodegaValues: Array<Array<string | number>>,
+) => {
+  const rollbackRanges: string[] = [];
+
+  try {
+    if (carValues.length > 0) {
+      const carResponse = await sheets.spreadsheets.values.append({
+        spreadsheetId: SPREADSHEET_ID,
+        range: `${INVENTARIO_CARROS_SHEET_NAME}!A:${CAR_LEDGER_LAST_COLUMN}`,
+        valueInputOption: "RAW",
+        insertDataOption: "INSERT_ROWS",
+        requestBody: {
+          values: carValues,
+        },
+      });
+
+      const updatedRange = carResponse.data.updates?.updatedRange || "";
+      if (updatedRange) rollbackRanges.push(updatedRange);
+    }
+
+    if (bodegaValues.length > 0) {
+      const bodegaResponse = await sheets.spreadsheets.values.append({
+        spreadsheetId: SPREADSHEET_ID,
+        range: `${INVENTARIO_BODEGA_SHEET_NAME}!A:${BODEGA_LEDGER_LAST_COLUMN}`,
+        valueInputOption: "RAW",
+        insertDataOption: "INSERT_ROWS",
+        requestBody: {
+          values: bodegaValues,
+        },
+      });
+
+      const updatedRange = bodegaResponse.data.updates?.updatedRange || "";
+      if (updatedRange) rollbackRanges.push(updatedRange);
+    }
+  } catch (error) {
+    const rollbackErrors: string[] = [];
+    for (const range of rollbackRanges) {
+      try {
+        await sheets.spreadsheets.values.clear({
+          spreadsheetId: SPREADSHEET_ID,
+          range,
+        });
+      } catch (rollbackError) {
+        rollbackErrors.push(getErrorMessage(rollbackError));
+      }
+    }
+
+    if (rollbackErrors.length > 0) {
+      throw new Error(
+        `Fallback append failed (${getErrorMessage(error)}). Rollback errors: ${rollbackErrors.join(
+          " | ",
+        )}`,
+      );
+    }
+
+    throw error;
+  }
+};
+
+const assertLinkedEntriesConsistency = (
+  normalizedItems: TransferItem[],
+  linkToBodega: boolean,
+  carEntries: CarLedgerInput[],
+  bodegaEntries: BodegaLedgerInput[],
+) => {
+  if (!linkToBodega) {
+    if (bodegaEntries.length > 0) {
+      throw new Error("Unexpected bodega entries when linkToBodega=false");
+    }
+    return;
+  }
+
+  if (
+    carEntries.length !== normalizedItems.length ||
+    bodegaEntries.length !== normalizedItems.length
+  ) {
+    throw new Error(
+      "Linked transfer generated an inconsistent number of entries",
+    );
+  }
+
+  const carById = new Map(
+    carEntries.map((entry) => [entry.id || "", entry] as const),
+  );
+  const bodegaById = new Map(
+    bodegaEntries.map((entry) => [entry.id || "", entry] as const),
+  );
+
+  for (const carEntry of carEntries) {
+    const carId = carEntry.id || "";
+    const linkedBodegaId = carEntry.linkedEntryId || "";
+    if (!carId || !linkedBodegaId) {
+      throw new Error("Linked car entry is missing ID linkage");
+    }
+
+    const bodegaCounterpart = bodegaById.get(linkedBodegaId);
+    if (!bodegaCounterpart) {
+      throw new Error(`Missing bodega counterpart for car entry ${carId}`);
+    }
+    if ((bodegaCounterpart.linkedEntryId || "") !== carId) {
+      throw new Error(`Broken reciprocal linkage for car entry ${carId}`);
+    }
+  }
+
+  for (const bodegaEntry of bodegaEntries) {
+    const bodegaId = bodegaEntry.id || "";
+    const linkedCarId = bodegaEntry.linkedEntryId || "";
+    if (!bodegaId || !linkedCarId) {
+      throw new Error("Linked bodega entry is missing ID linkage");
+    }
+
+    const carCounterpart = carById.get(linkedCarId);
+    if (!carCounterpart) {
+      throw new Error(`Missing car counterpart for bodega entry ${bodegaId}`);
+    }
+    if ((carCounterpart.linkedEntryId || "") !== bodegaId) {
+      throw new Error(`Broken reciprocal linkage for bodega entry ${bodegaId}`);
+    }
+  }
+};
+
 const toCellData = (value: string | number): sheets_v4.Schema$CellData => {
   if (typeof value === "number") {
     return { userEnteredValue: { numberValue: value } };
@@ -79,6 +209,12 @@ const getBodegaWarnings = async (sheets: ReturnType<typeof google.sheets>) => {
 };
 
 export async function POST(req: Request) {
+  const requestContext = {
+    sellerEmail: "",
+    itemCount: 0,
+    linkToBodega: true,
+  };
+
   try {
     const authCheck = await assertMaster();
     if (!authCheck.ok) {
@@ -98,6 +234,9 @@ export async function POST(req: Request) {
     const items: TransferItem[] = Array.isArray(body?.entries)
       ? body.entries
       : [];
+    requestContext.sellerEmail = sellerEmail;
+    requestContext.itemCount = items.length;
+    requestContext.linkToBodega = linkToBodega;
 
     if (!sellerEmail) {
       return NextResponse.json(
@@ -214,6 +353,13 @@ export async function POST(req: Request) {
       }
     });
 
+    assertLinkedEntriesConsistency(
+      normalizedItems,
+      linkToBodega,
+      carEntries,
+      bodegaEntries,
+    );
+
     const carValues: Array<Array<string | number>> = carEntries.map((entry) =>
       toCarLedgerValues(entry, authCheck.email, now),
     );
@@ -221,48 +367,60 @@ export async function POST(req: Request) {
       (entry) => toBodegaLedgerValues(entry, authCheck.email, now),
     );
 
-    const spreadsheetMetadata = await sheets.spreadsheets.get({
-      spreadsheetId: SPREADSHEET_ID,
-      fields: "sheets.properties(sheetId,title)",
-    });
+    try {
+      const spreadsheetMetadata = await sheets.spreadsheets.get({
+        spreadsheetId: SPREADSHEET_ID,
+        fields: "sheets(properties(sheetId,title))",
+      });
 
-    const sheetIdByTitle = new Map(
-      (spreadsheetMetadata.data.sheets || [])
-        .map((sheet) => {
-          const title = sheet.properties?.title;
-          const sheetId = sheet.properties?.sheetId;
-          if (!title || typeof sheetId !== "number") return null;
-          return [title, sheetId] as const;
-        })
-        .filter((entry): entry is readonly [string, number] => Boolean(entry)),
-    );
+      const sheetIdByTitle = new Map(
+        (spreadsheetMetadata.data.sheets || [])
+          .map((sheet) => {
+            const title = sheet.properties?.title;
+            const sheetId = sheet.properties?.sheetId;
+            if (!title || typeof sheetId !== "number") return null;
+            return [title, sheetId] as const;
+          })
+          .filter((entry): entry is readonly [string, number] =>
+            Boolean(entry),
+          ),
+      );
 
-    const requests: sheets_v4.Schema$Request[] = [];
-    if (carValues.length > 0) {
-      const carSheetId = sheetIdByTitle.get(INVENTARIO_CARROS_SHEET_NAME);
-      if (typeof carSheetId !== "number") {
-        throw new Error(
-          `Sheet ${INVENTARIO_CARROS_SHEET_NAME} was not found after setup`,
-        );
+      const requests: sheets_v4.Schema$Request[] = [];
+      if (carValues.length > 0) {
+        const carSheetId = sheetIdByTitle.get(INVENTARIO_CARROS_SHEET_NAME);
+        if (typeof carSheetId !== "number") {
+          throw new Error(
+            `Sheet ${INVENTARIO_CARROS_SHEET_NAME} was not found after setup`,
+          );
+        }
+        requests.push(toAppendCellsRequest(carSheetId, carValues));
       }
-      requests.push(toAppendCellsRequest(carSheetId, carValues));
-    }
-    if (bodegaValues.length > 0) {
-      const bodegaSheetId = sheetIdByTitle.get(INVENTARIO_BODEGA_SHEET_NAME);
-      if (typeof bodegaSheetId !== "number") {
-        throw new Error(
-          `Sheet ${INVENTARIO_BODEGA_SHEET_NAME} was not found after setup`,
-        );
+      if (bodegaValues.length > 0) {
+        const bodegaSheetId = sheetIdByTitle.get(INVENTARIO_BODEGA_SHEET_NAME);
+        if (typeof bodegaSheetId !== "number") {
+          throw new Error(
+            `Sheet ${INVENTARIO_BODEGA_SHEET_NAME} was not found after setup`,
+          );
+        }
+        requests.push(toAppendCellsRequest(bodegaSheetId, bodegaValues));
       }
-      requests.push(toAppendCellsRequest(bodegaSheetId, bodegaValues));
-    }
 
-    await sheets.spreadsheets.batchUpdate({
-      spreadsheetId: SPREADSHEET_ID,
-      requestBody: {
-        requests,
-      },
-    });
+      if (requests.length > 0) {
+        await sheets.spreadsheets.batchUpdate({
+          spreadsheetId: SPREADSHEET_ID,
+          requestBody: {
+            requests,
+          },
+        });
+      }
+    } catch (batchWriteError) {
+      console.error(
+        "Primary transfer append path failed; using values.append fallback",
+        batchWriteError,
+      );
+      await appendValuesWithRollback(sheets, carValues, bodegaValues);
+    }
 
     const warnings = await getBodegaWarnings(sheets);
     return NextResponse.json({
@@ -272,9 +430,17 @@ export async function POST(req: Request) {
       warnings,
     });
   } catch (error) {
-    console.error("Error creating inventario transfer:", error);
+    const details = getErrorMessage(error);
+    console.error("Error creating inventario transfer:", {
+      error,
+      details,
+      requestContext,
+    });
     return NextResponse.json(
-      { error: "Failed to create inventario transfer" },
+      {
+        error: "Failed to create inventario transfer",
+        details,
+      },
       { status: 500 },
     );
   }
