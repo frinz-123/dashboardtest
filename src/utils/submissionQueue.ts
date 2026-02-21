@@ -14,6 +14,7 @@ const DB_NAME = "elrey-submissions";
 const DB_VERSION = 1;
 const STORE_NAME = "pending-orders";
 const SYNC_TAG = "order-submission-sync";
+const SW_READY_TIMEOUT_MS = 1500;
 
 // Location is considered stale after 90 seconds
 const MAX_LOCATION_AGE_MS = 90000;
@@ -147,6 +148,31 @@ class SubmissionQueue {
     return { isDuplicate: false };
   }
 
+  private async resolveServiceWorkerRegistration(): Promise<ServiceWorkerRegistration | null> {
+    if (typeof window === "undefined" || !("serviceWorker" in navigator)) {
+      return null;
+    }
+
+    try {
+      const existingRegistration =
+        await navigator.serviceWorker.getRegistration();
+      if (existingRegistration) return existingRegistration;
+
+      const readyRegistration =
+        await Promise.race<ServiceWorkerRegistration | null>([
+          navigator.serviceWorker.ready,
+          new Promise<null>((resolve) => {
+            window.setTimeout(() => resolve(null), SW_READY_TIMEOUT_MS);
+          }),
+        ]);
+
+      return readyRegistration;
+    } catch (error) {
+      console.warn("Unable to resolve service worker registration:", error);
+      return null;
+    }
+  }
+
   /**
    * Request Background Sync to process the queue
    * Falls back to manual processing if Background Sync is not supported
@@ -158,11 +184,17 @@ class SubmissionQueue {
     }
 
     try {
-      const registration = await navigator.serviceWorker.ready;
+      const registration = await this.resolveServiceWorkerRegistration();
+      if (!registration) {
+        console.log(
+          "Background Sync not available: no active service worker registration",
+        );
+        return false;
+      }
 
       // Check if Background Sync is supported
       if ("sync" in registration) {
-        await (registration as any).sync.register(SYNC_TAG);
+        await registration.sync.register(SYNC_TAG);
         console.log("📡 Background Sync registered:", SYNC_TAG);
         return true;
       } else {

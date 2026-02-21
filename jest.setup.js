@@ -42,22 +42,55 @@ jest.mock("next/navigation", () => ({
 // Mock environment variables for tests
 process.env.NEXTAUTH_URL = "http://localhost:3000";
 process.env.NEXTAUTH_SECRET = "test-secret";
+process.env.NEXT_PUBLIC_MAPBOX_TOKEN = "test-mapbox-token";
 
 // Mock Mapbox GL
-jest.mock("mapbox-gl", () => ({
-  Map: jest.fn(() => ({
-    on: jest.fn(),
+jest.mock("mapbox-gl", () => {
+  const mapInstance = {
+    on: jest.fn((event, handler) => {
+      if (event === "load" && typeof handler === "function") {
+        handler();
+      }
+      return mapInstance;
+    }),
     remove: jest.fn(),
     addSource: jest.fn(),
     addLayer: jest.fn(),
     setStyle: jest.fn(),
     flyTo: jest.fn(),
+    setCenter: jest.fn(),
+    fitBounds: jest.fn(),
+    addControl: jest.fn(),
     getContainer: jest.fn(() => ({
       style: {},
     })),
-  })),
-  NavigationControl: jest.fn(),
-}));
+  };
+
+  const Marker = jest.fn(() => ({
+    setLngLat: jest.fn().mockReturnThis(),
+    addTo: jest.fn().mockReturnThis(),
+    remove: jest.fn(),
+  }));
+
+  const LngLatBounds = jest.fn(() => ({
+    extend: jest.fn().mockReturnThis(),
+  }));
+
+  const mapbox = {
+    Map: jest.fn(() => mapInstance),
+    Marker,
+    LngLatBounds,
+    NavigationControl: jest.fn(),
+    supported: jest.fn(() => true),
+    accessToken: "",
+  };
+
+  return {
+    __esModule: true,
+    default: mapbox,
+    ...mapbox,
+  };
+});
 
 // Mock Google APIs
 global.google = {
