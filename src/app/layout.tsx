@@ -4,6 +4,7 @@ import Script from "next/script";
 import "./globals.css";
 import ClientDataPrefetcher from "@/components/ClientDataPrefetcher";
 import DevAgentation from "@/components/DevAgentation";
+import FormRouteWarmup from "@/components/navigation/FormRouteWarmup";
 import AuthProvider from "@/components/providers/AuthProvider";
 import { MotionProvider } from "@/components/providers/MotionProvider";
 import QueryProvider from "@/components/providers/QueryProvider";
@@ -109,6 +110,7 @@ export default function RootLayout({
         <ClientDataPrefetcher />
         <QueryProvider>
           <AuthProvider>
+            <FormRouteWarmup />
             <MotionProvider>{children}</MotionProvider>
           </AuthProvider>
         </QueryProvider>
