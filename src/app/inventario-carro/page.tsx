@@ -106,6 +106,15 @@ type LedgerRow = {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
+  linkedEntryId: string;
+  linkStatus: "" | "linked" | "override";
+  overrideReason: string;
+};
+
+type InventoryWarning = {
+  code: "NEGATIVE_STOCK";
+  product: string;
+  resultingStock: number;
 };
 
 type SalesRow = {
@@ -137,6 +146,9 @@ type LedgerFormState = {
   notes: string;
   createdBy?: string;
   createdAt?: string;
+  linkedEntryId?: string;
+  linkStatus?: "" | "linked" | "override";
+  overrideReason?: string;
 };
 
 type LedgerFormItem = {
@@ -149,6 +161,8 @@ type AddLedgerFormState = {
   date: string;
   movementType: string;
   notes: string;
+  linkToBodega: boolean;
+  overrideReason: string;
   items: LedgerFormItem[];
 };
 
@@ -179,6 +193,35 @@ const createEmptyItem = (): LedgerFormItem => ({
   product: "",
   quantity: "",
 });
+
+const parseWarnings = (payload: unknown): InventoryWarning[] => {
+  if (!payload || typeof payload !== "object") return [];
+  const warningValue = (payload as { warnings?: unknown }).warnings;
+  if (!Array.isArray(warningValue)) return [];
+
+  return warningValue.flatMap((warning) => {
+    if (!warning || typeof warning !== "object") return [];
+    const candidate = warning as {
+      code?: unknown;
+      product?: unknown;
+      resultingStock?: unknown;
+    };
+    if (
+      candidate.code === "NEGATIVE_STOCK" &&
+      typeof candidate.product === "string" &&
+      typeof candidate.resultingStock === "number"
+    ) {
+      return [
+        {
+          code: "NEGATIVE_STOCK" as const,
+          product: candidate.product,
+          resultingStock: candidate.resultingStock,
+        },
+      ];
+    }
+    return [];
+  });
+};
 
 type ProductComboboxProps = {
   value: string;
@@ -412,7 +455,7 @@ const DatePicker = ({ value, onChange, id }: DatePickerProps) => {
   const handlePrevMonth = () => {
     if (viewMonth === 0) {
       setViewMonth(11);
-      setViewYear(prev => prev - 1);
+      setViewYear((prev) => prev - 1);
     } else {
       setViewMonth(viewMonth - 1);
     }
@@ -421,7 +464,7 @@ const DatePicker = ({ value, onChange, id }: DatePickerProps) => {
   const handleNextMonth = () => {
     if (viewMonth === 11) {
       setViewMonth(0);
-      setViewYear(prev => prev + 1);
+      setViewYear((prev) => prev + 1);
     } else {
       setViewMonth(viewMonth + 1);
     }
@@ -655,6 +698,7 @@ export default function InventarioCarroPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [warnings, setWarnings] = useState<InventoryWarning[]>([]);
   const [showAllHistory, setShowAllHistory] = useState(false);
   const [traceProduct, setTraceProduct] = useState<string | null>(null);
 
@@ -691,6 +735,8 @@ export default function InventarioCarroPage() {
     date: getDefaultDate(),
     movementType: "Carga",
     notes: "",
+    linkToBodega: true,
+    overrideReason: "",
     items: [createEmptyItem()],
   });
   const [editForm, setEditForm] = useState<LedgerFormState | null>(null);
@@ -714,13 +760,7 @@ export default function InventarioCarroPage() {
     return "Selecciona un vendedor";
   }, [selectedSeller]);
 
-  useEffect(() => {
-    if (status !== "authenticated" || !isAdmin) return;
-    fetchLedger();
-    fetchSales();
-  }, [status, isAdmin]);
-
-  const fetchLedger = async () => {
+  const fetchLedger = useCallback(async () => {
     setIsLedgerLoading(true);
     setError(null);
     try {
@@ -730,14 +770,15 @@ export default function InventarioCarroPage() {
       }
       const data = await response.json();
       setLedgerRows(data.rows || []);
+      setWarnings(parseWarnings(data));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error desconocido");
     } finally {
       setIsLedgerLoading(false);
     }
-  };
+  }, []);
 
-  const fetchSales = async () => {
+  const fetchSales = useCallback(async () => {
     if (!googleApiKey || !spreadsheetId) {
       setError("Falta configurar Google Sheets en el entorno");
       return;
@@ -772,10 +813,17 @@ export default function InventarioCarroPage() {
     } finally {
       setIsSalesLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (status !== "authenticated" || !isAdmin) return;
+    void fetchLedger();
+    void fetchSales();
+  }, [status, isAdmin, fetchLedger, fetchSales]);
 
   const handleRefresh = async () => {
     setNotice(null);
+    setWarnings([]);
     await Promise.all([fetchLedger(), fetchSales()]);
   };
 
@@ -785,6 +833,9 @@ export default function InventarioCarroPage() {
       ...prev,
       date: getDefaultDate(),
       movementType: "Carga",
+      notes: "",
+      linkToBodega: true,
+      overrideReason: "",
       items: prev.items.length > 0 ? prev.items : [createEmptyItem()],
     }));
     setIsAddOpen(true);
@@ -849,7 +900,7 @@ export default function InventarioCarroPage() {
     }
 
     const invalidQuantity = normalizedItems.find((item) =>
-      isNaN(Number(item.quantity)),
+      Number.isNaN(Number(item.quantity)),
     );
     if (invalidQuantity) {
       setNotice("Cantidad inválida");
@@ -857,34 +908,69 @@ export default function InventarioCarroPage() {
     }
     setIsSaving(true);
     setNotice(null);
+    setWarnings([]);
     try {
-      const payload = {
-        entries: normalizedItems.map((item) => ({
-          date: addForm.date,
-          sellerEmail: selectedSeller,
-          product: item.product.trim(),
-          quantity: Number(item.quantity),
-          movementType: addForm.movementType,
-          notes: addForm.notes,
-        })),
-      };
-      const response = await fetch("/api/inventario-carros", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      const isCarga = addForm.movementType === "Carga";
+      const payload = isCarga
+        ? {
+            date: addForm.date,
+            sellerEmail: selectedSeller,
+            movementType: addForm.movementType,
+            notes: addForm.notes,
+            linkToBodega: addForm.linkToBodega,
+            overrideReason: addForm.linkToBodega
+              ? ""
+              : addForm.overrideReason.trim(),
+            entries: normalizedItems.map((item) => ({
+              product: item.product.trim(),
+              quantity: Number(item.quantity),
+            })),
+          }
+        : {
+            entries: normalizedItems.map((item) => ({
+              date: addForm.date,
+              sellerEmail: selectedSeller,
+              product: item.product.trim(),
+              quantity: Number(item.quantity),
+              movementType: addForm.movementType,
+              notes: addForm.notes,
+            })),
+          };
+      const response = await fetch(
+        isCarga ? "/api/inventario-transfer" : "/api/inventario-carros",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      );
+      const responsePayload = await response.json();
       if (!response.ok) {
-        throw new Error("No se pudo guardar la carga");
+        const detailText =
+          typeof responsePayload?.details === "string"
+            ? responsePayload.details
+            : "";
+        const errorText =
+          [responsePayload?.error, detailText].filter(Boolean).join(" | ") ||
+          "No se pudo guardar la carga";
+        throw new Error(errorText);
       }
+      setWarnings(parseWarnings(responsePayload));
       await fetchLedger();
       setIsAddOpen(false);
       setAddForm({
         date: getDefaultDate(),
         movementType: "Carga",
         notes: "",
+        linkToBodega: true,
+        overrideReason: "",
         items: [createEmptyItem()],
       });
-      setNotice("Carga guardada");
+      setNotice(
+        isCarga && addForm.linkToBodega
+          ? "Carga guardada y ligada con salida de bodega"
+          : "Carga guardada",
+      );
     } catch (err) {
       setNotice(err instanceof Error ? err.message : "Error al guardar");
     } finally {
@@ -905,6 +991,9 @@ export default function InventarioCarroPage() {
       notes: row.notes,
       createdBy: row.createdBy,
       createdAt: row.createdAt,
+      linkedEntryId: row.linkedEntryId,
+      linkStatus: row.linkStatus,
+      overrideReason: row.overrideReason,
     });
     setIsEditOpen(true);
   };
@@ -917,7 +1006,17 @@ export default function InventarioCarroPage() {
     }
     setIsSaving(true);
     setNotice(null);
+    setWarnings([]);
     try {
+      if (editForm.linkStatus === "linked") {
+        const shouldContinue = window.confirm(
+          "Este movimiento está ligado con bodega. ¿Deseas actualizar ambos movimientos?",
+        );
+        if (!shouldContinue) {
+          setIsSaving(false);
+          return;
+        }
+      }
       const payload = {
         rowNumber: editForm.rowNumber,
         entry: {
@@ -930,6 +1029,9 @@ export default function InventarioCarroPage() {
           notes: editForm.notes,
           createdBy: editForm.createdBy,
           createdAt: editForm.createdAt,
+          linkedEntryId: editForm.linkedEntryId,
+          linkStatus: editForm.linkStatus,
+          overrideReason: editForm.overrideReason,
         },
       };
       const response = await fetch("/api/inventario-carros", {
@@ -937,9 +1039,13 @@ export default function InventarioCarroPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+      const responsePayload = await response.json();
       if (!response.ok) {
-        throw new Error("No se pudo actualizar la carga");
+        throw new Error(
+          responsePayload?.error || "No se pudo actualizar la carga",
+        );
       }
+      setWarnings(parseWarnings(responsePayload));
       await fetchLedger();
       setIsEditOpen(false);
       setEditForm(null);
@@ -959,16 +1065,18 @@ export default function InventarioCarroPage() {
     }
     setIsSaving(true);
     setNotice(null);
+    setWarnings([]);
     try {
       const response = await fetch("/api/inventario-carros", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "seed" }),
       });
+      const payload = await response.json();
       if (!response.ok) {
-        const payload = await response.json();
         throw new Error(payload?.error || "No se pudo cargar seed");
       }
+      setWarnings(parseWarnings(payload));
       await fetchLedger();
       setNotice("Seed listo");
     } catch (err) {
@@ -1330,158 +1438,193 @@ export default function InventarioCarroPage() {
               {error || notice}
             </div>
           )}
+          {warnings.length > 0 && (
+            <div className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 space-y-1">
+              <p className="font-semibold">Advertencia de stock en bodega:</p>
+              {warnings.map((warning) => (
+                <p key={`${warning.product}-${warning.resultingStock}`}>
+                  {warning.product}: {warning.resultingStock}
+                </p>
+              ))}
+            </div>
+          )}
         </section>
 
-        {selectedSeller && <>
-        <section className="bg-white rounded-2xl p-4">
-          <p className="text-xs text-slate-500">Valor de inventario</p>
-          <p className="text-2xl font-semibold text-slate-900">
-            ${formatNumber(valorInventario)}
-          </p>
-        </section>
-
-        <section className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h3 className="text-sm font-semibold text-slate-900">
-                Detalle por producto
-              </h3>
-              <p className="text-xs text-slate-500">
-                Entradas incluyen inventario inicial y ajustes.
+        {selectedSeller && (
+          <>
+            <section className="bg-white rounded-2xl p-4">
+              <p className="text-xs text-slate-500">Valor de inventario</p>
+              <p className="text-2xl font-semibold text-slate-900">
+                ${formatNumber(valorInventario)}
               </p>
-            </div>
-            <div className="flex items-center gap-2">
-              {(isLedgerLoading || isSalesLoading) && (
-                <span className="text-xs text-slate-400">Cargando...</span>
-              )}
-              <button
-                type="button"
-                onClick={handlePrint}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
-              >
-                Imprimir
-              </button>
-            </div>
-          </div>
+            </section>
 
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="text-xs text-slate-500">
-                <tr className="text-left border-b border-slate-200">
-                  <th className="py-2 pr-3">Producto</th>
-                  <th className="py-2 pr-3">Saldo inicial</th>
-                  <th className="py-2 pr-3">Entradas</th>
-                  <th className="py-2 pr-3">Salidas</th>
-                  <th className="py-2">Saldo final</th>
-                </tr>
-              </thead>
-              <tbody>
-                {productList.map((product) => (
-                  <tr
-                    key={product}
-                    className="border-b border-slate-100 last:border-b-0"
+            <section className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900">
+                    Detalle por producto
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Entradas incluyen inventario inicial y ajustes.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {(isLedgerLoading || isSalesLoading) && (
+                    <span className="text-xs text-slate-400">Cargando...</span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handlePrint}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
                   >
-                    <td className="py-2 pr-3 text-slate-800">
-                      <button
-                        type="button"
-                        onClick={() => setTraceProduct(product)}
-                        className="text-left text-slate-800 hover:text-slate-900 hover:underline"
-                      >
-                        {product}
-                      </button>
-                    </td>
-                    <td className="py-2 pr-3">
-                      {formatNumber(saldoInicial[product] || 0)}
-                    </td>
-                    <td className="py-2 pr-3">
-                      {formatNumber(ledgerWeekTotals[product] || 0)}
-                    </td>
-                    <td className="py-2 pr-3">
-                      {formatNumber(salesWeekTotals[product] || 0)}
-                    </td>
-                    <td className="py-2 font-semibold text-slate-900">
-                      {formatNumber(saldoFinal[product] || 0)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
+                    Imprimir
+                  </button>
+                </div>
+              </div>
 
-        <section className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h3 className="text-sm font-semibold text-slate-900">
-                Historial reciente
-              </h3>
-              <p className="text-xs text-slate-500">
-                Últimos movimientos del vendedor seleccionado.
-              </p>
-            </div>
-            {historyRows.length > 30 && (
-              <button
-                type="button"
-                onClick={() => setShowAllHistory((prev) => !prev)}
-                className="text-xs font-medium text-slate-600 hover:text-slate-900"
-              >
-                {showAllHistory ? "Ver menos" : "Ver más"}
-              </button>
-            )}
-          </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="text-xs text-slate-500">
-                <tr className="text-left border-b border-slate-200">
-                  <th className="py-2 pr-3">Fecha</th>
-                  <th className="py-2 pr-3">Producto</th>
-                  <th className="py-2 pr-3">Tipo</th>
-                  <th className="py-2 pr-3">Cantidad</th>
-                  <th className="py-2 pr-3">Notas</th>
-                  <th className="py-2"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {historyRows.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="py-4 text-center text-slate-400">
-                      Sin movimientos
-                    </td>
-                  </tr>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="text-xs text-slate-500">
+                    <tr className="text-left border-b border-slate-200">
+                      <th className="py-2 pr-3">Producto</th>
+                      <th className="py-2 pr-3">Saldo inicial</th>
+                      <th className="py-2 pr-3">Entradas</th>
+                      <th className="py-2 pr-3">Salidas</th>
+                      <th className="py-2">Saldo final</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {productList.map((product) => (
+                      <tr
+                        key={product}
+                        className="border-b border-slate-100 last:border-b-0"
+                      >
+                        <td className="py-2 pr-3 text-slate-800">
+                          <button
+                            type="button"
+                            onClick={() => setTraceProduct(product)}
+                            className="text-left text-slate-800 hover:text-slate-900 hover:underline"
+                          >
+                            {product}
+                          </button>
+                        </td>
+                        <td className="py-2 pr-3">
+                          {formatNumber(saldoInicial[product] || 0)}
+                        </td>
+                        <td className="py-2 pr-3">
+                          {formatNumber(ledgerWeekTotals[product] || 0)}
+                        </td>
+                        <td className="py-2 pr-3">
+                          {formatNumber(salesWeekTotals[product] || 0)}
+                        </td>
+                        <td className="py-2 font-semibold text-slate-900">
+                          {formatNumber(saldoFinal[product] || 0)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900">
+                    Historial reciente
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Últimos movimientos del vendedor seleccionado.
+                  </p>
+                </div>
+                {historyRows.length > 30 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowAllHistory((prev) => !prev)}
+                    className="text-xs font-medium text-slate-600 hover:text-slate-900"
+                  >
+                    {showAllHistory ? "Ver menos" : "Ver más"}
+                  </button>
                 )}
-                {visibleHistoryRows.map((row: LedgerRow) => (
-                  <tr
-                    key={row.rowNumber}
-                    className="border-b border-slate-100 last:border-b-0"
-                  >
-                    <td className="py-2 pr-3 text-slate-700">{row.date}</td>
-                    <td className="py-2 pr-3 text-slate-800">{row.product}</td>
-                    <td className="py-2 pr-3">
-                      <span className="inline-flex px-2 py-0.5 rounded-full text-xs bg-slate-100 text-slate-700">
-                        {row.movementType}
-                      </span>
-                    </td>
-                    <td className="py-2 pr-3">{formatNumber(row.quantity)}</td>
-                    <td className="py-2 pr-3 text-slate-500">
-                      {row.notes || "-"}
-                    </td>
-                    <td className="py-2 text-right">
-                      <button
-                        type="button"
-                        onClick={() => handleEditOpen(row)}
-                        className="inline-flex items-center gap-1 text-xs text-slate-600 hover:text-slate-900"
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="text-xs text-slate-500">
+                    <tr className="text-left border-b border-slate-200">
+                      <th className="py-2 pr-3">Fecha</th>
+                      <th className="py-2 pr-3">Producto</th>
+                      <th className="py-2 pr-3">Tipo</th>
+                      <th className="py-2 pr-3">Cantidad</th>
+                      <th className="py-2 pr-3">Notas</th>
+                      <th className="py-2 pr-3">Vínculo</th>
+                      <th className="py-2"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {historyRows.length === 0 && (
+                      <tr>
+                        <td
+                          colSpan={7}
+                          className="py-4 text-center text-slate-400"
+                        >
+                          Sin movimientos
+                        </td>
+                      </tr>
+                    )}
+                    {visibleHistoryRows.map((row: LedgerRow) => (
+                      <tr
+                        key={row.rowNumber}
+                        className="border-b border-slate-100 last:border-b-0"
                       >
-                        <Pencil className="h-3.5 w-3.5" />
-                        Editar
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-        </>}
+                        <td className="py-2 pr-3 text-slate-700">{row.date}</td>
+                        <td className="py-2 pr-3 text-slate-800">
+                          {row.product}
+                        </td>
+                        <td className="py-2 pr-3">
+                          <span className="inline-flex px-2 py-0.5 rounded-full text-xs bg-slate-100 text-slate-700">
+                            {row.movementType}
+                          </span>
+                        </td>
+                        <td className="py-2 pr-3">
+                          {formatNumber(row.quantity)}
+                        </td>
+                        <td className="py-2 pr-3 text-slate-500">
+                          {row.notes || "-"}
+                        </td>
+                        <td className="py-2 pr-3">
+                          {row.linkStatus === "linked" ? (
+                            <span className="inline-flex px-2 py-0.5 rounded-full text-xs bg-emerald-100 text-emerald-700">
+                              Bodega
+                            </span>
+                          ) : row.linkStatus === "override" ? (
+                            <span className="inline-flex px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-700">
+                              Manual
+                            </span>
+                          ) : (
+                            <span className="inline-flex px-2 py-0.5 rounded-full text-xs bg-slate-100 text-slate-500">
+                              -
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2 text-right">
+                          <button
+                            type="button"
+                            onClick={() => handleEditOpen(row)}
+                            className="inline-flex items-center gap-1 text-xs text-slate-600 hover:text-slate-900"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                            Editar
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </>
+        )}
       </main>
 
       <Dialog
@@ -1696,7 +1839,13 @@ export default function InventarioCarroPage() {
                       key={type}
                       type="button"
                       onClick={() =>
-                        setAddForm((prev) => ({ ...prev, movementType: type }))
+                        setAddForm((prev) => ({
+                          ...prev,
+                          movementType: type,
+                          ...(type === "Carga"
+                            ? {}
+                            : { linkToBodega: true, overrideReason: "" }),
+                        }))
                       }
                       className={cn(
                         "relative flex flex-col rounded-lg border p-3 text-left transition-all",
@@ -1738,6 +1887,52 @@ export default function InventarioCarroPage() {
                 })}
               </div>
             </m.div>
+            {addForm.movementType === "Carga" && (
+              <m.div
+                layout
+                className="space-y-2 rounded-lg border border-slate-200 p-3"
+                transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+              >
+                <label className="flex items-center gap-2 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={addForm.linkToBodega}
+                    onChange={(event) =>
+                      setAddForm((prev) => ({
+                        ...prev,
+                        linkToBodega: event.target.checked,
+                        overrideReason: event.target.checked
+                          ? ""
+                          : prev.overrideReason,
+                      }))
+                    }
+                  />
+                  Vincular salida de bodega automáticamente
+                </label>
+                {!addForm.linkToBodega && (
+                  <div className="space-y-1">
+                    <label
+                      htmlFor="override-reason"
+                      className="text-xs font-semibold text-slate-600"
+                    >
+                      Motivo de excepción (opcional)
+                    </label>
+                    <textarea
+                      id="override-reason"
+                      value={addForm.overrideReason}
+                      onChange={(event) =>
+                        setAddForm((prev) => ({
+                          ...prev,
+                          overrideReason: event.target.value,
+                        }))
+                      }
+                      rows={2}
+                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                    />
+                  </div>
+                )}
+              </m.div>
+            )}
             <m.div
               layout
               className="space-y-1"
@@ -2030,6 +2225,7 @@ export default function InventarioCarroPage() {
                       )
                     }
                     className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                    disabled={editForm.linkStatus === "linked"}
                   >
                     {MOVEMENT_TYPES.map((type) => (
                       <option key={type} value={type}>
@@ -2058,6 +2254,12 @@ export default function InventarioCarroPage() {
                   className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
                 />
               </div>
+              {editForm.linkStatus === "linked" && (
+                <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  Esta carga está ligada a una salida de bodega. El tipo queda
+                  bloqueado y la edición se sincroniza en ambos lados.
+                </p>
+              )}
               <div className="flex justify-end gap-2">
                 <button
                   type="button"

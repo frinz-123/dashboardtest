@@ -67,3 +67,4 @@
 - Use Biome commands for lint/format; this project does not use ESLint as the primary linter.
 - Preserve period/week logic in `src/utils/dateUtils.ts` (periods start at `2024-10-05`, period numbering starts at `11`).
 - Treat Google Sheets column mapping in `src/app/api/submit-form/route.ts` and `src/utils/transacciones.ts` as a strict contract before modifying.
+- `/inventario` is legacy/deprecated; new warehouse flow should be implemented in `/inventario-bodega` linked with `/inventario-carro`.
