@@ -1364,6 +1364,18 @@ export default function FormPage() {
 
     if (hasSignificantMovement(currentLocation, limitedLocation)) {
       throttledLocationUpdate(limitedLocation);
+    } else if (currentLocation) {
+      // Always update timestamp/accuracy even without movement,
+      // so location freshness checks pass on re-submit
+      setCurrentLocation((prev) =>
+        prev
+          ? {
+              ...prev,
+              accuracy: limitedLocation.accuracy,
+              timestamp: limitedLocation.timestamp,
+            }
+          : limitedLocation,
+      );
     }
 
     // If we're refreshing location for a stale queue item, update it
