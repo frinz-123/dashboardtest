@@ -17,11 +17,7 @@ const STALE_SENDING_MS = 45000; // Recover "sending" items after 45 seconds
 
 // Service Worker message types
 interface SWMessage {
-  type:
-    | "SUBMISSION_SUCCESS"
-    | "SUBMISSION_FAILED"
-    | "LOCATION_STALE"
-    | "QUEUE_PROCESSED";
+  type: "SUBMISSION_SUCCESS" | "SUBMISSION_FAILED" | "QUEUE_PROCESSED";
   submissionId?: string;
   duplicate?: boolean;
   error?: string;
@@ -29,7 +25,6 @@ interface SWMessage {
     processed: number;
     succeeded: number;
     failed: number;
-    stale: number;
   };
 }
 
@@ -64,8 +59,6 @@ export interface QueueState {
   isOnline: boolean;
   currentItem: QueuedSubmission | null;
   items: QueuedSubmission[];
-  hasStaleLocation: boolean;
-  staleLocationItemId: string | null;
 }
 
 export interface UseSubmissionQueueReturn {
@@ -77,16 +70,9 @@ export interface UseSubmissionQueueReturn {
     >,
   ) => Promise<QueuedSubmission>;
   processQueue: () => Promise<void>;
-  updateItemLocation: (
-    id: string,
-    location: QueuedSubmission["payload"]["location"],
-  ) => Promise<void>;
   retryItem: (id: string) => Promise<void>;
   removeItem: (id: string) => Promise<void>;
   clearQueue: () => Promise<void>;
-  refreshStaleLocation: (
-    newLocation: QueuedSubmission["payload"]["location"],
-  ) => Promise<void>;
 }
 
 export function useSubmissionQueue(): UseSubmissionQueueReturn {
@@ -96,8 +82,6 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
     isOnline: typeof navigator !== "undefined" ? navigator.onLine : true,
     currentItem: null,
     items: [],
-    hasStaleLocation: false,
-    staleLocationItemId: null,
   });
 
   const isProcessingRef = useRef(false);
@@ -143,15 +127,10 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
     try {
       const items = await submissionQueue.getPending();
 
-      // NOTE: We no longer check for stale location in queued items.
-      // Location was validated at submission time - queued orders should always process.
-
       setState((prev) => ({
         ...prev,
         items,
         pendingCount: items.length,
-        hasStaleLocation: false,
-        staleLocationItemId: null,
       }));
     } catch (error) {
       console.error("Failed to load queue:", error);
@@ -519,7 +498,7 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
         if (item.status === "sending") continue;
         if (item.status === "failed") continue;
 
-        // NOTE: We no longer check for 'locationStale' status or re-validate location.
+        // NOTE: Queue processing does not re-validate location.
         // Location was validated at submission time - the stored coordinates are proof
         // the user was at the client. Queued orders should always be processed.
 
@@ -570,34 +549,6 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
       return queued;
     },
     [loadQueue, processQueue, tryRegisterBackgroundSync],
-  );
-
-  // Update location for a specific item
-  const updateItemLocation = useCallback(
-    async (id: string, location: QueuedSubmission["payload"]["location"]) => {
-      await submissionQueue.updateLocation(id, location);
-      await loadQueue();
-
-      // Try to process immediately
-      if (navigator.onLine) {
-        const syncRegistered = await tryRegisterBackgroundSync();
-        if (!syncRegistered) {
-          setTimeout(() => processQueue(), 100);
-        }
-      }
-    },
-    [loadQueue, processQueue, tryRegisterBackgroundSync],
-  );
-
-  // Refresh location for the stale item
-  const refreshStaleLocation = useCallback(
-    async (newLocation: QueuedSubmission["payload"]["location"]) => {
-      const { staleLocationItemId } = state;
-      if (!staleLocationItemId) return;
-
-      await updateItemLocation(staleLocationItemId, newLocation);
-    },
-    [state, updateItemLocation],
   );
 
   // Retry a specific item
@@ -787,15 +738,6 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
           loadQueue();
           break;
 
-        case "LOCATION_STALE":
-          // NOTE: This case is kept for backwards compatibility but should no longer be triggered.
-          // Location is validated at submission time, not during queue processing.
-          console.log(
-            `📍 [SW] Submission ${submissionId} - location stale message (ignored)`,
-          );
-          loadQueue();
-          break;
-
         case "QUEUE_PROCESSED":
           console.log("[SW] Queue processing complete:", results);
           loadQueue();
@@ -814,10 +756,8 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
     state,
     addToQueue,
     processQueue,
-    updateItemLocation,
     retryItem,
     removeItem,
     clearQueue,
-    refreshStaleLocation,
   };
 }

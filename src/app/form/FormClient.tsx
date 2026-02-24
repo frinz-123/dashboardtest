@@ -1016,7 +1016,6 @@ export default function FormPage() {
     location?: string;
     submit?: string;
   }>({});
-  const [isRefreshingLocation, setIsRefreshingLocation] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   // Submission queue for offline-first reliability
@@ -1026,7 +1025,6 @@ export default function FormPage() {
     retryItem,
     removeItem,
     clearQueue,
-    refreshStaleLocation,
   } = useSubmissionQueue();
   const submitOrder = useOrderSubmitMutation({ addToQueue });
 
@@ -1366,7 +1364,7 @@ export default function FormPage() {
       throttledLocationUpdate(limitedLocation);
     } else if (currentLocation) {
       // Always update timestamp/accuracy even without movement,
-      // so location freshness checks pass on re-submit
+      // so the latest GPS reading is preserved for submission diagnostics
       setCurrentLocation((prev) =>
         prev
           ? {
@@ -1375,17 +1373,6 @@ export default function FormPage() {
               timestamp: limitedLocation.timestamp,
             }
           : limitedLocation,
-      );
-    }
-
-    // If we're refreshing location for a stale queue item, update it
-    if (isRefreshingLocation && queueState.hasStaleLocation) {
-      refreshStaleLocation(limitedLocation);
-      setIsRefreshingLocation(false);
-      success(
-        "Ubicacion actualizada",
-        "El pedido pendiente se enviara automaticamente.",
-        3000,
       );
     }
   };
@@ -1452,13 +1439,6 @@ export default function FormPage() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
-
-  // Handler for refreshing location when queue has stale items
-  const handleRefreshLocationForQueue = useCallback(() => {
-    setIsRefreshingLocation(true);
-    // The Map component will trigger handleLocationUpdate with fresh location
-    // We set a flag so that when location updates, we know to refresh the queue item
   }, []);
 
   const executeClearQueue = useCallback(async () => {
@@ -1916,11 +1896,9 @@ export default function FormPage() {
       {/* Pending Orders Banner - Shows queue status */}
       <PendingOrdersBanner
         state={queueState}
-        onRefreshLocation={handleRefreshLocationForQueue}
         onRetry={retryItem}
         onRemove={removeItem}
         onClearQueue={handleClearQueue}
-        isRefreshingLocation={isRefreshingLocation}
       />
 
       {/* Confirmation dialog before clearing risky queue items */}
@@ -1956,11 +1934,7 @@ export default function FormPage() {
       {/* Add top padding when banner is visible */}
       <div
         className={
-          queueState.pendingCount > 0 ||
-          !queueState.isOnline ||
-          queueState.hasStaleLocation
-            ? "pt-24"
-            : ""
+          queueState.pendingCount > 0 || !queueState.isOnline ? "pt-24" : ""
         }
       ></div>
 

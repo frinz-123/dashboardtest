@@ -3,7 +3,6 @@
 import {
   AlertTriangle,
   Clock,
-  MapPin,
   RefreshCw,
   Wifi,
   WifiOff,
@@ -14,29 +13,18 @@ import type { QueuedSubmission } from "@/utils/submissionQueue";
 
 interface PendingOrdersBannerProps {
   state: QueueState;
-  onRefreshLocation: () => void;
   onRetry: (id: string) => void;
   onRemove: (id: string) => void;
   onClearQueue: () => void;
-  isRefreshingLocation?: boolean;
 }
 
 export default function PendingOrdersBanner({
   state,
-  onRefreshLocation,
   onRetry,
   onRemove,
   onClearQueue,
-  isRefreshingLocation = false,
 }: PendingOrdersBannerProps) {
-  const {
-    pendingCount,
-    isProcessing,
-    isOnline,
-    items,
-    hasStaleLocation,
-    currentItem,
-  } = state;
+  const { pendingCount, isProcessing, isOnline, items, currentItem } = state;
 
   // Don't show anything if there are no pending items and we're online
   if (pendingCount === 0 && isOnline) {
@@ -47,8 +35,6 @@ export default function PendingOrdersBanner({
     switch (item.status) {
       case "sending":
         return <RefreshCw className="w-4 h-4 animate-spin text-blue-500" />;
-      case "locationStale":
-        return <MapPin className="w-4 h-4 text-orange-500" />;
       case "failed":
         return <AlertTriangle className="w-4 h-4 text-red-500" />;
       case "pending":
@@ -62,8 +48,6 @@ export default function PendingOrdersBanner({
     switch (item.status) {
       case "sending":
         return "Enviando...";
-      case "locationStale":
-        return "Ubicacion expirada";
       case "failed":
         return "Error - Toca para reintentar";
       case "pending":
@@ -90,38 +74,6 @@ export default function PendingOrdersBanner({
           <span className="text-sm font-medium">
             Sin conexion - Los pedidos se enviaran automaticamente
           </span>
-        </div>
-      )}
-
-      {/* Stale location warning */}
-      {hasStaleLocation && isOnline && (
-        <div className="bg-orange-500 text-white px-4 py-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <MapPin className="w-4 h-4" />
-              <span className="text-sm font-medium">
-                Tu ubicacion ha expirado
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={onRefreshLocation}
-              disabled={isRefreshingLocation}
-              className="flex items-center gap-1 bg-white/20 hover:bg-white/30 px-3 py-1 rounded-full text-sm font-medium transition-colors disabled:opacity-50"
-            >
-              {isRefreshingLocation ? (
-                <>
-                  <RefreshCw className="w-3 h-3 animate-spin" />
-                  Actualizando...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="w-3 h-3" />
-                  Refrescar ubicacion
-                </>
-              )}
-            </button>
-          </div>
         </div>
       )}
 
@@ -167,11 +119,9 @@ export default function PendingOrdersBanner({
                 className={`flex items-center justify-between bg-white rounded px-2 py-1.5 text-sm ${
                   item.status === "failed"
                     ? "border border-red-200"
-                    : item.status === "locationStale"
-                      ? "border border-orange-200"
-                      : item.status === "sending"
-                        ? "border border-blue-200"
-                        : "border border-gray-200"
+                    : item.status === "sending"
+                      ? "border border-blue-200"
+                      : "border border-gray-200"
                 }`}
               >
                 <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -211,11 +161,9 @@ export default function PendingOrdersBanner({
                     className={`text-xs px-2 py-0.5 rounded-full ${
                       item.status === "sending"
                         ? "bg-blue-100 text-blue-700"
-                        : item.status === "locationStale"
-                          ? "bg-orange-100 text-orange-700"
-                          : item.status === "failed"
-                            ? "bg-red-100 text-red-700"
-                            : "bg-gray-100 text-gray-700"
+                        : item.status === "failed"
+                          ? "bg-red-100 text-red-700"
+                          : "bg-gray-100 text-gray-700"
                     }`}
                   >
                     {getStatusText(item)}
@@ -232,8 +180,7 @@ export default function PendingOrdersBanner({
                     </button>
                   )}
 
-                  {(item.status === "failed" ||
-                    item.status === "locationStale") && (
+                  {item.status === "failed" && (
                     <button
                       type="button"
                       onClick={() => onRemove(item.id)}

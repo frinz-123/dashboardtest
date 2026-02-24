@@ -4,7 +4,6 @@
  * This utility provides a robust queue system for form submissions that:
  * - Persists submissions in IndexedDB (survives app restarts)
  * - Automatically retries when connection is restored
- * - Handles location staleness gracefully
  * - Guarantees eventual delivery
  * - Uses Background Sync API for true background processing
  * - Prevents duplicate submissions via content fingerprinting
@@ -16,16 +15,12 @@ const STORE_NAME = "pending-orders";
 const SYNC_TAG = "order-submission-sync";
 const SW_READY_TIMEOUT_MS = 1500;
 
-// Location is considered stale after 90 seconds
-const MAX_LOCATION_AGE_MS = 90000;
-
 // Duplicate detection window (5 minutes)
 const DUPLICATE_WINDOW_MS = 300000;
 
 export type SubmissionStatus =
   | "pending" // Waiting to be sent
   | "sending" // Currently being sent
-  | "locationStale" // Location too old, needs refresh
   | "failed" // Failed after max retries
   | "completed"; // Successfully sent
 
@@ -435,58 +430,6 @@ class SubmissionQueue {
     const queue = this.getLocalStorageQueue().filter((s) => s.id !== id);
     localStorage.setItem("pending-submissions", JSON.stringify(queue));
     this.notifyListeners();
-  }
-
-  /**
-   * Update location for a queued submission
-   */
-  async updateLocation(
-    id: string,
-    location: QueuedSubmission["payload"]["location"],
-  ): Promise<void> {
-    await this.update(id, {
-      payload: {
-        ...(await this.getById(id))?.payload,
-        location,
-      } as QueuedSubmission["payload"],
-      status: "pending", // Reset to pending since location is now fresh
-      errorMessage: null,
-    });
-  }
-
-  /**
-   * Get a specific submission by ID
-   */
-  async getById(id: string): Promise<QueuedSubmission | null> {
-    await this.dbReady;
-
-    if (this.db) {
-      return new Promise((resolve, reject) => {
-        const transaction = this.db?.transaction([STORE_NAME], "readonly");
-        const store = transaction.objectStore(STORE_NAME);
-        const request = store.get(id);
-
-        request.onsuccess = () => resolve(request.result || null);
-        request.onerror = () => reject(request.error);
-      });
-    }
-
-    const queue = this.getLocalStorageQueue();
-    return queue.find((s) => s.id === id) || null;
-  }
-
-  /**
-   * Check if a location is still valid (not stale)
-   */
-  isLocationValid(submission: QueuedSubmission): boolean {
-    // Admins bypass location checks
-    if (submission.isAdmin) return true;
-
-    const locationTimestamp = submission.payload.location.timestamp;
-    if (!locationTimestamp) return false;
-
-    const age = Date.now() - locationTimestamp;
-    return age < MAX_LOCATION_AGE_MS;
   }
 
   /**

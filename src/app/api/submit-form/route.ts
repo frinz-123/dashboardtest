@@ -13,7 +13,6 @@ const OVERRIDE_EMAILS =
 
 // Location validation constants
 const MAX_LOCATION_ACCURACY = 100; // meters - reject if GPS accuracy is worse than this
-const MAX_LOCATION_AGE = 90000; // 90 seconds in milliseconds - reject if location is older than this
 const MAX_CLIENT_DISTANCE = 450; // meters - maximum allowed distance to client
 const PHOTO_REQUIRED_CODES = new Set(["CLEY", "TERE", "MERZ", "MERKAHORRO"]);
 const PHOTO_MIN_REQUIRED = 2;
@@ -162,8 +161,6 @@ export async function POST(req: Request) {
     // Queued submissions already passed client-side checks (button gating),
     // so skip all location validations on the server for queued attempts.
     const shouldBypassLocationChecks = !isAdmin && isQueuedSubmission;
-    const allowQueuedStaleLocation = shouldBypassLocationChecks;
-
     // ✅ VALIDATION: Enhanced logging for email tracking
     console.log("🔍 FORM SUBMISSION RECEIVED:", {
       timestamp: new Date().toISOString(),
@@ -197,9 +194,7 @@ export async function POST(req: Request) {
       queuedAgeMs: queuedAge,
       queuedAgeSeconds:
         queuedAge !== null ? Number((queuedAge / 1000).toFixed(1)) : null,
-      maxAllowedLocationAgeMs: MAX_LOCATION_AGE,
       isAdminOverrideEffective: isAdmin,
-      allowQueuedStaleLocation,
       isQueuedSubmission,
       normalizedAttemptNumber,
       shouldBypassLocationChecks,
@@ -303,60 +298,6 @@ export async function POST(req: Request) {
         clientName,
         timestamp: new Date().toISOString(),
       });
-    }
-
-    // Validate location freshness (skip for admin override users)
-    if (!isAdmin && location.timestamp !== undefined) {
-      const locationAge = Date.now() - location.timestamp;
-      if (locationAge > MAX_LOCATION_AGE) {
-        if (allowQueuedStaleLocation) {
-          console.log(
-            "🕒 QUEUED SUBMISSION: Bypassing stale location validation",
-            {
-              locationAge,
-              maxAllowed: MAX_LOCATION_AGE,
-              queuedAt,
-              queuedAge,
-              clientName,
-              userEmail,
-              timestamp: new Date().toISOString(),
-            },
-          );
-        } else {
-          console.error("❌ LOCATION VALIDATION FAILED: Stale location", {
-            locationAge,
-            maxAllowed: MAX_LOCATION_AGE,
-            locationTimestamp: location.timestamp,
-            currentTime: Date.now(),
-            timestamp: new Date().toISOString(),
-            clientName,
-            userEmail,
-          });
-          return NextResponse.json(
-            {
-              success: false,
-              error:
-                "La ubicación ha expirado. Por favor, actualiza tu ubicación antes de enviar.",
-            },
-            { status: 400 },
-          );
-        }
-      }
-    }
-
-    // Log if admin bypassed location age check
-    if (isAdmin && location.timestamp !== undefined) {
-      const locationAge = Date.now() - location.timestamp;
-      if (locationAge > MAX_LOCATION_AGE) {
-        console.log("👤 ADMIN OVERRIDE: Bypassing location age check", {
-          locationAge,
-          maxAllowed: MAX_LOCATION_AGE,
-          userEmail,
-          adminEmailForValidation,
-          clientName,
-          timestamp: new Date().toISOString(),
-        });
-      }
     }
 
     // ✅ VALIDATION: Alert if email looks suspicious (deferred to after response)

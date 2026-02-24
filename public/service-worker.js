@@ -350,11 +350,7 @@ async function getPendingSubmissions() {
     request.onsuccess = () => {
       const all = request.result || [];
       // Filter to only pending items (not completed, failed, or currently sending)
-      // NOTE: Also include 'locationStale' for backwards compatibility - these should now be processed
-      // since location is validated at submission time, not during queue processing
-      const pending = all.filter(
-        (s) => s.status === "pending" || s.status === "locationStale",
-      );
+      const pending = all.filter((s) => s.status === "pending");
       resolve(pending);
     };
 
@@ -598,25 +594,6 @@ async function ensurePhotoUploads(submission) {
 }
 
 /**
- * NOTE: isLocationValid is no longer used for queue processing.
- * Location is validated at submission time when the user clicks "Enviar Pedido".
- * The stored coordinates are proof the user was at the client location.
- * Keeping this function for potential future use but it's not called during processing.
- */
-function _isLocationValid(submission) {
-  // Admins bypass location checks
-  if (submission.isAdmin) return true;
-
-  const locationTimestamp = submission.payload?.location?.timestamp;
-  if (!locationTimestamp) return false;
-
-  const age = Date.now() - locationTimestamp;
-  const MAX_LOCATION_AGE_MS = 90000; // 90 seconds
-
-  return age < MAX_LOCATION_AGE_MS;
-}
-
-/**
  * Process all queued orders
  * Called by Background Sync when connection is restored
  */
@@ -627,7 +604,6 @@ async function processQueuedOrders() {
     processed: 0,
     succeeded: 0,
     failed: 0,
-    stale: 0,
   };
 
   try {
