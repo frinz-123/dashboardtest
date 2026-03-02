@@ -24,6 +24,7 @@ export const PRODUCT_COLUMNS = {
   AI: "Michela Mix Picafresa",
   AJ: "Habanero Molido 50 g",
   AK: "Habanero Molido 20 g",
+  AQ: "Molinillo Habanero 20 g",
 } as const;
 
 export const PRODUCT_NAMES = Object.values(PRODUCT_COLUMNS);

@@ -49,6 +49,7 @@ const PRODUCT_COLUMNS = {
   AI: "Michela Mix Picafresa",
   AJ: "Habanero Molido 50 g",
   AK: "Habanero Molido 20 g",
+  AQ: "Molinillo Habanero 20 g",
 };
 
 export async function GET(req: Request) {

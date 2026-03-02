@@ -104,12 +104,13 @@ const PRODUCTS: string[] = [
   "Medio Kilo Chiltepin Entero",
   "Habanero Molido 50 g",
   "Habanero Molido 20 g",
+  "Molinillo Habanero 20 g",
 ];
 
 const MIN_MOVEMENT_THRESHOLD = 5; // Align with map for precise updates
 const MAX_CLIENT_DISTANCE = 450; // Maximum allowed distance to client in meters
 const ARCHIVE_MARKER = "archivado no usar";
-const PHOTO_REQUIRED_CODES = new Set(["CLEY", "TERE", "MERZ", "MERKAHORRO"]);
+const PHOTO_REQUIRED_CODES = new Set(["CLEY", "TERE", "MERZ", "MERKAHORRO", "WM" , "OXX","KIOSK"]);
 const PHOTO_MIN_REQUIRED = 2;
 const PHOTO_MAX = 4;
 const PHOTO_MAX_DIMENSION = 1280;
@@ -167,7 +168,9 @@ function getClientCode(clientName: string): string {
     memin: "memin",
     querida: "queri",
     merza: "merz",
-    "AND FINAL": "smart",
+    "Cedis Up": "CRED",
+    "AND FINAL": "smart", 
+    WALMART: "wm",
   };
 
   for (const [key, code] of Object.entries(codeMap)) {
@@ -212,6 +215,7 @@ const PRICES: ProductPrices = {
     "Habanero Molido 50 g": 40,
     "Habanero Molido 20 g": 20,
     "Medio Kilo Chiltepin Entero": 500,
+    "Molinillo Habanero 20 g": 75,
   },
   CLEY: {
     "Chiltepin Molido 50 g": 44.16,
@@ -239,6 +243,7 @@ const PRICES: ProductPrices = {
     "Habanero Molido 50 g": 40,
     "Habanero Molido 20 g": 20,
     "Medio Kilo Chiltepin Entero": 500,
+    "Molinillo Habanero 20 g": 75,
   },
   TERE: {
     "Chiltepin Molido 50 g": 45,
@@ -266,6 +271,7 @@ const PRICES: ProductPrices = {
     "Habanero Molido 50 g": 40,
     "Habanero Molido 20 g": 20,
     "Medio Kilo Chiltepin Entero": 500,
+    "Molinillo Habanero 20 g": 75,
   },
   BEKOOK: {
     "Chiltepin Molido 50 g": 48,
@@ -293,6 +299,7 @@ const PRICES: ProductPrices = {
     "Habanero Molido 50 g": 40,
     "Habanero Molido 20 g": 20,
     "Medio Kilo Chiltepin Entero": 500,
+    "Molinillo Habanero 20 g": 75,
   },
   OXX: {
     "Chiltepin Molido 50 g": 44.1,
@@ -320,6 +327,7 @@ const PRICES: ProductPrices = {
     "Habanero Molido 50 g": 40,
     "Habanero Molido 20 g": 20,
     "Medio Kilo Chiltepin Entero": 500,
+    "Molinillo Habanero 20 g": 75,
   },
   LAMERA: {
     "Chiltepin Molido 50 g": 48,
@@ -347,6 +355,7 @@ const PRICES: ProductPrices = {
     "Habanero Molido 50 g": 40,
     "Habanero Molido 20 g": 20,
     "Medio Kilo Chiltepin Entero": 500,
+    "Molinillo Habanero 20 g": 75,
   },
   MM: {
     "Chiltepin Molido 50 g": 45,
@@ -374,6 +383,7 @@ const PRICES: ProductPrices = {
     "Habanero Molido 50 g": 40,
     "Habanero Molido 20 g": 20,
     "Medio Kilo Chiltepin Entero": 500,
+    "Molinillo Habanero 20 g": 75,
   },
   FRUTVARELA: {
     "Chiltepin Molido 50 g": 48,
@@ -401,6 +411,7 @@ const PRICES: ProductPrices = {
     "Habanero Molido 50 g": 40,
     "Habanero Molido 20 g": 20,
     "Medio Kilo Chiltepin Entero": 500,
+    "Molinillo Habanero 20 g": 75,
   },
   IZAG: {
     "Chiltepin Molido 50 g": 48,
@@ -428,6 +439,7 @@ const PRICES: ProductPrices = {
     "Habanero Molido 50 g": 40,
     "Habanero Molido 20 g": 20,
     "Medio Kilo Chiltepin Entero": 500,
+    "Molinillo Habanero 20 g": 75,
   },
   ENCANTO: {
     "Chiltepin Molido 50 g": 48,
@@ -455,6 +467,7 @@ const PRICES: ProductPrices = {
     "Habanero Molido 50 g": 40,
     "Habanero Molido 20 g": 20,
     "Medio Kilo Chiltepin Entero": 500,
+    "Molinillo Habanero 20 g": 75,
   },
   BELTR: {
     "Chiltepin Molido 50 g": 48,
@@ -482,6 +495,7 @@ const PRICES: ProductPrices = {
     "Habanero Molido 50 g": 40,
     "Habanero Molido 20 g": 20,
     "Medio Kilo Chiltepin Entero": 500,
+    "Molinillo Habanero 20 g": 75,
   },
   SFACIL: {
     "Chiltepin Molido 50 g": 48,
@@ -509,6 +523,7 @@ const PRICES: ProductPrices = {
     "Habanero Molido 50 g": 40,
     "Habanero Molido 20 g": 20,
     "Medio Kilo Chiltepin Entero": 500,
+    "Molinillo Habanero 20 g": 75,
   },
   FOODS: {
     "Chiltepin Molido 50 g": 48,
@@ -536,6 +551,7 @@ const PRICES: ProductPrices = {
     "Habanero Molido 50 g": 40,
     "Habanero Molido 20 g": 20,
     "Medio Kilo Chiltepin Entero": 500,
+    "Molinillo Habanero 20 g": 75,
   },
   DBCENTRO: {
     "Chiltepin Molido 50 g": 48,
@@ -563,6 +579,7 @@ const PRICES: ProductPrices = {
     "Habanero Molido 50 g": 40,
     "Habanero Molido 20 g": 20,
     "Medio Kilo Chiltepin Entero": 500,
+    "Molinillo Habanero 20 g": 75,
   },
   CASETA: {
     "Chiltepin Molido 50 g": 48,
@@ -590,6 +607,7 @@ const PRICES: ProductPrices = {
     "Habanero Molido 50 g": 40,
     "Habanero Molido 20 g": 20,
     "Medio Kilo Chiltepin Entero": 500,
+    "Molinillo Habanero 20 g": 75,
   },
   KIOSK: {
     "Chiltepin Molido 50 g": 48,
@@ -617,6 +635,7 @@ const PRICES: ProductPrices = {
     "Habanero Molido 50 g": 40,
     "Habanero Molido 20 g": 20,
     "Medio Kilo Chiltepin Entero": 500,
+    "Molinillo Habanero 20 g": 75,
   },
   MERKAHORRO: {
     "Chiltepin Molido 50 g": 45,
@@ -644,6 +663,7 @@ const PRICES: ProductPrices = {
     "Habanero Molido 50 g": 40,
     "Habanero Molido 20 g": 20,
     "Medio Kilo Chiltepin Entero": 500,
+    "Molinillo Habanero 20 g": 75,
   },
   CHATA: {
     "Chiltepin Molido 50 g": 50,
@@ -671,6 +691,7 @@ const PRICES: ProductPrices = {
     "Habanero Molido 50 g": 40,
     "Habanero Molido 20 g": 20,
     "Medio Kilo Chiltepin Entero": 500,
+    "Molinillo Habanero 20 g": 75,
   },
   MEMIN: {
     "Chiltepin Molido 50 g": 48,
@@ -698,6 +719,7 @@ const PRICES: ProductPrices = {
     "Habanero Molido 50 g": 40,
     "Habanero Molido 20 g": 20,
     "Medio Kilo Chiltepin Entero": 500,
+    "Molinillo Habanero 20 g": 75,
   },
   QUERI: {
     "Chiltepin Molido 50 g": 48,
@@ -725,6 +747,7 @@ const PRICES: ProductPrices = {
     "Habanero Molido 50 g": 40,
     "Habanero Molido 20 g": 20,
     "Medio Kilo Chiltepin Entero": 500,
+    "Molinillo Habanero 20 g": 75,
   },
   MERZ: {
     "Chiltepin Molido 50 g": 48,
@@ -742,6 +765,7 @@ const PRICES: ProductPrices = {
     "Salsa Especial Litro": 50,
     "Salsa Reina Litro": 50,
     "Salsa Habanera Litro": 50,
+    "Molinillo Habanero 20 g": 75,
   },
   CRED: {
     "Chiltepin Molido 50 g": 48,
@@ -769,6 +793,7 @@ const PRICES: ProductPrices = {
     "Habanero Molido 50 g": 40,
     "Habanero Molido 20 g": 20,
     "Medio Kilo Chiltepin Entero": 500,
+    "Molinillo Habanero 20 g": 75,
   },
   SMART: {
     "Chiltepin Molido 50 g": 52.2733333,
@@ -796,6 +821,35 @@ const PRICES: ProductPrices = {
     "Habanero Molido 50 g": 40,
     "Habanero Molido 20 g": 20,
     "Medio Kilo Chiltepin Entero": 500,
+    "Molinillo Habanero 20 g": 75,
+  },
+  WM: {
+    "Chiltepin Molido 50 g": 48,
+    "Chiltepin Molido 20 g": 24,
+    "Chiltepin Entero 30 g": 50,
+    "Salsa Chiltepin El rey 195 ml": 16,
+    "Salsa Especial El Rey 195 ml": 16,
+    "Salsa Reina El rey 195 ml": 16,
+    "Salsa Habanera El Rey 195 ml": 16,
+    "Paquete El Rey": 100,
+    "Molinillo El Rey 30 g": 80,
+    "Tira Entero": 60,
+    "Tira Molido": 55,
+    "Salsa chiltepin Litro": 50,
+    "Salsa Especial Litro": 50,
+    "Salsa Reina Litro": 50,
+    "Salsa Habanera Litro": 50,
+    "Michela Mix Tamarindo": 30,
+    "Michela Mix Mango": 30,
+    "Michela Mix Sandia": 30,
+    "Michela Mix Fuego": 30,
+    "Michela Mix Picafresa": 30,
+    "El Rey Mix Original": 60,
+    "El Rey Mix Especial": 60,
+    "Habanero Molido 50 g": 42.50,
+    "Habanero Molido 20 g": 20,
+    "Medio Kilo Chiltepin Entero": 500,
+    "Molinillo Habanero 20 g": 70,
   },
 };
 

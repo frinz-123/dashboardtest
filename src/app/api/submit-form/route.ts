@@ -453,8 +453,8 @@ export async function POST(req: Request) {
         ? currentData.data.values.length + 1
         : 2;
 
-      // Ensure we're explicitly including column AP
-      const _range = `Form_Data!A${lastRow}:AP${lastRow}`;
+      // Ensure we're explicitly including column AQ
+      const _range = `Form_Data!A${lastRow}:AQ${lastRow}`;
 
       // Format current date/time using Mazatlan timezone (GMT-7)
       // 🔧 ADMIN OVERRIDE: Use override date if provided by admin user
@@ -577,8 +577,8 @@ export async function POST(req: Request) {
       const photoLinksValue =
         photoUrls.length > 0 ? JSON.stringify(photoUrls) : "";
 
-      // Create an array with 42 elements (A to AP)
-      const rowData = new Array(42).fill("");
+      // Create an array with 43 elements (A to AQ)
+      const rowData = new Array(43).fill("");
 
       // Set the values according to the mapping
       rowData[0] = clientName; // Column A
@@ -618,6 +618,7 @@ export async function POST(req: Request) {
       rowData[34] = products["Michela Mix Picafresa"] || ""; // Column AI
       rowData[35] = products["Habanero Molido 50 g"] || ""; // Column AJ
       rowData[36] = products["Habanero Molido 20 g"] || ""; // Column AK
+      rowData[42] = products["Molinillo Habanero 20 g"] || ""; // Column AQ
       rowData[37] = periodWeekCode; // Column AL - Always use the period/week code here
 
       // CLEY order value for Column AM (index 38)
@@ -648,7 +649,7 @@ export async function POST(req: Request) {
       // Try using append instead of update to handle the column range better
       const response = await sheets.spreadsheets.values.append({
         spreadsheetId,
-        range: "Form_Data!A:AP",
+        range: "Form_Data!A:AQ",
         valueInputOption: "USER_ENTERED",
         insertDataOption: "INSERT_ROWS",
         requestBody: {

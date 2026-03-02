@@ -66,7 +66,7 @@ const PHOTO_SCAN_START_INDEX = 39;
 const PHOTO_SCAN_END_INDEX = 42;
 const PRODUCT_COLUMN_INDICES = [
   8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
-  28, 29, 34, 35, 36,
+  28, 29, 34, 35, 36, 42,
 ] as const;
 
 const PRODUCT_COLUMN_FALLBACKS: Record<number, string> = {
@@ -95,6 +95,7 @@ const PRODUCT_COLUMN_FALLBACKS: Record<number, string> = {
   34: "Michela Mix Picafresa",
   35: "Habanero Molido 50 g",
   36: "Habanero Molido 20 g",
+  42: "Molinillo Habanero 20 g",
 };
 
 const PHOTO_HEADER_PATTERNS = [
