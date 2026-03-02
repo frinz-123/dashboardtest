@@ -718,17 +718,37 @@ export async function POST(req: Request) {
               );
               // Keep the first occurrence, delete the rest (in reverse order to preserve indices)
               const rowsToDelete = matchingRows.slice(1).reverse();
+
+              // Fetch sheetId once outside the loop
+              const sheetMeta = await sheets.spreadsheets.get({
+                spreadsheetId,
+                fields: "sheets(properties(sheetId,title))",
+              });
+              const formDataSheet = sheetMeta.data.sheets?.find(
+                (s) => s.properties?.title === "Form_Data",
+              );
+              // Use == null to correctly treat sheetId 0 as valid
+              if (formDataSheet?.properties?.sheetId == null) return;
+
               for (const rowIndex of rowsToDelete) {
                 try {
-                  const sheetMeta =
-                    await sheets.spreadsheets.get({
-                      spreadsheetId,
-                      fields: "sheets(properties(sheetId,title))",
-                    });
-                  const formDataSheet = sheetMeta.data.sheets?.find(
-                    (s) => s.properties?.title === "Form_Data",
-                  );
-                  if (!formDataSheet?.properties?.sheetId) continue;
+                  // Re-read the cell at this row to confirm it still holds our submissionId.
+                  // Another after() callback may have already deleted a row above,
+                  // shifting indices and making ours stale.
+                  const cellCheck = await sheets.spreadsheets.values.get({
+                    spreadsheetId,
+                    range: `Form_Data!AE${rowIndex + 1}`,
+                  });
+                  const cellValue = cellCheck.data.values?.[0]?.[0];
+                  if (
+                    typeof cellValue !== "string" ||
+                    cellValue.trim() !== submissionId
+                  ) {
+                    console.log(
+                      `⏭️ Row ${rowIndex} no longer holds ${submissionId} (found "${cellValue}") — skipping`,
+                    );
+                    continue;
+                  }
 
                   await sheets.spreadsheets.batchUpdate({
                     spreadsheetId,
