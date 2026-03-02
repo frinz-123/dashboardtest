@@ -1929,8 +1929,8 @@ export default function FormPage() {
   if (isLoading) {
     return (
       <div
-        className="min-h-screen bg-white font-sans w-full"
-        style={{ fontFamily: "Inter, sans-serif", fontSize: "0.8rem" }}
+        className="min-h-screen bg-white font-sans w-full text-[0.8rem]"
+        style={{ fontFamily: "Inter, sans-serif" }}
       >
         <AppHeader title="Ventas" icon={ShoppingCart} />
         <main className="px-4 py-4 max-w-2xl mx-auto">
@@ -1944,8 +1944,8 @@ export default function FormPage() {
 
   return (
     <div
-      className="min-h-screen bg-white font-sans w-full"
-      style={{ fontFamily: "Inter, sans-serif", fontSize: "0.8rem" }}
+      className="min-h-screen bg-white font-sans w-full text-[0.8rem]"
+      style={{ fontFamily: "Inter, sans-serif" }}
     >
       {/* Pending Orders Banner - Shows queue status */}
       <PendingOrdersBanner
@@ -1999,6 +1999,11 @@ export default function FormPage() {
           selectedClient={selectedClient}
           onSelectClient={setSelectedClient}
         />
+        {validationErrors.client && (
+          <p role="alert" className="text-red-500 text-xs mt-1 mb-2">
+            {validationErrors.client}
+          </p>
+        )}
         {selectedClient && (
           <div className="text-sm text-gray-600 mb-2 flex items-center justify-between">
             <p>
@@ -2015,7 +2020,7 @@ export default function FormPage() {
           </div>
         )}
         {locationAlert && (
-          <p className="text-sm text-red-600 mb-3 font-medium">
+          <p role="alert" className="text-sm text-red-600 mb-3 font-medium">
             ⚠️ {locationAlert}
           </p>
         )}
@@ -2045,7 +2050,7 @@ export default function FormPage() {
                   haptics.light();
                   setOverrideEmail(e.target.value);
                 }}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white"
+                className="w-full px-3 py-2 text-base border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white"
               >
                 <option value="">Usar email de sesión actual</option>
                 {Object.entries(EMAIL_LABELS).map(([email, label]) => (
@@ -2078,7 +2083,7 @@ export default function FormPage() {
                   haptics.light();
                   setOverrideDate(e.target.value);
                 }}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white"
+                className="w-full px-3 py-2 text-base border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white"
               />
               {overrideDate && (
                 <div className="mt-2 p-2 bg-purple-100 rounded-md">
@@ -2126,7 +2131,7 @@ export default function FormPage() {
                   haptics.light();
                   setOverridePeriod(e.target.value);
                 }}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white"
+                className="w-full px-3 py-2 text-base border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white"
               >
                 <option value="">
                   Calcular automáticamente desde la fecha
@@ -2167,7 +2172,7 @@ export default function FormPage() {
                   setOverrideMonthCode(e.target.value.toUpperCase());
                 }}
                 placeholder="Ej: NOV_25, DIC_25"
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white"
+                className="w-full px-3 py-2 text-base border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white"
               />
               {overrideMonthCode && (
                 <p className="text-xs text-purple-600 mt-1">
@@ -2194,18 +2199,16 @@ export default function FormPage() {
               selectedClient ? clientLocations[selectedClient] : null
             }
           />
+          {validationErrors.location && (
+            <p role="alert" className="text-red-500 text-xs mt-2">
+              {validationErrors.location}
+            </p>
+          )}
         </div>
 
         <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9] space-y-4">
-          {PRODUCTS.map((product, index) => (
-            <div
-              key={`${product}-${key}`}
-              className="transform transition-all duration-200 ease-out hover:scale-[1.01]"
-              style={{
-                animationDelay: `${index * 50}ms`,
-                animation: "fadeInUp 0.4s ease-out forwards",
-              }}
-            >
+          {PRODUCTS.map((product) => (
+            <div key={`${product}-${key}`}>
               <LabelNumbers
                 label={product}
                 value={quantities[product] || 0}
@@ -2245,7 +2248,7 @@ export default function FormPage() {
         {/* Sticky order details at bottom with animations */}
         {Object.values(quantities).some((q) => q > 0) && (
           <div
-            className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 p-4 z-40 animate-in slide-in-from-bottom duration-300"
+            className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] z-40 animate-in slide-in-from-bottom duration-300"
             style={{
               boxShadow:
                 "0 -1px 2px rgba(0,0,0,0.03), 0 -2px 4px rgba(0,0,0,0.03), 0 -4px 8px rgba(0,0,0,0.03), 0 -8px 16px rgba(0,0,0,0.03), 0 -16px 32px rgba(0,0,0,0.02)",
@@ -2254,14 +2257,12 @@ export default function FormPage() {
             <div className="max-w-md mx-auto">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <div className="transition-all duration-300">
-                    <ShoppingCart className="h-4 w-4 text-gray-500" />
-                  </div>
+                  <ShoppingCart className="h-4 w-4 text-gray-500" />
                   <h3 className="font-semibold text-gray-800 tracking-tight">
                     Detalle del pedido
                   </h3>
                 </div>
-                <span className="text-xs text-gray-500 transition-all duration-200">
+                <span className="text-xs text-gray-500 tabular-nums">
                   {orderDetails.length}{" "}
                   {orderDetails.length === 1 ? "artículo" : "artículos"}
                 </span>
@@ -2269,26 +2270,22 @@ export default function FormPage() {
               <div className="max-h-40 overflow-y-auto mb-3">
                 <ul className="divide-y divide-gray-100">
                   {orderDetails.map(
-                    ({ product, quantity, price, subtotal }, index) => (
+                    ({ product, quantity, price, subtotal }) => (
                       <li
                         key={product}
-                        className="py-2 flex items-start justify-between transform transition-all duration-200 ease-out"
-                        style={{
-                          animationDelay: `${index * 100}ms`,
-                          animation: "fadeInLeft 0.3s ease-out forwards",
-                        }}
+                        className="py-2 flex items-start justify-between"
                       >
                         <div className="pr-3">
                           <div className="text-gray-800 text-sm">{product}</div>
-                          <div className="text-xs text-gray-500">
+                          <div className="text-xs text-gray-500 tabular-nums">
                             Precio {formatCurrency(price)}
                           </div>
                         </div>
                         <div className="text-right">
-                          <span className="inline-flex items-center rounded-full bg-gray-100 text-gray-700 text-xs px-2 py-1 font-medium transition-all duration-200 hover:bg-gray-200">
+                          <span className="inline-flex items-center rounded-full bg-gray-100 text-gray-700 text-xs px-2 py-1 font-medium tabular-nums">
                             x{quantity}
                           </span>
-                          <div className="mt-1 text-gray-900 font-semibold transition-all duration-200">
+                          <div className="mt-1 text-gray-900 font-semibold tabular-nums">
                             {formatCurrency(subtotal)}
                           </div>
                         </div>
@@ -2297,9 +2294,9 @@ export default function FormPage() {
                   )}
                 </ul>
               </div>
-              <div className="rounded-lg bg-gray-50 p-3 flex items-center justify-between transition-all duration-300">
+              <div className="rounded-lg bg-gray-50 p-3 flex items-center justify-between">
                 <span className="text-sm text-gray-600 font-medium">Total</span>
-                <span className="text-base font-semibold transition-all duration-300 text-gray-900">
+                <span className="text-base font-semibold tabular-nums text-gray-900">
                   {formatCurrency(parseFloat(total))}
                 </span>
               </div>
@@ -2312,7 +2309,7 @@ export default function FormPage() {
         >
           <button
             type="button"
-            className={`w-full py-3 rounded-lg font-medium transition-all duration-300 disabled:cursor-not-allowed transform hover:scale-[1.02] active:scale-[0.98] bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50`}
+            className={`w-full py-3 rounded-lg font-medium text-base transition-[transform,background-color,opacity] duration-200 disabled:cursor-not-allowed transform active:scale-[0.97] bg-blue-600 text-white [@media(hover:hover)]:hover:bg-blue-700 disabled:opacity-50`}
             onClick={handleSubmit}
             disabled={
               !selectedClient ||
@@ -2331,20 +2328,26 @@ export default function FormPage() {
               </div>
             ) : !session?.user?.email && !cachedEmail ? (
               "Sesion Requerida"
+            ) : !selectedClient ? (
+              "Selecciona un cliente"
+            ) : !currentLocation ? (
+              "Esperando ubicacion..."
+            ) : isCompressingPhotos ? (
+              "Comprimiendo fotos..."
+            ) : locationAlert !== null &&
+              !isOverrideEmail(session?.user?.email || cachedEmail) ? (
+              "Estas lejos del cliente"
             ) : (
               "Enviar Pedido"
             )}
           </button>
         </div>
 
-        {/* Add validation error messages */}
-        {Object.entries(validationErrors).map(
-          ([key, error]) =>
-            error && (
-              <div key={key} className="text-red-500 text-xs mt-1">
-                {error}
-              </div>
-            ),
+        {/* Submit-specific validation errors (client and location errors are colocated above) */}
+        {validationErrors.submit && (
+          <p role="alert" className="text-red-500 text-xs mt-1">
+            {validationErrors.submit}
+          </p>
         )}
       </main>
 

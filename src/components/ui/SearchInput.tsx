@@ -45,7 +45,7 @@ export default function SearchInput({
       <div
         className={`
           absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none
-          transition-all duration-200
+          transition-colors duration-200
           ${isFocused ? "text-blue-500" : "text-gray-400"}
         `}
       >
@@ -60,7 +60,7 @@ export default function SearchInput({
         className={`
           w-full min-h-[44px] py-3 pl-10 pr-10 text-base
           bg-white border rounded-xl
-          transition-all duration-200 ease-out
+          transition-[border-color,box-shadow,background-color] duration-200 ease-out
           placeholder:text-gray-400
           hover:border-gray-300 hover:bg-gray-50/50
           focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500

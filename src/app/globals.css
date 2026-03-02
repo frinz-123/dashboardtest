@@ -319,6 +319,13 @@ select,
     touch-action: manipulation;
 }
 
+/* Prevent iOS Safari zoom on input focus — inputs must be at least 16px */
+input,
+textarea,
+select {
+    font-size: 1rem;
+}
+
 /* Custom animations for mobile UX */
 @keyframes fadeInUp {
     from {
@@ -355,6 +362,16 @@ select,
 
 .animate-in {
     animation-fill-mode: both;
+}
+
+/* Respect reduced motion preferences */
+@media (prefers-reduced-motion: reduce) {
+    .animate-in,
+    .animate-slideUp,
+    .animate-scaleIn,
+    .animate-checkmark {
+        animation: none;
+    }
 }
 
 .slide-in-from-bottom {
