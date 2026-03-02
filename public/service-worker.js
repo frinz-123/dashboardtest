@@ -401,6 +401,41 @@ async function updateSubmission(id, updates) {
 }
 
 /**
+ * Atomically claim a queue item for processing.
+ * Reads the item and marks it as "sending" within a single readwrite transaction.
+ * Returns the item only if its current status is "pending" — otherwise returns null.
+ */
+async function claimSubmission(id) {
+  const db = await openDatabase();
+
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([STORE_NAME], "readwrite");
+    const store = transaction.objectStore(STORE_NAME);
+    const getRequest = store.get(id);
+
+    getRequest.onsuccess = () => {
+      const item = getRequest.result;
+      if (!item || item.status !== "pending") {
+        resolve(null);
+        return;
+      }
+
+      const claimed = {
+        ...item,
+        status: "sending",
+        lastAttemptAt: Date.now(),
+      };
+      const putRequest = store.put(claimed);
+
+      putRequest.onsuccess = () => resolve(claimed);
+      putRequest.onerror = () => reject(putRequest.error);
+    };
+
+    getRequest.onerror = () => reject(getRequest.error);
+  });
+}
+
+/**
  * Remove a submission from IndexedDB
  */
 async function removeSubmission(id) {
@@ -620,13 +655,16 @@ async function processQueuedOrders() {
         // The stored coordinates are proof the user was at the client location.
         // Re-validating would break offline-first queue processing.
 
-        // Mark as sending
-        await updateSubmission(submission.id, {
-          status: "sending",
-          lastAttemptAt: Date.now(),
-        });
+        // Atomically claim the item — returns null if already claimed by hook or another processor.
+        const claimed = await claimSubmission(submission.id);
+        if (!claimed) {
+          console.log(
+            `[SW] ${submission.id} -> skipped (already claimed or not pending)`,
+          );
+          continue;
+        }
 
-        const preparedSubmission = await ensurePhotoUploads(submission);
+        const preparedSubmission = await ensurePhotoUploads(claimed);
 
         // Send to server
         const result = await sendSubmission(preparedSubmission);
