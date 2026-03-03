@@ -24,6 +24,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import AppHeader from "@/components/AppHeader";
 import {
+  Select,
+  SelectItem,
+  SelectPopup,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/coss-select";
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -1363,73 +1370,114 @@ export default function InventarioCarroPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
             <div className="space-y-1">
-              <label
-                htmlFor="filter-seller"
-                className="text-xs font-semibold text-slate-600"
+              <span
+                id="inventario-carro-seller-label"
+                className="text-sm font-medium text-slate-600"
               >
                 Vendedor
-              </label>
-              <select
-                id="filter-seller"
+              </span>
+              <Select
+                items={[
+                  { label: "Selecciona un vendedor", value: "" },
+                  ...vendorOptions.map(([email, label]) => ({
+                    label,
+                    value: email,
+                  })),
+                ]}
                 value={selectedSeller || ""}
-                onChange={(event) =>
-                  setSelectedSeller(event.target.value || null)
-                }
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                onValueChange={(value) => setSelectedSeller(value || null)}
               >
-                <option value="">Selecciona un vendedor</option>
-                {vendorOptions.map(([email, label]) => (
-                  <option key={email} value={email}>
-                    {label}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger
+                  aria-labelledby="inventario-carro-seller-label"
+                  size="lg"
+                >
+                  <SelectValue placeholder="Selecciona un vendedor" />
+                </SelectTrigger>
+                <SelectPopup>
+                  <SelectItem value="">Selecciona un vendedor</SelectItem>
+                  {vendorOptions.map(([email, label]) => (
+                    <SelectItem key={email} value={email}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectPopup>
+              </Select>
             </div>
             <div className="space-y-1">
-              <label
-                htmlFor="filter-period"
-                className="text-xs font-semibold text-slate-600"
+              <span
+                id="inventario-carro-period-label"
+                className="text-sm font-medium text-slate-600"
               >
                 Periodo
-              </label>
-              <select
-                id="filter-period"
-                value={selectedPeriod}
-                onChange={(event) =>
-                  setSelectedPeriod(Number(event.target.value))
-                }
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
+              </span>
+              <Select
+                items={availablePeriods.map((period) => ({
+                  label: `P${period.periodNumber} (${period.label})`,
+                  value: String(period.periodNumber),
+                }))}
+                value={String(selectedPeriod)}
+                onValueChange={(value) => {
+                  if (value) {
+                    setSelectedPeriod(Number(value));
+                  }
+                }}
               >
-                {availablePeriods.map((period) => (
-                  <option key={period.periodNumber} value={period.periodNumber}>
-                    P{period.periodNumber} ({period.label})
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger
+                  aria-labelledby="inventario-carro-period-label"
+                  size="lg"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectPopup>
+                  {availablePeriods.map((period) => (
+                    <SelectItem
+                      key={period.periodNumber}
+                      value={String(period.periodNumber)}
+                    >
+                      {`P${period.periodNumber} (${period.label})`}
+                    </SelectItem>
+                  ))}
+                </SelectPopup>
+              </Select>
             </div>
             <div className="space-y-1">
-              <label
-                htmlFor="filter-week"
-                className="text-xs font-semibold text-slate-600"
+              <span
+                id="inventario-carro-week-label"
+                className="text-sm font-medium text-slate-600"
               >
                 Semana
-              </label>
-              <select
-                id="filter-week"
-                value={selectedWeek}
-                onChange={(event) =>
-                  setSelectedWeek(Number(event.target.value))
-                }
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
+              </span>
+              <Select
+                items={periodWeeks.map((week) => ({
+                  label: week.label,
+                  value: String(week.weekNumber),
+                }))}
+                value={String(selectedWeek)}
+                onValueChange={(value) => {
+                  if (value) {
+                    setSelectedWeek(Number(value));
+                  }
+                }}
               >
-                {periodWeeks.map((week) => (
-                  <option key={week.weekNumber} value={week.weekNumber}>
-                    {week.label}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger
+                  aria-labelledby="inventario-carro-week-label"
+                  size="lg"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectPopup>
+                  {periodWeeks.map((week) => (
+                    <SelectItem
+                      key={week.weekNumber}
+                      value={String(week.weekNumber)}
+                    >
+                      {week.label}
+                    </SelectItem>
+                  ))}
+                </SelectPopup>
+              </Select>
             </div>
           </div>
 
