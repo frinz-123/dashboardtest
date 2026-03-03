@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Check, X } from "lucide-react";
 
 type ToastType = "success" | "error" | "info";
@@ -127,9 +127,9 @@ export function useToast() {
     setToast({ type, title, message, isVisible: true, duration });
   };
 
-  const hideToast = () => {
+  const hideToast = useCallback(() => {
     setToast((prev) => (prev ? { ...prev, isVisible: false } : null));
-  };
+  }, []);
 
   const success = (title: string, message: string, duration?: number) =>
     showToast("success", title, message, duration);
