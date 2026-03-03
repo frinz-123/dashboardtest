@@ -53,7 +53,12 @@
       "Bash(bunx shadcn@latest add:*)",
       "Bash(btca:*)",
       "Bash(npx biome:*)",
-      "Bash(gh pr:*)"
+      "Bash(gh pr:*)",
+      "Bash(npm run:*)",
+      "Bash(gh api:*)",
+      "mcp__claude_ai_Vercel__list_teams",
+      "mcp__claude_ai_Vercel__list_deployments",
+      "mcp__claude_ai_Vercel__list_projects"
     ],
     "deny": [],
     "ask": []
