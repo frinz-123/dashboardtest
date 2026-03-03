@@ -5,7 +5,7 @@ import { useCallback } from "react";
 import type { UseSubmissionQueueReturn } from "@/hooks/useSubmissionQueue";
 import type { QueuedSubmission } from "@/utils/submissionQueue";
 
-const REQUEST_TIMEOUT_MS = 10_000;
+const REQUEST_TIMEOUT_MS = 25_000;
 const ENABLE_IMMEDIATE_SUBMIT =
   process.env.NEXT_PUBLIC_ENABLE_IMMEDIATE_SUBMIT !== "false";
 
@@ -154,11 +154,6 @@ async function submitImmediateAttempt(
   });
 }
 
-function shouldRetryImmediately(error: unknown): boolean {
-  if (!isSubmitError(error)) return false;
-  return Boolean(error.retryable);
-}
-
 function shouldQueueFallback(error: unknown): boolean {
   if (!isSubmitError(error)) return false;
   return Boolean(error.queueable);
@@ -212,32 +207,20 @@ export function useOrderSubmitMutation({
       }
 
       try {
-        const firstAttempt = await submitImmediateAttempt(args, 1);
-        if (firstAttempt.duplicate) {
+        const result = await submitImmediateAttempt(args, 1);
+        if (result.duplicate) {
           return { outcome: "duplicate" };
         }
         return { outcome: "submitted" };
-      } catch (firstError) {
-        if (shouldRetryImmediately(firstError)) {
-          try {
-            const secondAttempt = await submitImmediateAttempt(args, 2);
-            if (secondAttempt.duplicate) {
-              return { outcome: "duplicate" };
-            }
-            return { outcome: "submitted" };
-          } catch (secondError) {
-            if (shouldQueueFallback(secondError)) {
-              return enqueue();
-            }
-            throw secondError;
-          }
-        }
-
-        if (shouldQueueFallback(firstError)) {
+      } catch (error) {
+        // On any transient/queueable error, fall back to the queue immediately.
+        // The queue has proper retry logic with exponential backoff.
+        // Retrying inline risks phantom duplicates (server may have written
+        // the row despite the client-side timeout).
+        if (shouldQueueFallback(error)) {
           return enqueue();
         }
-
-        throw firstError;
+        throw error;
       }
     },
   });

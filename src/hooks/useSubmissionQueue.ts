@@ -145,6 +145,7 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
       success: boolean;
       error?: string;
       duplicate?: boolean;
+      permanent?: boolean;
     }> => {
       try {
         const response = await fetchWithTimeout(
@@ -188,12 +189,22 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
         } catch {
           // Ignore body parse errors on error responses
         }
+
+        // 4xx errors (except 408 Request Timeout and 429 Too Many Requests)
+        // are permanent — validation failures that won't resolve with retries.
+        const isPermanent =
+          response.status >= 400 &&
+          response.status < 500 &&
+          response.status !== 408 &&
+          response.status !== 429;
+
         return {
           success: false,
           error: errorData?.error || `Error del servidor: ${response.status}`,
+          permanent: isPermanent,
         };
       } catch (error: unknown) {
-        // Network error
+        // Network errors and timeouts are always transient
         if (isFetchTypeError(error)) {
           return { success: false, error: "Sin conexion a internet" };
         }
@@ -327,106 +338,152 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
       // The stored coordinates are proof the user was at the client location.
       // Re-validating based on timestamp would break offline-first queue processing.
 
-      // Mark as sending
-      const attemptStartedAt = Date.now();
-      await submissionQueue.update(item.id, {
-        status: "sending",
-        lastAttemptAt: attemptStartedAt,
-      });
-      console.log(`[Queue] ${item.id} -> sending`, {
+      // Atomically claim the item — returns null if already claimed by SW or another processor.
+      const claimed = await submissionQueue.claim(item.id);
+      if (!claimed) {
+        console.log(
+          `[Queue] ${item.id} -> skipped (already claimed or not pending)`,
+        );
+        return false;
+      }
+      console.log(`[Queue] ${item.id} -> sending (claimed)`, {
         attempt: item.retryCount + 1,
-        at: attemptStartedAt,
+        at: claimed.lastAttemptAt,
       });
 
       setState((prev) => ({ ...prev, currentItem: item }));
 
-      const prepared = await prepareSubmission(item);
-      const finalItem = prepared.item ?? item;
+      try {
+        const prepared = await prepareSubmission(item);
+        const finalItem = prepared.item ?? item;
 
-      if (!prepared.success) {
-        const newRetryCount = item.retryCount + 1;
+        if (!prepared.success) {
+          const newRetryCount = item.retryCount + 1;
 
-        if (prepared.fatal) {
+          if (prepared.fatal) {
+            await submissionQueue.update(item.id, {
+              status: "failed",
+              retryCount: newRetryCount,
+              errorMessage:
+                prepared.error || "No se pudieron subir las fotos",
+            });
+            console.error(
+              `[Queue] ${item.id} -> failed (fatal photo error)`,
+            );
+            haptics.error();
+            return false;
+          }
+
+          if (newRetryCount >= MAX_RETRIES) {
+            console.error("Max retries reached for submission:", item.id);
+            await submissionQueue.update(item.id, {
+              status: "failed",
+              retryCount: newRetryCount,
+              errorMessage:
+                prepared.error || "Maximo de reintentos alcanzado",
+            });
+            console.error(
+              `[Queue] ${item.id} -> failed (max retries reached)`,
+            );
+            haptics.error();
+            return false;
+          }
+
+          await submissionQueue.update(item.id, {
+            status: "pending",
+            retryCount: newRetryCount,
+            errorMessage: prepared.error,
+          });
+          console.warn(`[Queue] ${item.id} -> pending (will retry)`, {
+            retryCount: newRetryCount,
+            reason: prepared.error,
+          });
+
+          return false;
+        }
+
+        const result = await sendSubmission(finalItem);
+
+        if (result.success) {
+          console.log(
+            "Submission successful:",
+            finalItem.id,
+            result.duplicate ? "(duplicate)" : "",
+          );
+          await submissionQueue.remove(finalItem.id);
+          if (finalItem.payload.photoIds?.length) {
+            deletePhotos(finalItem.payload.photoIds).catch((error) => {
+              console.error("Failed to delete uploaded photos:", error);
+            });
+          }
+          haptics.success();
+          return true;
+        }
+
+        // Permanent errors (4xx validation failures) — fail immediately, no retry.
+        // These are errors like "too far from client" or "GPS accuracy insufficient"
+        // that won't resolve by retrying.
+        if (result.permanent) {
           await submissionQueue.update(item.id, {
             status: "failed",
-            retryCount: newRetryCount,
-            errorMessage: prepared.error || "No se pudieron subir las fotos",
+            retryCount: item.retryCount + 1,
+            errorMessage: result.error || "Error permanente del servidor",
           });
-          console.error(`[Queue] ${item.id} -> failed (fatal photo error)`);
+          console.error(
+            `[Queue] ${item.id} -> failed (permanent error: ${result.error})`,
+          );
           haptics.error();
           return false;
         }
+
+        // Transient failure — retry with exponential backoff
+        const newRetryCount = item.retryCount + 1;
 
         if (newRetryCount >= MAX_RETRIES) {
           console.error("Max retries reached for submission:", item.id);
           await submissionQueue.update(item.id, {
             status: "failed",
             retryCount: newRetryCount,
-            errorMessage: prepared.error || "Maximo de reintentos alcanzado",
+            errorMessage: result.error || "Maximo de reintentos alcanzado",
           });
-          console.error(`[Queue] ${item.id} -> failed (max retries reached)`);
+          console.error(
+            `[Queue] ${item.id} -> failed (max retries reached)`,
+          );
           haptics.error();
           return false;
         }
 
+        // Mark for retry
         await submissionQueue.update(item.id, {
           status: "pending",
           retryCount: newRetryCount,
-          errorMessage: prepared.error,
+          errorMessage: result.error,
         });
         console.warn(`[Queue] ${item.id} -> pending (will retry)`, {
           retryCount: newRetryCount,
-          reason: prepared.error,
+          reason: result.error,
         });
 
         return false;
-      }
-
-      const result = await sendSubmission(finalItem);
-
-      if (result.success) {
-        console.log(
-          "Submission successful:",
-          finalItem.id,
-          result.duplicate ? "(duplicate)" : "",
+      } catch (unexpectedError) {
+        // Safety net: if an unexpected error occurs after claiming (e.g. IndexedDB
+        // write failure), immediately reset the item so it doesn't stay stuck in
+        // "sending" until the 45s stale recovery kicks in.
+        console.error(
+          `[Queue] ${item.id} -> unexpected error after claim:`,
+          unexpectedError,
         );
-        await submissionQueue.remove(finalItem.id);
-        if (finalItem.payload.photoIds?.length) {
-          deletePhotos(finalItem.payload.photoIds).catch((error) => {
-            console.error("Failed to delete uploaded photos:", error);
+        try {
+          await submissionQueue.update(item.id, {
+            status: "pending",
+            retryCount: item.retryCount + 1,
+            errorMessage: getErrorMessage(unexpectedError),
           });
+        } catch {
+          // If even this fails, the stale recovery interval will handle it
         }
-        haptics.success();
-        return true;
-      }
-
-      // Handle failure
-      const newRetryCount = item.retryCount + 1;
-
-      if (newRetryCount >= MAX_RETRIES) {
-        console.error("Max retries reached for submission:", item.id);
-        await submissionQueue.update(item.id, {
-          status: "failed",
-          retryCount: newRetryCount,
-          errorMessage: result.error || "Maximo de reintentos alcanzado",
-        });
-        console.error(`[Queue] ${item.id} -> failed (max retries reached)`);
-        haptics.error();
         return false;
       }
-
-      // Mark for retry
-      await submissionQueue.update(item.id, {
-        status: "pending",
-        retryCount: newRetryCount,
-        errorMessage: result.error,
-      });
-      console.warn(`[Queue] ${item.id} -> pending (will retry)`, {
-        retryCount: newRetryCount,
-        reason: result.error,
-      });
-
-      return false;
     },
     [prepareSubmission, sendSubmission],
   );
@@ -490,7 +547,6 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
     setState((prev) => ({ ...prev, isProcessing: true }));
 
     try {
-      await recoverStaleSendingItems();
       const items = await submissionQueue.getPending();
 
       for (const item of items) {
@@ -524,7 +580,7 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
       }));
       await loadQueue();
     }
-  }, [processItem, loadQueue, recoverStaleSendingItems]);
+  }, [processItem, loadQueue]);
 
   // Add a new submission to the queue
   const addToQueue = useCallback(
@@ -621,6 +677,8 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
         // backgrounded and the postMessage notification was dropped — this
         // ensures the banner reflects the real queue state immediately.
         await loadQueue();
+        // Recover any items stuck in "sending" from a killed SW or abandoned tab.
+        await recoverStaleSendingItems();
 
         if (navigator.onLine) {
           console.log("Tab visible, triggering Background Sync...");
@@ -649,7 +707,7 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("focus", handleFocus);
     };
-  }, [processQueue, tryRegisterBackgroundSync, loadQueue]);
+  }, [processQueue, tryRegisterBackgroundSync, loadQueue, recoverStaleSendingItems]);
 
   // Detect initial Background Sync support once and prefer SW processing if available.
   useEffect(() => {
@@ -678,6 +736,11 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
     loadQueue();
 
     processIntervalRef.current = setInterval(() => {
+      // Always recover stale "sending" items — cheap IndexedDB operation.
+      // Critical: processQueue is skipped when Background Sync is active,
+      // but stale recovery must still run in case the SW was terminated mid-send.
+      recoverStaleSendingItems();
+
       if (
         navigator.onLine &&
         !isProcessingRef.current &&
@@ -692,7 +755,7 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
         clearInterval(processIntervalRef.current);
       }
     };
-  }, [loadQueue, processQueue]);
+  }, [loadQueue, processQueue, recoverStaleSendingItems]);
 
   // Periodic state refresh — safety net for missed SW postMessages.
   // Pure IndexedDB read, no network calls. Runs even when Background Sync

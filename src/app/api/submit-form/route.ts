@@ -673,7 +673,7 @@ export async function POST(req: Request) {
       }
 
       const jsonResponse = NextResponse.json(successData);
-      after(() => {
+      after(async () => {
         console.log("✅ SUBMISSION SUCCESSFUL:", {
           submissionId,
           clientName,
@@ -689,6 +689,101 @@ export async function POST(req: Request) {
             timestamp: new Date().toISOString(),
             clientName,
           });
+        }
+
+        // Post-write duplicate verification — compensating transaction pattern.
+        // After writing, check if the same submissionId exists more than once
+        // and clean up duplicates. This handles the TOCTOU race between
+        // concurrent requests on different serverless instances.
+        if (submissionId) {
+          try {
+            const verifyData = await sheets.spreadsheets.values.get({
+              spreadsheetId,
+              range: "Form_Data!AE:AE",
+            });
+            const allIds = verifyData.data.values || [];
+            const matchingRows: number[] = [];
+            for (let i = 0; i < allIds.length; i++) {
+              if (
+                typeof allIds[i][0] === "string" &&
+                allIds[i][0].trim() === submissionId
+              ) {
+                matchingRows.push(i);
+              }
+            }
+
+            if (matchingRows.length > 1) {
+              console.warn(
+                `⚠️ DUPLICATE ROWS DETECTED for ${submissionId}: ${matchingRows.length} rows at indices ${matchingRows.join(", ")}`,
+              );
+              // Keep the first occurrence, delete the rest (in reverse order to preserve indices)
+              const rowsToDelete = matchingRows.slice(1).reverse();
+
+              // Fetch sheetId once outside the loop
+              const sheetMeta = await sheets.spreadsheets.get({
+                spreadsheetId,
+                fields: "sheets(properties(sheetId,title))",
+              });
+              const formDataSheet = sheetMeta.data.sheets?.find(
+                (s) => s.properties?.title === "Form_Data",
+              );
+              // Use == null to correctly treat sheetId 0 as valid
+              if (formDataSheet?.properties?.sheetId == null) return;
+
+              for (const rowIndex of rowsToDelete) {
+                try {
+                  // Re-read the cell at this row to confirm it still holds our submissionId.
+                  // Another after() callback may have already deleted a row above,
+                  // shifting indices and making ours stale.
+                  const cellCheck = await sheets.spreadsheets.values.get({
+                    spreadsheetId,
+                    range: `Form_Data!AE${rowIndex + 1}`,
+                  });
+                  const cellValue = cellCheck.data.values?.[0]?.[0];
+                  if (
+                    typeof cellValue !== "string" ||
+                    cellValue.trim() !== submissionId
+                  ) {
+                    console.log(
+                      `⏭️ Row ${rowIndex} no longer holds ${submissionId} (found "${cellValue}") — skipping`,
+                    );
+                    continue;
+                  }
+
+                  await sheets.spreadsheets.batchUpdate({
+                    spreadsheetId,
+                    requestBody: {
+                      requests: [
+                        {
+                          deleteDimension: {
+                            range: {
+                              sheetId: formDataSheet.properties.sheetId,
+                              dimension: "ROWS",
+                              startIndex: rowIndex,
+                              endIndex: rowIndex + 1,
+                            },
+                          },
+                        },
+                      ],
+                    },
+                  });
+                  console.log(
+                    `🗑️ DELETED duplicate row ${rowIndex} for ${submissionId}`,
+                  );
+                } catch (deleteError) {
+                  console.error(
+                    `❌ Failed to delete duplicate row ${rowIndex}:`,
+                    deleteError,
+                  );
+                }
+              }
+            }
+          } catch (verifyError) {
+            console.error(
+              "❌ Post-write duplicate verification failed:",
+              verifyError,
+            );
+          }
         }
       });
       return jsonResponse;

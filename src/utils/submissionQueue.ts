@@ -106,10 +106,9 @@ class SubmissionQueue {
         ? payload.photoCount
         : payload.photoIds?.length || 0;
 
-    // Round timestamp to 30-second windows to catch rapid duplicates
-    const timeWindow = Math.floor(Date.now() / 30000);
-
-    return `${payload.clientName}|${payload.clientCode}|${productString}|${photoCount}|${payload.userEmail}|${timeWindow}`;
+    // Content-only fingerprint — no time window. The recentFingerprints Map
+    // already has a 5-minute TTL via the cleanup interval for time-based expiry.
+    return `${payload.clientName}|${payload.clientCode}|${productString}|${photoCount}|${payload.userEmail}`;
   }
 
   /**
@@ -403,6 +402,64 @@ class SubmissionQueue {
       localStorage.setItem("pending-submissions", JSON.stringify(queue));
       this.notifyListeners();
     }
+  }
+
+  /**
+   * Atomically claim a queue item for processing.
+   * Reads the item and marks it as "sending" within a single readwrite transaction.
+   * Returns the item only if its current status is "pending" — otherwise returns null.
+   * This prevents the race condition where both the hook and service worker
+   * pick up the same item simultaneously.
+   */
+  async claim(id: string): Promise<QueuedSubmission | null> {
+    await this.dbReady;
+
+    if (this.db) {
+      return new Promise((resolve, reject) => {
+        const transaction = this.db?.transaction([STORE_NAME], "readwrite");
+        const store = transaction.objectStore(STORE_NAME);
+        const getRequest = store.get(id);
+
+        getRequest.onsuccess = () => {
+          const item = getRequest.result as QueuedSubmission | undefined;
+          if (!item || item.status !== "pending") {
+            resolve(null);
+            return;
+          }
+
+          const claimed: QueuedSubmission = {
+            ...item,
+            status: "sending",
+            lastAttemptAt: Date.now(),
+          };
+          const putRequest = store.put(claimed);
+
+          putRequest.onsuccess = () => {
+            this.notifyListeners();
+            resolve(claimed);
+          };
+
+          putRequest.onerror = () => reject(putRequest.error);
+        };
+
+        getRequest.onerror = () => reject(getRequest.error);
+      });
+    }
+
+    // Fallback to localStorage
+    const queue = this.getLocalStorageQueue();
+    const index = queue.findIndex((s) => s.id === id);
+    if (index !== -1 && queue[index].status === "pending") {
+      queue[index] = {
+        ...queue[index],
+        status: "sending",
+        lastAttemptAt: Date.now(),
+      };
+      localStorage.setItem("pending-submissions", JSON.stringify(queue));
+      this.notifyListeners();
+      return queue[index];
+    }
+    return null;
   }
 
   /**
