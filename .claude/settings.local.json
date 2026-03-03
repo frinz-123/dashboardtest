@@ -51,7 +51,9 @@
       "Bash(git fetch:*)",
       "WebFetch(domain:ui.bazza.dev)",
       "Bash(bunx shadcn@latest add:*)",
-      "Bash(btca:*)"
+      "Bash(btca:*)",
+      "Bash(npx biome:*)",
+      "Bash(gh pr:*)"
     ],
     "deny": [],
     "ask": []
