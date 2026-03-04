@@ -7,11 +7,15 @@
  */
 
 const SYNC_TAG = "order-submission-sync";
-const CACHE_VERSION = "v2";
+const CACHE_VERSION = "v3";
 const APP_SHELL_CACHE = `elrey-app-shell-${CACHE_VERSION}`;
 const ASSET_RUNTIME_CACHE = `elrey-assets-${CACHE_VERSION}`;
 const IMAGE_RUNTIME_CACHE = `elrey-images-${CACHE_VERSION}`;
-const CACHE_ALLOWLIST = [APP_SHELL_CACHE, ASSET_RUNTIME_CACHE, IMAGE_RUNTIME_CACHE];
+const CACHE_ALLOWLIST = [
+  APP_SHELL_CACHE,
+  ASSET_RUNTIME_CACHE,
+  IMAGE_RUNTIME_CACHE,
+];
 const OFFLINE_FALLBACK_PATH = "/offline.html";
 const APP_SHELL_PRECACHE_URLS = [
   OFFLINE_FALLBACK_PATH,
@@ -39,7 +43,9 @@ const CACHEABLE_DESTINATIONS = new Set(["script", "style", "font", "worker"]);
 const isHttpRequest = (request) => request.url.startsWith("http");
 
 const isCacheableResponse = (response) =>
-  Boolean(response?.ok && (response.type === "basic" || response.type === "cors"));
+  Boolean(
+    response?.ok && (response.type === "basic" || response.type === "cors"),
+  );
 
 const isNavigationRequest = (request) => request.mode === "navigate";
 
@@ -48,6 +54,8 @@ const isStaticAssetRequest = (request, url) =>
   CACHEABLE_DESTINATIONS.has(request.destination) ||
   url.pathname === "/manifest.json" ||
   url.pathname === "/favicon.ico";
+
+const isNextStaticRequest = (url) => url.pathname.startsWith("/_next/static/");
 
 const isImageRequest = (request, url) =>
   request.destination === "image" ||
@@ -87,8 +95,8 @@ async function precacheAppShell() {
         } else {
           console.warn("[SW] Skipping non-cacheable precache response:", url);
         }
-      } catch (error) {
-        console.warn("[SW] Failed to precache:", url, error);
+      } catch (_error) {
+        console.warn("[SW] Failed to precache:", url, _error);
       }
     }),
   );
@@ -98,7 +106,9 @@ async function cleanupOutdatedCaches() {
   const names = await caches.keys();
   await Promise.all(
     names
-      .filter((name) => name.startsWith("elrey-") && !CACHE_ALLOWLIST.includes(name))
+      .filter(
+        (name) => name.startsWith("elrey-") && !CACHE_ALLOWLIST.includes(name),
+      )
       .map((name) => caches.delete(name)),
   );
 }
@@ -116,7 +126,7 @@ async function handleNavigationFetch(request) {
     }
 
     return networkResponse;
-  } catch (error) {
+  } catch (_error) {
     const cached = await cache.match(cacheKey, { ignoreSearch: true });
     if (cached) return cached;
 
@@ -152,6 +162,22 @@ async function handleCacheFirstAsset(event, request) {
   if (networkResponse) return networkResponse;
 
   return new Response("Asset unavailable offline", { status: 503 });
+}
+
+async function handleNetworkFirstAsset(_event, request) {
+  const cache = await caches.open(ASSET_RUNTIME_CACHE);
+
+  try {
+    const networkResponse = await fetch(request);
+    if (isCacheableResponse(networkResponse)) {
+      await cache.put(request, networkResponse.clone());
+    }
+    return networkResponse;
+  } catch (_error) {
+    const cached = await cache.match(request, { ignoreSearch: true });
+    if (cached) return cached;
+    return new Response("Asset unavailable offline", { status: 503 });
+  }
 }
 
 async function handleStaleWhileRevalidateImage(event, request) {
@@ -252,6 +278,11 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (isStaticAssetRequest(request, url)) {
+    if (isNextStaticRequest(url)) {
+      event.respondWith(handleNetworkFirstAsset(event, request));
+      return;
+    }
+
     event.respondWith(handleCacheFirstAsset(event, request));
     return;
   }
@@ -462,11 +493,11 @@ async function fetchWithTimeout(input, init, timeoutMs) {
       ...init,
       signal: controller.signal,
     });
-  } catch (error) {
-    if (error?.name === "AbortError") {
+  } catch (_error) {
+    if (_error?.name === "AbortError") {
       throw new Error("Tiempo de espera agotado");
     }
-    throw error;
+    throw _error;
   } finally {
     clearTimeout(timeoutId);
   }
@@ -543,9 +574,7 @@ async function sendSubmission(submission) {
     try {
       data = await response.json();
     } catch {
-      console.warn(
-        "[SW] HTTP 200 but body parse failed — treating as success",
-      );
+      console.warn("[SW] HTTP 200 but body parse failed — treating as success");
     }
     return data;
   }
@@ -620,7 +649,10 @@ async function ensurePhotoUploads(submission) {
     existingUrls.push(url);
 
     // Save progress after EACH successful upload
-    const progressPayload = { ...submission.payload, photoUrls: [...existingUrls] };
+    const progressPayload = {
+      ...submission.payload,
+      photoUrls: [...existingUrls],
+    };
     await updateSubmission(submission.id, { payload: progressPayload });
   }
 
@@ -694,15 +726,15 @@ async function processQueuedOrders() {
           submissionId: submission.id,
           duplicate: result.duplicate,
         });
-      } catch (error) {
+      } catch (_error) {
         console.error(
           `[SW] Submission ${submission.id} failed:`,
-          error.message,
+          _error.message,
         );
 
         const errorMessage =
-          typeof error?.message === "string"
-            ? error.message
+          typeof _error?.message === "string"
+            ? _error.message
             : "Error desconocido";
         const isDuplicate =
           typeof errorMessage === "string" &&
@@ -740,28 +772,28 @@ async function processQueuedOrders() {
           await updateSubmission(submission.id, {
             status: "failed",
             retryCount: newRetryCount,
-            errorMessage: error.message || "Maximo de reintentos alcanzado",
+            errorMessage: _error.message || "Maximo de reintentos alcanzado",
           });
 
           // Notify about failure
           notifyClients({
             type: "SUBMISSION_FAILED",
             submissionId: submission.id,
-            error: error.message,
+            error: _error.message,
           });
         } else {
           await updateSubmission(submission.id, {
             status: "pending",
             retryCount: newRetryCount,
-            errorMessage: error.message,
+            errorMessage: _error.message,
           });
         }
 
         results.failed++;
       }
     }
-  } catch (error) {
-    console.error("[SW] Error processing queue:", error);
+  } catch (_error) {
+    console.error("[SW] Error processing queue:", _error);
   }
 
   console.log("[SW] Queue processing complete:", results);
