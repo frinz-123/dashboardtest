@@ -733,7 +733,7 @@ async function processQueuedOrders() {
         );
 
         const errorMessage =
-          typeof error?.message === "string"
+          typeof _error?.message === "string"
             ? _error.message
             : "Error desconocido";
         const isDuplicate =
