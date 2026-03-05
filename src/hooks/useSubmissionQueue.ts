@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { haptics } from "@/utils/haptics";
 import { deletePhotos, getPhoto } from "@/utils/photoStore";
 import {
+  type QueueAttemptSource,
   type QueuedSubmission,
   submissionQueue,
 } from "@/utils/submissionQueue";
@@ -53,6 +54,18 @@ function getErrorCode(error: unknown): string | null {
   return null;
 }
 
+function getErrorStatus(error: unknown): number | null {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "status" in error &&
+    typeof (error as { status?: unknown }).status === "number"
+  ) {
+    return (error as { status: number }).status;
+  }
+  return null;
+}
+
 export interface QueueState {
   pendingCount: number;
   isProcessing: boolean;
@@ -66,7 +79,13 @@ export interface UseSubmissionQueueReturn {
   addToQueue: (
     submission: Omit<
       QueuedSubmission,
-      "status" | "createdAt" | "lastAttemptAt" | "retryCount" | "errorMessage"
+      | "status"
+      | "createdAt"
+      | "lastAttemptAt"
+      | "lastAttemptSource"
+      | "lastHttpStatus"
+      | "retryCount"
+      | "errorMessage"
     >,
   ) => Promise<QueuedSubmission>;
   processQueue: () => Promise<void>;
@@ -146,6 +165,7 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
       error?: string;
       duplicate?: boolean;
       permanent?: boolean;
+      httpStatus: number | null;
     }> => {
       try {
         const response = await fetchWithTimeout(
@@ -185,7 +205,11 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
               "[Queue] HTTP 200 but body parse failed — treating as success",
             );
           }
-          return { success: true, duplicate: data?.duplicate };
+          return {
+            success: true,
+            duplicate: data?.duplicate,
+            httpStatus: response.status,
+          };
         }
 
         let errorData: { error?: string } = {};
@@ -210,15 +234,21 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
           success: false,
           error: errorData?.error || `Error del servidor: ${response.status}`,
           permanent: isPermanent,
+          httpStatus: response.status,
         };
       } catch (error: unknown) {
         // Network errors and timeouts are always transient
         if (isFetchTypeError(error)) {
-          return { success: false, error: "Sin conexion a internet" };
+          return {
+            success: false,
+            error: "Sin conexion a internet",
+            httpStatus: null,
+          };
         }
         return {
           success: false,
           error: getErrorMessage(error),
+          httpStatus: getErrorStatus(error),
         };
       }
     },
@@ -259,7 +289,9 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
         const message = data?.error || `Upload error: ${response.status}`;
         const error = new Error(message) as Error & {
           code?: string;
+          status?: number;
         };
+        error.status = response.status;
         if (data?.duplicate || response.status === 409) {
           error.code = "DUPLICATE_PHOTO";
         }
@@ -283,6 +315,7 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
       item?: QueuedSubmission;
       error?: string;
       fatal?: boolean;
+      httpStatus?: number | null;
     }> => {
       const photoIds = item.payload.photoIds;
       if (!photoIds || photoIds.length === 0) {
@@ -341,6 +374,7 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
           success: false,
           error: getErrorMessage(error) || "No se pudieron subir las fotos",
           fatal: isPhotoLost || (isDuplicate && !allowDuplicatePhotos),
+          httpStatus: getErrorStatus(error),
         };
       }
     },
@@ -356,7 +390,8 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
       // Re-validating based on timestamp would break offline-first queue processing.
 
       // Atomically claim the item — returns null if already claimed by SW or another processor.
-      const claimed = await submissionQueue.claim(item.id);
+      const source: QueueAttemptSource = "hook";
+      const claimed = await submissionQueue.claim(item.id, source);
       if (!claimed) {
         console.log(
           `[Queue] ${item.id} -> skipped (already claimed or not pending)`,
@@ -368,44 +403,51 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
         at: claimed.lastAttemptAt,
       });
 
-      setState((prev) => ({ ...prev, currentItem: item }));
+      setState((prev) => ({ ...prev, currentItem: claimed }));
 
       try {
-        const prepared = await prepareSubmission(item);
-        const finalItem = prepared.item ?? item;
+        const prepared = await prepareSubmission(claimed);
+        const finalItem = prepared.item ?? claimed;
 
         if (!prepared.success) {
-          const newRetryCount = item.retryCount + 1;
+          const newRetryCount = claimed.retryCount + 1;
 
           if (prepared.fatal) {
-            await submissionQueue.update(item.id, {
+            await submissionQueue.update(claimed.id, {
               status: "failed",
               retryCount: newRetryCount,
               errorMessage: prepared.error || "No se pudieron subir las fotos",
+              lastHttpStatus: prepared.httpStatus ?? null,
             });
-            console.error(`[Queue] ${item.id} -> failed (fatal photo error)`);
+            console.error(
+              `[Queue] ${claimed.id} -> failed (fatal photo error)`,
+            );
             haptics.error();
             return false;
           }
 
           if (newRetryCount >= MAX_RETRIES) {
-            console.error("Max retries reached for submission:", item.id);
-            await submissionQueue.update(item.id, {
+            console.error("Max retries reached for submission:", claimed.id);
+            await submissionQueue.update(claimed.id, {
               status: "failed",
               retryCount: newRetryCount,
               errorMessage: prepared.error || "Maximo de reintentos alcanzado",
+              lastHttpStatus: prepared.httpStatus ?? null,
             });
-            console.error(`[Queue] ${item.id} -> failed (max retries reached)`);
+            console.error(
+              `[Queue] ${claimed.id} -> failed (max retries reached)`,
+            );
             haptics.error();
             return false;
           }
 
-          await submissionQueue.update(item.id, {
+          await submissionQueue.update(claimed.id, {
             status: "pending",
             retryCount: newRetryCount,
             errorMessage: prepared.error,
+            lastHttpStatus: prepared.httpStatus ?? null,
           });
-          console.warn(`[Queue] ${item.id} -> pending (will retry)`, {
+          console.warn(`[Queue] ${claimed.id} -> pending (will retry)`, {
             retryCount: newRetryCount,
             reason: prepared.error,
           });
@@ -435,40 +477,45 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
         // These are errors like "too far from client" or "GPS accuracy insufficient"
         // that won't resolve by retrying.
         if (result.permanent) {
-          await submissionQueue.update(item.id, {
+          await submissionQueue.update(claimed.id, {
             status: "failed",
-            retryCount: item.retryCount + 1,
+            retryCount: claimed.retryCount + 1,
             errorMessage: result.error || "Error permanente del servidor",
+            lastHttpStatus: result.httpStatus,
           });
           console.error(
-            `[Queue] ${item.id} -> failed (permanent error: ${result.error})`,
+            `[Queue] ${claimed.id} -> failed (permanent error: ${result.error})`,
           );
           haptics.error();
           return false;
         }
 
         // Transient failure — retry with exponential backoff
-        const newRetryCount = item.retryCount + 1;
+        const newRetryCount = claimed.retryCount + 1;
 
         if (newRetryCount >= MAX_RETRIES) {
-          console.error("Max retries reached for submission:", item.id);
-          await submissionQueue.update(item.id, {
+          console.error("Max retries reached for submission:", claimed.id);
+          await submissionQueue.update(claimed.id, {
             status: "failed",
             retryCount: newRetryCount,
             errorMessage: result.error || "Maximo de reintentos alcanzado",
+            lastHttpStatus: result.httpStatus,
           });
-          console.error(`[Queue] ${item.id} -> failed (max retries reached)`);
+          console.error(
+            `[Queue] ${claimed.id} -> failed (max retries reached)`,
+          );
           haptics.error();
           return false;
         }
 
         // Mark for retry
-        await submissionQueue.update(item.id, {
+        await submissionQueue.update(claimed.id, {
           status: "pending",
           retryCount: newRetryCount,
           errorMessage: result.error,
+          lastHttpStatus: result.httpStatus,
         });
-        console.warn(`[Queue] ${item.id} -> pending (will retry)`, {
+        console.warn(`[Queue] ${claimed.id} -> pending (will retry)`, {
           retryCount: newRetryCount,
           reason: result.error,
         });
@@ -479,14 +526,15 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
         // write failure), immediately reset the item so it doesn't stay stuck in
         // "sending" until the 45s stale recovery kicks in.
         console.error(
-          `[Queue] ${item.id} -> unexpected error after claim:`,
+          `[Queue] ${claimed.id} -> unexpected error after claim:`,
           unexpectedError,
         );
         try {
-          await submissionQueue.update(item.id, {
+          await submissionQueue.update(claimed.id, {
             status: "pending",
-            retryCount: item.retryCount + 1,
+            retryCount: claimed.retryCount + 1,
             errorMessage: getErrorMessage(unexpectedError),
+            lastHttpStatus: getErrorStatus(unexpectedError),
           });
         } catch {
           // If even this fails, the stale recovery interval will handle it
@@ -596,7 +644,13 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
     async (
       submission: Omit<
         QueuedSubmission,
-        "status" | "createdAt" | "lastAttemptAt" | "retryCount" | "errorMessage"
+        | "status"
+        | "createdAt"
+        | "lastAttemptAt"
+        | "lastAttemptSource"
+        | "lastHttpStatus"
+        | "retryCount"
+        | "errorMessage"
       >,
     ): Promise<QueuedSubmission> => {
       const queued = await submissionQueue.add(submission);
@@ -623,6 +677,7 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
         status: "pending",
         retryCount: 0,
         errorMessage: null,
+        lastHttpStatus: null,
       });
       await loadQueue();
 

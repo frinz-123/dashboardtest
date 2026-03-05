@@ -11,7 +11,11 @@ const CACHE_VERSION = "v2";
 const APP_SHELL_CACHE = `elrey-app-shell-${CACHE_VERSION}`;
 const ASSET_RUNTIME_CACHE = `elrey-assets-${CACHE_VERSION}`;
 const IMAGE_RUNTIME_CACHE = `elrey-images-${CACHE_VERSION}`;
-const CACHE_ALLOWLIST = [APP_SHELL_CACHE, ASSET_RUNTIME_CACHE, IMAGE_RUNTIME_CACHE];
+const CACHE_ALLOWLIST = [
+  APP_SHELL_CACHE,
+  ASSET_RUNTIME_CACHE,
+  IMAGE_RUNTIME_CACHE,
+];
 const OFFLINE_FALLBACK_PATH = "/offline.html";
 const APP_SHELL_PRECACHE_URLS = [
   OFFLINE_FALLBACK_PATH,
@@ -39,7 +43,9 @@ const CACHEABLE_DESTINATIONS = new Set(["script", "style", "font", "worker"]);
 const isHttpRequest = (request) => request.url.startsWith("http");
 
 const isCacheableResponse = (response) =>
-  Boolean(response?.ok && (response.type === "basic" || response.type === "cors"));
+  Boolean(
+    response?.ok && (response.type === "basic" || response.type === "cors"),
+  );
 
 const isNavigationRequest = (request) => request.mode === "navigate";
 
@@ -98,7 +104,9 @@ async function cleanupOutdatedCaches() {
   const names = await caches.keys();
   await Promise.all(
     names
-      .filter((name) => name.startsWith("elrey-") && !CACHE_ALLOWLIST.includes(name))
+      .filter(
+        (name) => name.startsWith("elrey-") && !CACHE_ALLOWLIST.includes(name),
+      )
       .map((name) => caches.delete(name)),
   );
 }
@@ -116,7 +124,7 @@ async function handleNavigationFetch(request) {
     }
 
     return networkResponse;
-  } catch (error) {
+  } catch (_error) {
     const cached = await cache.match(cacheKey, { ignoreSearch: true });
     if (cached) return cached;
 
@@ -405,7 +413,7 @@ async function updateSubmission(id, updates) {
  * Reads the item and marks it as "sending" within a single readwrite transaction.
  * Returns the item only if its current status is "pending" — otherwise returns null.
  */
-async function claimSubmission(id) {
+async function claimSubmission(id, source) {
   const db = await openDatabase();
 
   return new Promise((resolve, reject) => {
@@ -424,6 +432,8 @@ async function claimSubmission(id) {
         ...item,
         status: "sending",
         lastAttemptAt: Date.now(),
+        lastAttemptSource: source,
+        lastHttpStatus: null,
       };
       const putRequest = store.put(claimed);
 
@@ -470,6 +480,18 @@ async function fetchWithTimeout(input, init, timeoutMs) {
   } finally {
     clearTimeout(timeoutId);
   }
+}
+
+function getErrorStatus(error) {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "status" in error &&
+    typeof error.status === "number"
+  ) {
+    return error.status;
+  }
+  return null;
 }
 
 async function recoverStaleSendingSubmissions() {
@@ -543,11 +565,12 @@ async function sendSubmission(submission) {
     try {
       data = await response.json();
     } catch {
-      console.warn(
-        "[SW] HTTP 200 but body parse failed — treating as success",
-      );
+      console.warn("[SW] HTTP 200 but body parse failed — treating as success");
     }
-    return data;
+    return {
+      ...data,
+      httpStatus: response.status,
+    };
   }
 
   let errorData = {};
@@ -556,10 +579,14 @@ async function sendSubmission(submission) {
   } catch {
     // Ignore body parse errors on error responses
   }
-  throw new Error(errorData.error || `Server error: ${response.status}`);
+  const error = new Error(
+    errorData.error || `Server error: ${response.status}`,
+  );
+  error.status = response.status;
+  throw error;
 }
 
-async function uploadPhotoBlob(photoId, submissionId) {
+async function uploadPhotoBlob(photoId, submissionId, allowDuplicatePhotos) {
   const record = await getPhotoRecord(photoId);
   if (!record || !record.blob) {
     throw new Error(`Foto no encontrada (${photoId})`);
@@ -569,6 +596,10 @@ async function uploadPhotoBlob(photoId, submissionId) {
   formData.append("file", record.blob, `${submissionId}-${photoId}.jpg`);
   formData.append("photoId", photoId);
   formData.append("submissionId", submissionId);
+  formData.append(
+    "allowDuplicatePhotos",
+    allowDuplicatePhotos ? "true" : "false",
+  );
 
   const response = await fetchWithTimeout(
     "/api/upload-photo",
@@ -582,10 +613,13 @@ async function uploadPhotoBlob(photoId, submissionId) {
 
   if (!response.ok) {
     const message = data.error || `Upload error: ${response.status}`;
+    const error = new Error(message);
+    error.status = response.status;
     if (data.duplicate || response.status === 409) {
-      throw new Error(`DUPLICATE_PHOTO:${message}`);
+      error.message = `DUPLICATE_PHOTO:${message}`;
+      throw error;
     }
-    throw new Error(message);
+    throw error;
   }
 
   if (!data?.url) {
@@ -598,6 +632,8 @@ async function uploadPhotoBlob(photoId, submissionId) {
 async function ensurePhotoUploads(submission) {
   const photoIds = submission.payload?.photoIds || [];
   if (photoIds.length === 0) return submission;
+  const allowDuplicatePhotos =
+    submission.payload?.allowDuplicatePhotos === true;
 
   const existingUrls = Array.isArray(submission.payload?.photoUrls)
     ? [...submission.payload.photoUrls]
@@ -616,11 +652,18 @@ async function ensurePhotoUploads(submission) {
       );
     }
 
-    const url = await uploadPhotoBlob(photoId, submission.id);
+    const url = await uploadPhotoBlob(
+      photoId,
+      submission.id,
+      allowDuplicatePhotos,
+    );
     existingUrls.push(url);
 
     // Save progress after EACH successful upload
-    const progressPayload = { ...submission.payload, photoUrls: [...existingUrls] };
+    const progressPayload = {
+      ...submission.payload,
+      photoUrls: [...existingUrls],
+    };
     await updateSubmission(submission.id, { payload: progressPayload });
   }
 
@@ -648,6 +691,7 @@ async function processQueuedOrders() {
 
     for (const submission of pending) {
       results.processed++;
+      let claimed = null;
 
       try {
         // NOTE: We no longer check location validity here.
@@ -656,7 +700,7 @@ async function processQueuedOrders() {
         // Re-validating would break offline-first queue processing.
 
         // Atomically claim the item — returns null if already claimed by hook or another processor.
-        const claimed = await claimSubmission(submission.id);
+        claimed = await claimSubmission(submission.id, "service-worker");
         if (!claimed) {
           console.log(
             `[SW] ${submission.id} -> skipped (already claimed or not pending)`,
@@ -711,7 +755,9 @@ async function processQueuedOrders() {
           typeof errorMessage === "string" &&
           errorMessage.startsWith("PHOTO_LOST:");
 
-        const newRetryCount = (submission.retryCount || 0) + 1;
+        const newRetryCount =
+          (claimed?.retryCount || submission.retryCount || 0) + 1;
+        const httpStatus = getErrorStatus(error);
 
         if (isDuplicate || isPhotoLost) {
           const cleanMessage = errorMessage
@@ -724,6 +770,7 @@ async function processQueuedOrders() {
             status: "failed",
             retryCount: newRetryCount,
             errorMessage: cleanMessage || fallbackMessage,
+            lastHttpStatus: httpStatus,
           });
 
           notifyClients({
@@ -741,6 +788,7 @@ async function processQueuedOrders() {
             status: "failed",
             retryCount: newRetryCount,
             errorMessage: error.message || "Maximo de reintentos alcanzado",
+            lastHttpStatus: httpStatus,
           });
 
           // Notify about failure
@@ -754,6 +802,7 @@ async function processQueuedOrders() {
             status: "pending",
             retryCount: newRetryCount,
             errorMessage: error.message,
+            lastHttpStatus: httpStatus,
           });
         }
 

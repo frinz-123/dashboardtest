@@ -6,7 +6,7 @@
  * - Automatically retries when connection is restored
  * - Guarantees eventual delivery
  * - Uses Background Sync API for true background processing
- * - Prevents duplicate submissions via content fingerprinting
+ * - Prevents re-queueing the same active submission ID
  */
 
 const DB_NAME = "elrey-submissions";
@@ -15,14 +15,19 @@ const STORE_NAME = "pending-orders";
 const SYNC_TAG = "order-submission-sync";
 const SW_READY_TIMEOUT_MS = 1500;
 
-// Duplicate detection window (5 minutes)
-const DUPLICATE_WINDOW_MS = 300000;
-
 export type SubmissionStatus =
   | "pending" // Waiting to be sent
   | "sending" // Currently being sent
   | "failed" // Failed after max retries
   | "completed"; // Successfully sent
+
+export type QueueAttemptSource = "hook" | "service-worker";
+
+const ACTIVE_DUPLICATE_STATUSES: SubmissionStatus[] = ["pending", "sending"];
+
+export function isActiveDuplicateStatus(status: SubmissionStatus): boolean {
+  return ACTIVE_DUPLICATE_STATUSES.includes(status);
+}
 
 export interface QueuedSubmission {
   id: string; // Unique submission ID
@@ -56,89 +61,46 @@ export interface QueuedSubmission {
   status: SubmissionStatus;
   createdAt: number; // When the submission was queued
   lastAttemptAt: number | null; // Last retry attempt timestamp
+  lastAttemptSource: QueueAttemptSource | null; // Where the last attempt ran
+  lastHttpStatus: number | null; // Last HTTP status returned by the network step
   retryCount: number; // Number of retry attempts
   errorMessage: string | null; // Last error message
   isAdmin: boolean; // Admin users bypass location checks
+}
+
+export function findActiveDuplicateSubmission(
+  items: Pick<QueuedSubmission, "id" | "status">[],
+  id: string,
+): Pick<QueuedSubmission, "id" | "status"> | undefined {
+  return items.find(
+    (item) => item.id === id && isActiveDuplicateStatus(item.status),
+  );
 }
 
 class SubmissionQueue {
   private db: IDBDatabase | null = null;
   private dbReady: Promise<boolean>;
   private listeners: Set<() => void> = new Set();
-  private recentFingerprints: Map<string, number> = new Map();
 
   constructor() {
     this.dbReady = this.initDB();
-    this.cleanupFingerprints();
   }
 
   /**
-   * Clean up old fingerprints periodically
-   */
-  private cleanupFingerprints() {
-    if (typeof window === "undefined") return;
-
-    setInterval(() => {
-      const now = Date.now();
-      for (const [
-        fingerprint,
-        timestamp,
-      ] of this.recentFingerprints.entries()) {
-        if (now - timestamp > DUPLICATE_WINDOW_MS) {
-          this.recentFingerprints.delete(fingerprint);
-        }
-      }
-    }, 60000); // Clean every minute
-  }
-
-  /**
-   * Generate a fingerprint for a submission payload to detect duplicates
-   * Uses client name, products, and a time window
-   */
-  private generateFingerprint(payload: QueuedSubmission["payload"]): string {
-    // Create a deterministic string from the key fields
-    const productKeys = Object.keys(payload.products).sort();
-    const productString = productKeys
-      .map(
-        (k) => `${k}:${payload.products[k as keyof typeof payload.products]}`,
-      )
-      .join("|");
-    const photoCount =
-      typeof payload.photoCount === "number"
-        ? payload.photoCount
-        : payload.photoIds?.length || 0;
-
-    // Content-only fingerprint — no time window. The recentFingerprints Map
-    // already has a 5-minute TTL via the cleanup interval for time-based expiry.
-    return `${payload.clientName}|${payload.clientCode}|${productString}|${photoCount}|${payload.userEmail}`;
-  }
-
-  /**
-   * Check if a submission is a duplicate based on content fingerprint
+   * Check if a submission is already active in the queue by its id
    */
   async isDuplicate(
-    payload: QueuedSubmission["payload"],
+    id: string,
   ): Promise<{ isDuplicate: boolean; existingId?: string }> {
-    const fingerprint = this.generateFingerprint(payload);
-
-    // Check in-memory cache first
-    if (this.recentFingerprints.has(fingerprint)) {
-      console.warn("🔄 DUPLICATE DETECTED (fingerprint match):", fingerprint);
-      return { isDuplicate: true };
-    }
-
-    // Check existing queue items
-    const pending = await this.getPending();
-    for (const item of pending) {
-      const itemFingerprint = this.generateFingerprint(item.payload);
-      if (itemFingerprint === fingerprint) {
-        console.warn("🔄 DUPLICATE DETECTED (queue match):", {
-          fingerprint,
-          existingId: item.id,
-          existingStatus: item.status,
-        });
-        return { isDuplicate: true, existingId: item.id };
-      }
+    const items = await this.getPending();
+    const existing = findActiveDuplicateSubmission(items, id);
+    if (existing) {
+      console.warn("Duplicate queued submission blocked:", {
+        submissionId: id,
+        existingId: existing.id,
+        existingStatus: existing.status,
+      });
+      return { isDuplicate: true, existingId: existing.id };
     }
 
     return { isDuplicate: false };
@@ -191,14 +153,14 @@ class SubmissionQueue {
       // Check if Background Sync is supported
       if ("sync" in registration) {
         await registration.sync.register(SYNC_TAG);
-        console.log("📡 Background Sync registered:", SYNC_TAG);
+        console.log("Background Sync registered:", SYNC_TAG);
         return true;
-      } else {
-        console.log(
-          "Background Sync not supported, falling back to manual processing",
-        );
-        return false;
       }
+
+      console.log(
+        "Background Sync not supported, falling back to manual processing",
+      );
+      return false;
     } catch (error) {
       console.error("Failed to register Background Sync:", error);
       return false;
@@ -263,18 +225,22 @@ class SubmissionQueue {
   async add(
     submission: Omit<
       QueuedSubmission,
-      "status" | "createdAt" | "lastAttemptAt" | "retryCount" | "errorMessage"
+      | "status"
+      | "createdAt"
+      | "lastAttemptAt"
+      | "lastAttemptSource"
+      | "lastHttpStatus"
+      | "retryCount"
+      | "errorMessage"
     >,
   ): Promise<QueuedSubmission> {
     await this.dbReady;
 
     // Check for duplicates first
-    const { isDuplicate, existingId } = await this.isDuplicate(
-      submission.payload,
-    );
+    const { isDuplicate, existingId } = await this.isDuplicate(submission.id);
     if (isDuplicate) {
-      console.warn("🚫 Rejecting duplicate submission:", {
-        clientName: submission.payload.clientName,
+      console.warn("Rejecting duplicate queued submission:", {
+        submissionId: submission.id,
         existingId,
       });
       throw new Error(
@@ -287,13 +253,11 @@ class SubmissionQueue {
       status: "pending",
       createdAt: Date.now(),
       lastAttemptAt: null,
+      lastAttemptSource: null,
+      lastHttpStatus: null,
       retryCount: 0,
       errorMessage: null,
     };
-
-    // Store fingerprint to prevent rapid duplicates
-    const fingerprint = this.generateFingerprint(submission.payload);
-    this.recentFingerprints.set(fingerprint, Date.now());
 
     if (this.db) {
       return new Promise((resolve, reject) => {
@@ -302,7 +266,7 @@ class SubmissionQueue {
         const request = store.add(queuedSubmission);
 
         request.onsuccess = () => {
-          console.log("✅ Submission queued:", queuedSubmission.id);
+          console.log("Submission queued:", queuedSubmission.id);
           this.notifyListeners();
 
           // Request Background Sync to process when online
@@ -315,8 +279,6 @@ class SubmissionQueue {
 
         request.onerror = () => {
           console.error("Failed to queue submission:", request.error);
-          // Remove fingerprint on failure
-          this.recentFingerprints.delete(fingerprint);
           reject(request.error);
         };
       });
@@ -409,11 +371,14 @@ class SubmissionQueue {
   /**
    * Atomically claim a queue item for processing.
    * Reads the item and marks it as "sending" within a single readwrite transaction.
-   * Returns the item only if its current status is "pending" — otherwise returns null.
+   * Returns the item only if its current status is "pending" - otherwise returns null.
    * This prevents the race condition where both the hook and service worker
    * pick up the same item simultaneously.
    */
-  async claim(id: string): Promise<QueuedSubmission | null> {
+  async claim(
+    id: string,
+    source: QueueAttemptSource,
+  ): Promise<QueuedSubmission | null> {
     await this.dbReady;
 
     if (this.db) {
@@ -433,6 +398,8 @@ class SubmissionQueue {
             ...item,
             status: "sending",
             lastAttemptAt: Date.now(),
+            lastAttemptSource: source,
+            lastHttpStatus: null,
           };
           const putRequest = store.put(claimed);
 
@@ -456,6 +423,8 @@ class SubmissionQueue {
         ...queue[index],
         status: "sending",
         lastAttemptAt: Date.now(),
+        lastAttemptSource: source,
+        lastHttpStatus: null,
       };
       localStorage.setItem("pending-submissions", JSON.stringify(queue));
       this.notifyListeners();
@@ -542,7 +511,6 @@ class SubmissionQueue {
         const request = store.clear();
 
         request.onsuccess = () => {
-          this.recentFingerprints.clear();
           this.notifyListeners();
           resolve();
         };
@@ -552,7 +520,6 @@ class SubmissionQueue {
     }
 
     localStorage.removeItem("pending-submissions");
-    this.recentFingerprints.clear();
     this.notifyListeners();
   }
 
