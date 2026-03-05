@@ -17,6 +17,7 @@ import CleyPhotoCapture, {
   type CleyPhotoPreview,
 } from "@/components/CleyPhotoCapture";
 import CleyOrderQuestion from "@/components/comp-166";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -37,6 +38,15 @@ import Toast, { useToast } from "@/components/ui/Toast";
 import { useOrderSubmitMutation } from "@/hooks/useOrderSubmitMutation";
 import { useSubmissionQueue } from "@/hooks/useSubmissionQueue";
 import { getCurrentPeriodInfo } from "@/utils/dateUtils";
+import {
+  FORM_OVERRIDE_EMAILS,
+  isFormAdminEmail,
+  isPhotoRequiredClientCode,
+  PHOTO_MAX,
+  PHOTO_MAX_DIMENSION,
+  PHOTO_MIN_REQUIRED,
+  PHOTO_QUALITY,
+} from "@/utils/formSubmission";
 import { haptics } from "@/utils/haptics";
 import { compressImageFile } from "@/utils/photoCompression";
 import { deletePhotos, savePhoto } from "@/utils/photoStore";
@@ -50,10 +60,6 @@ const ClientMap = dynamic(() => import("@/components/ui/Map"), {
 const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY;
 const spreadsheetId = process.env.NEXT_PUBLIC_SPREADSHEET_ID;
 const sheetName = process.env.NEXT_PUBLIC_SHEET_NAME;
-const OVERRIDE_EMAILS =
-  process.env.NEXT_PUBLIC_OVERRIDE_EMAIL?.split(",").map((email) =>
-    email.trim(),
-  ) || [];
 
 // Email labels for vendor selection (matching dashboard labels)
 const EMAIL_LABELS: Record<string, string> = {
@@ -110,11 +116,6 @@ const PRODUCTS: string[] = [
 const MIN_MOVEMENT_THRESHOLD = 5; // Align with map for precise updates
 const MAX_CLIENT_DISTANCE = 450; // Maximum allowed distance to client in meters
 const ARCHIVE_MARKER = "archivado no usar";
-const PHOTO_REQUIRED_CODES = new Set(["CLEY", "TERE", "MERZ", "MERKAHORRO", "WM" , "OXX","KIOSK"]);
-const PHOTO_MIN_REQUIRED = 2;
-const PHOTO_MAX = 4;
-const PHOTO_MAX_DIMENSION = 1280;
-const PHOTO_QUALITY = 0.75;
 
 type SearchableClient = {
   name: string;
@@ -169,7 +170,7 @@ function getClientCode(clientName: string): string {
     querida: "queri",
     merza: "merz",
     "Cedis Up": "CRED",
-    "AND FINAL": "smart", 
+    "AND FINAL": "smart",
     WALMART: "wm",
   };
 
@@ -846,7 +847,7 @@ const PRICES: ProductPrices = {
     "Michela Mix Picafresa": 30,
     "El Rey Mix Original": 60,
     "El Rey Mix Especial": 60,
-    "Habanero Molido 50 g": 42.50,
+    "Habanero Molido 50 g": 42.5,
     "Habanero Molido 20 g": 20,
     "Medio Kilo Chiltepin Entero": 500,
     "Molinillo Habanero 20 g": 70,
@@ -1089,6 +1090,7 @@ export default function FormPage() {
   const [overrideDate, setOverrideDate] = useState<string>("");
   const [overridePeriod, setOverridePeriod] = useState<string>("");
   const [overrideMonthCode, setOverrideMonthCode] = useState<string>("");
+  const [skipRequiredPhotos, setSkipRequiredPhotos] = useState(false);
 
   // Calculate period code and month code from the selected override date
   const calculatedOverrideValues = useMemo(() => {
@@ -1171,8 +1173,11 @@ export default function FormPage() {
   const isPhotoRequiredClient = useMemo(() => {
     if (!selectedClient) return false;
     const clientCode = getClientCode(selectedClient).toUpperCase();
-    return PHOTO_REQUIRED_CODES.has(clientCode);
+    return isPhotoRequiredClientCode(clientCode);
   }, [selectedClient]);
+  const isAdminCandidate = isFormAdminEmail(
+    session?.user?.email || cachedEmail,
+  );
 
   const cleyPhotosRef = useRef<CleyPhotoPreview[]>([]);
   const previousClientRef = useRef<string>("");
@@ -1234,6 +1239,12 @@ export default function FormPage() {
       setCleyPhotoError(null);
     }
   }, [cleyPhotos.length, clearCleyPhotoSelection, isPhotoRequiredClient]);
+
+  useEffect(() => {
+    if (!isPhotoRequiredClient && skipRequiredPhotos) {
+      setSkipRequiredPhotos(false);
+    }
+  }, [isPhotoRequiredClient, skipRequiredPhotos]);
 
   useEffect(() => {
     return () => {
@@ -1689,12 +1700,6 @@ export default function FormPage() {
     });
   };
 
-  const isOverrideEmail = (email: string | null | undefined) => {
-    console.log("Override Emails:", OVERRIDE_EMAILS); // Debug log
-    console.log("Current user email:", email); // Debug log
-    return email ? OVERRIDE_EMAILS.includes(email) : false;
-  };
-
   const clearSubmittedForm = () => {
     setSelectedClient("");
     setQuantities({});
@@ -1705,6 +1710,7 @@ export default function FormPage() {
     setOverrideDate("");
     setOverridePeriod("");
     setOverrideMonthCode("");
+    setSkipRequiredPhotos(false);
     setKey((prev) => prev + 1);
   };
 
@@ -1748,18 +1754,10 @@ export default function FormPage() {
       const clientCode = getClientCode(selectedClient);
       const normalizedClientCode = clientCode.toUpperCase();
       const isCley = normalizedClientCode === "CLEY";
-      const isPhotoRequired = PHOTO_REQUIRED_CODES.has(normalizedClientCode);
+      const isPhotoRequired = isPhotoRequiredClientCode(normalizedClientCode);
 
       if (isPhotoRequired && isCompressingPhotos) {
         setCleyPhotoError("Espera a que termine la compresion de fotos.");
-        isSubmittingRef.current = false;
-        return;
-      }
-
-      if (isPhotoRequired && cleyPhotos.length < PHOTO_MIN_REQUIRED) {
-        setCleyPhotoError(
-          `Agrega al menos ${PHOTO_MIN_REQUIRED} fotos antes de enviar.`,
-        );
         isSubmittingRef.current = false;
         return;
       }
@@ -1772,13 +1770,21 @@ export default function FormPage() {
 
       // Email validation
       const sessionEmail = session?.user?.email;
-      const fallbackEmail = OVERRIDE_EMAILS[0];
+      const fallbackEmail = FORM_OVERRIDE_EMAILS[0];
       const baseEmail = sessionEmail || cachedEmail || fallbackEmail;
-      const isAdmin = Boolean(sessionEmail && isOverrideEmail(sessionEmail));
+      const isAdmin = Boolean(sessionEmail && isFormAdminEmail(sessionEmail));
       const actorEmail = sessionEmail || cachedEmail || null;
       const finalEmail = isAdmin && overrideEmail ? overrideEmail : baseEmail;
+      const allowDuplicatePhotos = isAdmin && cleyPhotos.length > 0;
+      const shouldSkipRequiredPhotos =
+        isPhotoRequired && isAdmin && skipRequiredPhotos;
       const hasAdminOverrideIntent = Boolean(
-        overrideEmail || overrideDate || overridePeriod || overrideMonthCode,
+        overrideEmail ||
+          overrideDate ||
+          overridePeriod ||
+          overrideMonthCode ||
+          skipRequiredPhotos ||
+          allowDuplicatePhotos,
       );
 
       console.log("🔐 ADMIN OVERRIDE RESOLUTION:", {
@@ -1790,6 +1796,8 @@ export default function FormPage() {
         overrideDate: overrideDate || null,
         overridePeriod: overridePeriod || null,
         overrideMonthCode: overrideMonthCode || null,
+        skipRequiredPhotos: shouldSkipRequiredPhotos,
+        allowDuplicatePhotos,
         actorEmail,
         finalEmail,
       });
@@ -1800,6 +1808,18 @@ export default function FormPage() {
           submit:
             "No se pudo determinar el usuario. Por favor, recarga la página e inicia sesión.",
         }));
+        isSubmittingRef.current = false;
+        return;
+      }
+
+      if (
+        isPhotoRequired &&
+        !shouldSkipRequiredPhotos &&
+        cleyPhotos.length < PHOTO_MIN_REQUIRED
+      ) {
+        setCleyPhotoError(
+          `Agrega al menos ${PHOTO_MIN_REQUIRED} fotos antes de enviar.`,
+        );
         isSubmittingRef.current = false;
         return;
       }
@@ -1859,6 +1879,7 @@ export default function FormPage() {
           photoIds: isPhotoRequired ? photoIds : undefined,
           photoCount: isPhotoRequired ? photoCount : undefined,
           photoTotalBytes: isPhotoRequired ? photoTotalBytes : undefined,
+          allowDuplicatePhotos,
           total: submissionTotal,
           queuedAt: Date.now(),
           location: {
@@ -1870,12 +1891,17 @@ export default function FormPage() {
           userEmail: finalEmail,
           actorEmail,
           isAdminOverride:
-            isAdmin && (!!overrideEmail || !!overrideDate || !!overridePeriod),
+            isAdmin &&
+            (!!overrideEmail ||
+              !!overrideDate ||
+              !!overridePeriod ||
+              skipRequiredPhotos),
           overrideTargetEmail: overrideEmail || null,
           date: submittedAt,
           cleyOrderValue: cleyValue,
           overridePeriod: isAdmin ? overridePeriod : null,
           overrideMonthCode: isAdmin ? overrideMonthCode : null,
+          skipRequiredPhotos: shouldSkipRequiredPhotos,
         },
         isAdmin,
       });
@@ -2026,7 +2052,7 @@ export default function FormPage() {
         )}
 
         {/* Admin Override Section - Only visible for admin users */}
-        {isOverrideEmail(session?.user?.email || cachedEmail) && (
+        {isAdminCandidate && (
           <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg mb-3 p-4 border-2 border-purple-200">
             <div className="flex items-center mb-3">
               <div className="w-2 h-2 bg-purple-600 rounded-full mr-2 animate-pulse"></div>
@@ -2186,6 +2212,34 @@ export default function FormPage() {
                 </p>
               )}
             </div>
+
+            {isPhotoRequiredClient && (
+              <div className="mt-4 rounded-md border border-purple-200 bg-white/80 p-3">
+                <div className="flex items-start gap-3 text-sm text-purple-950">
+                  <Checkbox
+                    id="skip-required-photos"
+                    checked={skipRequiredPhotos}
+                    onCheckedChange={(checked) => {
+                      haptics.light();
+                      setSkipRequiredPhotos(checked === true);
+                      setCleyPhotoError(null);
+                    }}
+                    className="mt-0.5 border-purple-400 data-[state=checked]:bg-purple-600"
+                  />
+                  <label
+                    htmlFor="skip-required-photos"
+                    className="cursor-pointer"
+                  >
+                    Omitir fotos requeridas para este envio
+                    <span className="mt-1 block text-xs text-purple-700">
+                      Permite enviar sin las {PHOTO_MIN_REQUIRED} fotos minimas.
+                      Si adjuntas fotos como admin, las duplicadas tambien se
+                      aceptan automaticamente.
+                    </span>
+                  </label>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -2223,9 +2277,16 @@ export default function FormPage() {
             <CleyPhotoCapture
               photos={cleyPhotos}
               maxPhotos={PHOTO_MAX}
-              minPhotos={PHOTO_MIN_REQUIRED}
+              minPhotos={skipRequiredPhotos ? 0 : PHOTO_MIN_REQUIRED}
               isBusy={isCompressingPhotos}
-              error={cleyPhotoError}
+              error={skipRequiredPhotos ? null : cleyPhotoError}
+              helperText={
+                skipRequiredPhotos
+                  ? "Modo admin: las fotos son opcionales para este envio."
+                  : isAdminCandidate
+                    ? "Las fotos duplicadas se permiten automaticamente para admin."
+                    : null
+              }
               onAddFiles={handleAddCleyPhotos}
               onRemove={handleRemoveCleyPhoto}
             />
@@ -2317,8 +2378,7 @@ export default function FormPage() {
               isSubmitting ||
               isCompressingPhotos ||
               (!session?.user?.email && !cachedEmail) ||
-              (locationAlert !== null &&
-                !isOverrideEmail(session?.user?.email || cachedEmail))
+              (locationAlert !== null && !isAdminCandidate)
             }
           >
             {isSubmitting ? (
@@ -2334,8 +2394,7 @@ export default function FormPage() {
               "Esperando ubicacion..."
             ) : isCompressingPhotos ? (
               "Comprimiendo fotos..."
-            ) : locationAlert !== null &&
-              !isOverrideEmail(session?.user?.email || cachedEmail) ? (
+            ) : locationAlert !== null && !isAdminCandidate ? (
               "Estas lejos del cliente"
             ) : (
               "Enviar Pedido"

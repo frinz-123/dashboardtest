@@ -12,6 +12,7 @@ interface CleyPhotoCaptureProps {
   minPhotos: number;
   isBusy: boolean;
   error?: string | null;
+  helperText?: string | null;
   onAddFiles: (files: FileList) => void;
   onRemove: (id: string) => void;
 }
@@ -22,6 +23,7 @@ export default function CleyPhotoCapture({
   minPhotos,
   isBusy,
   error,
+  helperText,
   onAddFiles,
   onRemove,
 }: CleyPhotoCaptureProps) {
@@ -85,7 +87,10 @@ export default function CleyPhotoCapture({
 
       {isBusy && <p className="text-xs text-gray-500">Comprimiendo fotos...</p>}
       {error && <p className="text-xs text-red-600">{error}</p>}
-      {!error && photos.length === 0 && (
+      {!error && helperText && (
+        <p className="text-xs text-gray-500">{helperText}</p>
+      )}
+      {!error && !helperText && photos.length === 0 && (
         <p className="text-xs text-gray-500">
           Agrega de {minPhotos} a {maxPhotos} fotos.
         </p>

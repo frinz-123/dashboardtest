@@ -137,9 +137,18 @@ type ProductTraceRow = {
   kind: "Entrada" | "Salida";
   movementType: string;
   quantity: number;
+  saldo: number;
   notes: string;
   weekCode: string;
+  isSelectedWeek: boolean;
   ledgerRow?: LedgerRow;
+};
+
+type ProductTraceTimelineRow = ProductTraceRow & {
+  quantityDelta: number;
+  sortDate: string;
+  sortPriority: number;
+  sortSequence: number;
 };
 
 type LedgerFormState = {
@@ -192,6 +201,19 @@ const isOnOrAfterBaselineWeek = (code: string) => {
 
 const formatNumber = (value: number) =>
   new Intl.NumberFormat("es-MX").format(value);
+
+const compareProductTraceRows = (
+  a: ProductTraceTimelineRow,
+  b: ProductTraceTimelineRow,
+) => {
+  const dateComparison = a.sortDate.localeCompare(b.sortDate);
+  if (dateComparison !== 0) return dateComparison;
+
+  const priorityComparison = a.sortPriority - b.sortPriority;
+  if (priorityComparison !== 0) return priorityComparison;
+
+  return a.sortSequence - b.sortSequence;
+};
 
 const getDefaultDate = () => new Date().toISOString().split("T")[0] || "";
 
@@ -1268,8 +1290,11 @@ export default function InventarioCarroPage() {
 
   const productTraceRows = useMemo(() => {
     if (!traceProduct) return [];
-    const ledgerEntries: ProductTraceRow[] = ledgerForSeller
-      .filter((row) => row.product === traceProduct)
+    const ledgerEntries: ProductTraceTimelineRow[] = ledgerForSeller
+      .filter(
+        (row) =>
+          row.product === traceProduct && isOnOrAfterBaselineWeek(row.weekCode),
+      )
       .map((row) => ({
         id: `ledger-${row.rowNumber}`,
         date: row.date,
@@ -1279,33 +1304,60 @@ export default function InventarioCarroPage() {
             row.movementType as (typeof MOVEMENT_TYPES)[number]
           ]?.label || row.movementType,
         quantity: row.quantity,
+        saldo: 0,
         notes: row.notes || "-",
         weekCode: row.weekCode,
+        isSelectedWeek: row.weekCode === selectedWeekCode,
         ledgerRow: row,
+        quantityDelta: row.quantity,
+        sortDate: row.date || BASELINE_DATE,
+        sortPriority: 0,
+        sortSequence: row.rowNumber,
       }));
 
-    const totalSales = salesWeekTotals[traceProduct] || 0;
+    const salesEntries: ProductTraceTimelineRow[] = salesForSeller.flatMap(
+      (row, index) => {
+        const quantity = row.products[traceProduct] || 0;
+        if (!quantity || !isOnOrAfterBaselineWeek(row.weekCode)) {
+          return [];
+        }
 
-    const salesEntries: ProductTraceRow[] = totalSales
-      ? [
+        return [
           {
-            id: "sales-total",
-            date: "Total",
-            kind: "Salida",
-            movementType: "Total salidas",
-            quantity: totalSales,
+            id: `sale-${row.weekCode}-${row.date || "sin-fecha"}-${index}`,
+            date: row.date || "-",
+            kind: "Salida" as const,
+            movementType: "Venta",
+            quantity,
+            saldo: 0,
             notes: "Solo lectura",
-            weekCode: "-",
+            weekCode: row.weekCode,
+            isSelectedWeek: row.weekCode === selectedWeekCode,
+            quantityDelta: -quantity,
+            sortDate: row.date || BASELINE_DATE,
+            sortPriority: 1,
+            sortSequence: index,
           },
-        ]
-      : [];
+        ];
+      },
+    );
 
-    return [...ledgerEntries, ...salesEntries].sort((a, b) => {
-      const aKey = a.date === "Total" ? "0000-00-00" : a.date;
-      const bKey = b.date === "Total" ? "0000-00-00" : b.date;
-      return bKey.localeCompare(aKey);
-    });
-  }, [ledgerForSeller, salesWeekTotals, traceProduct]);
+    const timeline = [...ledgerEntries, ...salesEntries].sort(
+      compareProductTraceRows,
+    );
+
+    let runningSaldo = 0;
+
+    return timeline
+      .map((row) => {
+        runningSaldo += row.quantityDelta;
+        return {
+          ...row,
+          saldo: runningSaldo,
+        };
+      })
+      .toReversed();
+  }, [ledgerForSeller, salesForSeller, selectedWeekCode, traceProduct]);
 
   if (status === "unauthenticated") {
     redirect("/auth/signin");
@@ -1690,8 +1742,18 @@ export default function InventarioCarroPage() {
           <div className="space-y-3">
             <p className="text-xs text-slate-500">
               Entradas corresponden a cargas, ajustes o inventario inicial. Las
-              salidas se muestran en modo lectura.
+              salidas se muestran en modo lectura. El saldo se calcula desde el
+              baseline {BASELINE_DATE}.
             </p>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 px-2 py-1 text-sky-700 ring-1 ring-inset ring-sky-100">
+                <span className="h-1.5 w-1.5 rounded-full bg-sky-500/70" />
+                Semana seleccionada {selectedWeekCode}
+              </span>
+              <span>
+                Las filas con este tono pertenecen a la semana filtrada.
+              </span>
+            </div>
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead className="text-xs text-slate-500">
@@ -1699,7 +1761,8 @@ export default function InventarioCarroPage() {
                     <th className="py-2 pr-3">Fecha</th>
                     <th className="py-2 pr-3">Tipo</th>
                     <th className="py-2 pr-3">Movimiento</th>
-                    <th className="py-2 pr-3">Cantidad</th>
+                    <th className="py-2 pr-3 text-right">Cantidad</th>
+                    <th className="py-2 pr-3 text-right">Saldo</th>
                     <th className="py-2 pr-3">Notas</th>
                     <th className="py-2 pr-3">Semana</th>
                     <th className="py-2"></th>
@@ -1709,7 +1772,7 @@ export default function InventarioCarroPage() {
                   {productTraceRows.length === 0 && (
                     <tr>
                       <td
-                        colSpan={7}
+                        colSpan={8}
                         className="py-4 text-center text-slate-400"
                       >
                         Sin movimientos para este producto
@@ -1719,7 +1782,12 @@ export default function InventarioCarroPage() {
                   {productTraceRows.map((row) => (
                     <tr
                       key={row.id}
-                      className="border-b border-slate-100 last:border-b-0"
+                      className={cn(
+                        "border-b last:border-b-0",
+                        row.isSelectedWeek
+                          ? "border-sky-100 bg-sky-50/60"
+                          : "border-slate-100",
+                      )}
                     >
                       <td className="py-2 pr-3 text-slate-700">{row.date}</td>
                       <td className="py-2 pr-3">
@@ -1730,18 +1798,37 @@ export default function InventarioCarroPage() {
                       <td className="py-2 pr-3 text-slate-700">
                         {row.movementType}
                       </td>
-                      <td className="py-2 pr-3">
+                      <td className="py-2 pr-3 text-right tabular-nums">
                         {formatNumber(row.quantity)}
                       </td>
+                      <td className="py-2 pr-3 text-right tabular-nums font-medium text-slate-900">
+                        {formatNumber(row.saldo)}
+                      </td>
                       <td className="py-2 pr-3 text-slate-500">{row.notes}</td>
-                      <td className="py-2 pr-3 text-slate-500">
-                        {row.weekCode}
+                      <td className="py-2 pr-3">
+                        <span
+                          className={cn(
+                            "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ring-1 ring-inset",
+                            row.isSelectedWeek
+                              ? "bg-sky-100/80 text-sky-700 ring-sky-200/80"
+                              : "bg-slate-100 text-slate-500 ring-slate-200",
+                          )}
+                        >
+                          {row.isSelectedWeek ? (
+                            <span className="h-1.5 w-1.5 rounded-full bg-sky-500/70" />
+                          ) : null}
+                          {row.weekCode}
+                        </span>
                       </td>
                       <td className="py-2 text-right">
                         {row.kind === "Entrada" && row.ledgerRow ? (
                           <button
                             type="button"
-                            onClick={() => handleEditOpen(row.ledgerRow)}
+                            onClick={() => {
+                              if (row.ledgerRow) {
+                                handleEditOpen(row.ledgerRow);
+                              }
+                            }}
                             className="inline-flex items-center gap-1 text-xs text-slate-600 hover:text-slate-900"
                           >
                             <Pencil className="h-3.5 w-3.5" />

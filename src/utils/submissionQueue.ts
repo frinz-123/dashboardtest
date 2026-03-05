@@ -34,6 +34,7 @@ export interface QueuedSubmission {
     photoUrls?: string[];
     photoCount?: number;
     photoTotalBytes?: number;
+    allowDuplicatePhotos?: boolean;
     total: number;
     queuedAt?: number;
     location: {
@@ -50,6 +51,7 @@ export interface QueuedSubmission {
     cleyOrderValue: string | null;
     overridePeriod: string | null;
     overrideMonthCode: string | null;
+    skipRequiredPhotos?: boolean;
   };
   status: SubmissionStatus;
   createdAt: number; // When the submission was queued

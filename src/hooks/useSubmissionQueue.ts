@@ -170,10 +170,16 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
         // the body completes — throwing here would leave the item in "pending"
         // even though the server already wrote the order to Google Sheets.
         if (response.ok) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          let data: any = {};
+          let data: { duplicate?: boolean } = {};
           try {
-            data = await response.json();
+            const parsed = await response.json();
+            if (
+              parsed &&
+              typeof parsed === "object" &&
+              !Array.isArray(parsed)
+            ) {
+              data = parsed as { duplicate?: boolean };
+            }
           } catch {
             console.warn(
               "[Queue] HTTP 200 but body parse failed — treating as success",
@@ -182,10 +188,12 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
           return { success: true, duplicate: data?.duplicate };
         }
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        let errorData: any = {};
+        let errorData: { error?: string } = {};
         try {
-          errorData = await response.json();
+          const parsed = await response.json();
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            errorData = parsed as { error?: string };
+          }
         } catch {
           // Ignore body parse errors on error responses
         }
@@ -218,7 +226,11 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
   );
 
   const uploadPhoto = useCallback(
-    async (photoId: string, submissionId: string): Promise<string> => {
+    async (
+      photoId: string,
+      submissionId: string,
+      allowDuplicatePhotos: boolean,
+    ): Promise<string> => {
       const stored = await getPhoto(photoId);
       if (!stored) {
         throw new Error(`Foto no encontrada (${photoId})`);
@@ -228,6 +240,10 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
       formData.append("file", stored.blob, `${submissionId}-${photoId}.jpg`);
       formData.append("photoId", photoId);
       formData.append("submissionId", submissionId);
+      formData.append(
+        "allowDuplicatePhotos",
+        allowDuplicatePhotos ? "true" : "false",
+      );
 
       const response = await fetchWithTimeout(
         "/api/upload-photo",
@@ -272,6 +288,7 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
       if (!photoIds || photoIds.length === 0) {
         return { success: true, item };
       }
+      const allowDuplicatePhotos = item.payload.allowDuplicatePhotos === true;
 
       const existingUrls = Array.isArray(item.payload.photoUrls)
         ? [...item.payload.photoUrls]
@@ -299,7 +316,7 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
             throw err;
           }
 
-          const url = await uploadPhoto(photoId, item.id);
+          const url = await uploadPhoto(photoId, item.id, allowDuplicatePhotos);
           existingUrls.push(url);
 
           // Save progress after EACH successful upload
@@ -323,7 +340,7 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
         return {
           success: false,
           error: getErrorMessage(error) || "No se pudieron subir las fotos",
-          fatal: isDuplicate || isPhotoLost,
+          fatal: isPhotoLost || (isDuplicate && !allowDuplicatePhotos),
         };
       }
     },
@@ -364,12 +381,9 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
             await submissionQueue.update(item.id, {
               status: "failed",
               retryCount: newRetryCount,
-              errorMessage:
-                prepared.error || "No se pudieron subir las fotos",
+              errorMessage: prepared.error || "No se pudieron subir las fotos",
             });
-            console.error(
-              `[Queue] ${item.id} -> failed (fatal photo error)`,
-            );
+            console.error(`[Queue] ${item.id} -> failed (fatal photo error)`);
             haptics.error();
             return false;
           }
@@ -379,12 +393,9 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
             await submissionQueue.update(item.id, {
               status: "failed",
               retryCount: newRetryCount,
-              errorMessage:
-                prepared.error || "Maximo de reintentos alcanzado",
+              errorMessage: prepared.error || "Maximo de reintentos alcanzado",
             });
-            console.error(
-              `[Queue] ${item.id} -> failed (max retries reached)`,
-            );
+            console.error(`[Queue] ${item.id} -> failed (max retries reached)`);
             haptics.error();
             return false;
           }
@@ -446,9 +457,7 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
             retryCount: newRetryCount,
             errorMessage: result.error || "Maximo de reintentos alcanzado",
           });
-          console.error(
-            `[Queue] ${item.id} -> failed (max retries reached)`,
-          );
+          console.error(`[Queue] ${item.id} -> failed (max retries reached)`);
           haptics.error();
           return false;
         }
@@ -707,7 +716,12 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("focus", handleFocus);
     };
-  }, [processQueue, tryRegisterBackgroundSync, loadQueue, recoverStaleSendingItems]);
+  }, [
+    processQueue,
+    tryRegisterBackgroundSync,
+    loadQueue,
+    recoverStaleSendingItems,
+  ]);
 
   // Detect initial Background Sync support once and prefer SW processing if available.
   useEffect(() => {

@@ -5,6 +5,8 @@ import {
   S3Client,
 } from "@aws-sdk/client-s3";
 import { NextResponse } from "next/server";
+import { auth } from "@/auth";
+import { isFormAdminEmail, parseBooleanLike } from "@/utils/formSubmission";
 
 // Force Node.js runtime (not Edge) for stream and crypto compatibility
 export const runtime = "nodejs";
@@ -60,11 +62,18 @@ export async function POST(req: Request) {
   try {
     stage = "formData";
     const formData = await req.formData();
+    const session = await auth();
     const file = formData.get("file");
     const submissionId = (
       formData.get("submissionId") || "submission"
     ).toString();
     const photoId = (formData.get("photoId") || "photo").toString();
+    const allowDuplicatePhotosRequested = parseBooleanLike(
+      formData.get("allowDuplicatePhotos"),
+    );
+    const sessionEmail = session?.user?.email?.toLowerCase().trim() || "";
+    const allowDuplicatePhotos =
+      allowDuplicatePhotosRequested && isFormAdminEmail(sessionEmail);
 
     // Check if file is a valid Blob-like object (File extends Blob)
     // We can't use `instanceof File` because File is not defined in Node.js runtime
@@ -88,7 +97,17 @@ export async function POST(req: Request) {
     const extension = mimeType.includes("png") ? "png" : "jpg";
     const buffer = Buffer.from(await blob.arrayBuffer());
     const photoHash = createHash("sha256").update(buffer).digest("hex");
-    const objectKey = `photos/${photoHash}.${extension}`;
+    const objectKey = allowDuplicatePhotos
+      ? `photos/admin/${photoHash}-${submissionId}-${photoId}.${extension}`
+      : `photos/${photoHash}.${extension}`;
+
+    if (allowDuplicatePhotosRequested && !allowDuplicatePhotos) {
+      console.warn("Ignoring duplicate-photo bypass for non-admin actor", {
+        submissionId,
+        photoId,
+        sessionEmail: sessionEmail || null,
+      });
+    }
 
     stage = "checkDuplicate";
     let existingMetadata: Record<string, string> | undefined;
@@ -125,7 +144,9 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           success: false,
-          error: "Foto duplicada. Toma una nueva.",
+          error: allowDuplicatePhotos
+            ? "Conflicto al reintentar la misma foto."
+            : "Foto duplicada. Toma una nueva.",
           duplicate: true,
         },
         { status: 409 },
@@ -143,6 +164,8 @@ export async function POST(req: Request) {
           submissionid: submissionId,
           photoid: photoId,
           photohash: photoHash,
+          allowduplicatephotos: allowDuplicatePhotos ? "true" : "false",
+          actoremail: sessionEmail || "unknown",
         },
       }),
     );

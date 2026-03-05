@@ -1,24 +1,25 @@
 import { google } from "googleapis";
 import { after, NextResponse } from "next/server";
 import { getCurrentPeriodInfo } from "@/utils/dateUtils";
+import {
+  isFormAdminEmail,
+  isPhotoRequiredClientCode,
+  PHOTO_MIN_REQUIRED,
+  parseBooleanLike,
+} from "@/utils/formSubmission";
 import { sheetsAuth } from "@/utils/googleAuth";
 
 const spreadsheetId = "1a0jZVdKFNWTHDsM-68LT5_OLPMGejAKs9wfCxYqqe_g";
 
-// Admin override emails - users who can bypass GPS validation
-const OVERRIDE_EMAILS =
-  process.env.NEXT_PUBLIC_OVERRIDE_EMAIL?.split(",").map((email) =>
-    email.trim(),
-  ) || [];
-
 // Location validation constants
 const MAX_LOCATION_ACCURACY = 100; // meters - reject if GPS accuracy is worse than this
 const MAX_CLIENT_DISTANCE = 450; // meters - maximum allowed distance to client
-const PHOTO_REQUIRED_CODES = new Set(["CLEY", "TERE", "MERZ", "MERKAHORRO"]);
-const PHOTO_MIN_REQUIRED = 2;
 
 // 🔧 DEDUPLICATION: In-memory cache for recent submissions (expires after 2 minutes)
-const recentSubmissions = new Map<string, { timestamp: number; data: any }>();
+const recentSubmissions = new Map<
+  string,
+  { timestamp: number; data: unknown }
+>();
 const inFlightSubmissions = new Set<string>();
 const DEDUPLICATION_WINDOW = 120000; // 2 minutes
 
@@ -34,7 +35,7 @@ setInterval(() => {
 
 // Helper function to check if user is an admin with override permissions
 function isOverrideEmail(email: string | null | undefined): boolean {
-  return email ? OVERRIDE_EMAILS.includes(email) : false;
+  return isFormAdminEmail(email);
 }
 
 // Calculate distance between two coordinates using Haversine formula
@@ -107,6 +108,8 @@ export async function POST(req: Request) {
       overridePeriod,
       overrideMonthCode,
       photoUrls: rawPhotoUrls,
+      skipRequiredPhotos: rawSkipRequiredPhotos,
+      allowDuplicatePhotos: rawAllowDuplicatePhotos,
     } = body;
 
     submissionId =
@@ -138,6 +141,12 @@ export async function POST(req: Request) {
 
     const adminEmailForValidation = actorEmail ?? userEmail ?? null;
     const isAdmin = isOverrideEmail(adminEmailForValidation);
+    const skipRequiredPhotosRequested = parseBooleanLike(rawSkipRequiredPhotos);
+    const allowDuplicatePhotosRequested = parseBooleanLike(
+      rawAllowDuplicatePhotos,
+    );
+    const skipRequiredPhotos = isAdmin && skipRequiredPhotosRequested;
+    const allowDuplicatePhotos = isAdmin && allowDuplicatePhotosRequested;
     const hasOverrideDateInput =
       typeof overrideDateString === "string" &&
       overrideDateString.trim().length > 0;
@@ -146,7 +155,9 @@ export async function POST(req: Request) {
         overrideTargetEmail ||
         hasOverrideDateInput ||
         (typeof overridePeriod === "string" && overridePeriod.trim()) ||
-        (typeof overrideMonthCode === "string" && overrideMonthCode.trim()),
+        (typeof overrideMonthCode === "string" && overrideMonthCode.trim()) ||
+        skipRequiredPhotosRequested ||
+        allowDuplicatePhotosRequested,
     );
 
     const locationAge = location?.timestamp
@@ -183,6 +194,10 @@ export async function POST(req: Request) {
       cleyOrderValue,
       cleyOrderValueType: typeof cleyOrderValue,
       photoUrlCount: photoUrls.length,
+      skipRequiredPhotosRequested,
+      skipRequiredPhotosEffective: skipRequiredPhotos,
+      allowDuplicatePhotosRequested,
+      allowDuplicatePhotosEffective: allowDuplicatePhotos,
       totalProducts: Object.keys(products).length,
       hasLocation: !!location,
       locationAccuracy: location?.accuracy,
@@ -213,6 +228,8 @@ export async function POST(req: Request) {
           hasOverrideDateInput,
           overridePeriod,
           overrideMonthCode,
+          skipRequiredPhotosRequested,
+          allowDuplicatePhotosRequested,
         },
       );
     }
@@ -220,7 +237,8 @@ export async function POST(req: Request) {
     const normalizedClientCode =
       typeof clientCode === "string" ? clientCode.toUpperCase() : "";
     if (
-      PHOTO_REQUIRED_CODES.has(normalizedClientCode) &&
+      isPhotoRequiredClientCode(normalizedClientCode) &&
+      !skipRequiredPhotos &&
       photoUrls.length < PHOTO_MIN_REQUIRED
     ) {
       return NextResponse.json(
@@ -644,6 +662,8 @@ export async function POST(req: Request) {
         actorEmail,
         userEmail,
         overrideTargetEmail,
+        skipRequiredPhotos,
+        allowDuplicatePhotos,
       });
 
       // Try using append instead of update to handle the column range better
