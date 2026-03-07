@@ -2112,7 +2112,7 @@ export default function FormPage() {
                   haptics.light();
                   setOverrideDate(e.target.value);
                 }}
-                className="w-full px-3 py-2 text-base border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white"
+                className="w-full min-w-0 max-w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white"
               />
               {overrideDate && (
                 <div className="mt-2 p-2 bg-purple-100 rounded-md">

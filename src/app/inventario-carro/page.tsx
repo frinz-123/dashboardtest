@@ -382,7 +382,7 @@ const ProductCombobox = ({
             setIsOpen(!isOpen);
             inputRef.current?.focus();
           }}
-          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 transition-colors [@media(hover:hover)]:hover:text-slate-600"
         >
           <ChevronDown className="h-4 w-4" />
         </button>
@@ -554,7 +554,7 @@ const DatePicker = ({ value, onChange, id }: DatePickerProps) => {
         type="button"
         id={id}
         onClick={() => setIsOpen(!isOpen)}
-        className="flex w-full items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 text-base text-left"
+        className="flex min-h-[44px] w-full items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 text-base text-left"
       >
         <span className={value ? "text-slate-900" : "text-slate-400"}>
           {value ? formatDisplayDate(value) : "Seleccionar fecha"}
@@ -569,7 +569,7 @@ const DatePicker = ({ value, onChange, id }: DatePickerProps) => {
             <button
               type="button"
               onClick={handlePrevMonth}
-              className="rounded p-1 hover:bg-slate-100"
+              className="flex h-11 w-11 items-center justify-center rounded transition-colors [@media(hover:hover)]:hover:bg-slate-100"
             >
               <ChevronLeft className="h-5 w-5" />
             </button>
@@ -579,7 +579,7 @@ const DatePicker = ({ value, onChange, id }: DatePickerProps) => {
             <button
               type="button"
               onClick={handleNextMonth}
-              className="rounded p-1 hover:bg-slate-100"
+              className="flex h-11 w-11 items-center justify-center rounded transition-colors [@media(hover:hover)]:hover:bg-slate-100"
             >
               <ChevronRight className="h-5 w-5" />
             </button>
@@ -608,12 +608,12 @@ const DatePicker = ({ value, onChange, id }: DatePickerProps) => {
                 type="button"
                 onClick={() => handleSelectDay(day)}
                 className={cn(
-                  "flex h-9 w-full items-center justify-center rounded text-sm",
+                  "flex h-11 w-full items-center justify-center rounded text-sm transition-colors",
                   isSelectedDay(day)
                     ? "bg-slate-900 text-white"
                     : isToday(day)
                       ? "bg-slate-100 font-semibold"
-                      : "hover:bg-slate-100",
+                      : "[@media(hover:hover)]:hover:bg-slate-100",
                 )}
               >
                 {day}
@@ -671,11 +671,11 @@ const QuantityStepper = ({
   };
 
   return (
-    <div className="flex h-10 w-full items-center overflow-hidden rounded-lg border border-slate-200">
+    <div className="flex h-11 w-full items-center overflow-hidden rounded-lg border border-slate-200">
       <button
         type="button"
         onClick={handleDecrement}
-        className="flex h-full w-10 shrink-0 items-center justify-center border-r border-slate-200 bg-slate-50 text-slate-600 transition-colors hover:bg-slate-100 active:bg-slate-200"
+        className="flex h-full w-11 shrink-0 items-center justify-center border-r border-slate-200 bg-slate-50 text-slate-600 transition-colors [@media(hover:hover)]:hover:bg-slate-100 active:bg-slate-200"
       >
         <Minus className="h-4 w-4" />
       </button>
@@ -691,7 +691,7 @@ const QuantityStepper = ({
       <button
         type="button"
         onClick={handleIncrement}
-        className="flex h-full w-10 shrink-0 items-center justify-center border-l border-slate-200 bg-slate-50 text-slate-600 transition-colors hover:bg-slate-100 active:bg-slate-200"
+        className="flex h-full w-11 shrink-0 items-center justify-center border-l border-slate-200 bg-slate-50 text-slate-600 transition-colors [@media(hover:hover)]:hover:bg-slate-100 active:bg-slate-200"
       >
         <Plus className="h-4 w-4" />
       </button>
@@ -1440,7 +1440,7 @@ export default function InventarioCarroPage() {
   if (status === "loading") {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
+        <div className="animate-spin motion-reduce:animate-none rounded-full h-8 w-8 border-b-2 border-blue-600" />
       </div>
     );
   }
@@ -1459,8 +1459,7 @@ export default function InventarioCarroPage() {
                 Inventario semanal por vendedor
               </h2>
               <p className="text-xs text-slate-500">
-                Semana {selectedWeek} del periodo {selectedPeriod} · Baseline{" "}
-                {BASELINE_DATE}
+                Semana {selectedWeek} del periodo {selectedPeriod}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -1468,7 +1467,7 @@ export default function InventarioCarroPage() {
                 type="button"
                 onClick={handleRefresh}
                 disabled={isSaving}
-                className="inline-flex items-center justify-center px-3 py-2 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-100"
+                className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-slate-200 text-slate-700 transition-colors [@media(hover:hover)]:hover:bg-slate-100"
                 aria-label="Actualizar"
               >
                 <RefreshCcw className="h-4 w-4" />
@@ -1482,7 +1481,7 @@ export default function InventarioCarroPage() {
                   isLedgerLoading ||
                   isSalesLoading
                 }
-                className="inline-flex items-center justify-center px-3 py-2 rounded-lg border border-red-200 text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-red-200 text-red-700 transition-colors [@media(hover:hover)]:hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
                 aria-label="Resetear saldo del vendedor"
                 title="Resetear saldo del vendedor"
               >
@@ -1491,7 +1490,7 @@ export default function InventarioCarroPage() {
               <button
                 type="button"
                 onClick={handleOpenAdd}
-                className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 text-white text-sm hover:bg-slate-800"
+                className="inline-flex h-11 items-center gap-2 px-4 rounded-lg bg-slate-900 text-white text-sm transition-colors [@media(hover:hover)]:hover:bg-slate-800"
               >
                 <PackagePlus className="h-4 w-4" />
                 Agregar carga
@@ -1500,7 +1499,7 @@ export default function InventarioCarroPage() {
                 <button
                   type="button"
                   onClick={handleSeed}
-                  className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-700 hover:bg-slate-100"
+                  className="inline-flex h-11 items-center gap-2 px-3 rounded-lg border border-slate-200 text-sm text-slate-700 transition-colors [@media(hover:hover)]:hover:bg-slate-100"
                 >
                   Seed demo
                 </button>
@@ -1662,7 +1661,7 @@ export default function InventarioCarroPage() {
                   <button
                     type="button"
                     onClick={handlePrint}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                    className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs font-medium text-slate-700 transition-colors [@media(hover:hover)]:hover:bg-slate-100"
                   >
                     Imprimir
                   </button>
@@ -1690,21 +1689,21 @@ export default function InventarioCarroPage() {
                           <button
                             type="button"
                             onClick={() => setTraceProduct(product)}
-                            className="text-left text-slate-800 hover:text-slate-900 hover:underline"
+                            className="flex min-h-[44px] w-full items-center text-left text-slate-800 transition-colors [@media(hover:hover)]:hover:text-slate-900 [@media(hover:hover)]:hover:underline"
                           >
                             {product}
                           </button>
                         </td>
-                        <td className="py-2 pr-3">
+                        <td className="py-2 pr-3 tabular-nums">
                           {formatNumber(saldoInicial[product] || 0)}
                         </td>
-                        <td className="py-2 pr-3">
+                        <td className="py-2 pr-3 tabular-nums">
                           {formatNumber(ledgerWeekTotals[product] || 0)}
                         </td>
-                        <td className="py-2 pr-3">
+                        <td className="py-2 pr-3 tabular-nums">
                           {formatNumber(salesWeekTotals[product] || 0)}
                         </td>
-                        <td className="py-2 font-semibold text-slate-900">
+                        <td className="py-2 tabular-nums font-semibold text-slate-900">
                           {formatNumber(saldoFinal[product] || 0)}
                         </td>
                       </tr>
@@ -1728,7 +1727,7 @@ export default function InventarioCarroPage() {
                   <button
                     type="button"
                     onClick={() => setShowAllHistory((prev) => !prev)}
-                    className="text-xs font-medium text-slate-600 hover:text-slate-900"
+                    className="flex min-h-[44px] items-center px-2 text-xs font-medium text-slate-600 transition-colors [@media(hover:hover)]:hover:text-slate-900"
                   >
                     {showAllHistory ? "Ver menos" : "Ver más"}
                   </button>
@@ -1772,7 +1771,7 @@ export default function InventarioCarroPage() {
                             {row.movementType}
                           </span>
                         </td>
-                        <td className="py-2 pr-3">
+                        <td className="py-2 pr-3 tabular-nums">
                           {formatNumber(row.quantity)}
                         </td>
                         <td className="py-2 pr-3 text-slate-500">
@@ -1797,7 +1796,7 @@ export default function InventarioCarroPage() {
                           <button
                             type="button"
                             onClick={() => handleEditOpen(row)}
-                            className="inline-flex items-center gap-1 text-xs text-slate-600 hover:text-slate-900"
+                            className="inline-flex min-h-[44px] items-center gap-1 px-2 text-xs text-slate-600 transition-colors [@media(hover:hover)]:hover:text-slate-900"
                           >
                             <Pencil className="h-3.5 w-3.5" />
                             Editar
@@ -1821,25 +1820,16 @@ export default function InventarioCarroPage() {
       >
         <DialogContent className="w-[94vw] max-w-4xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
           <DialogHeader>
-            <DialogTitle>
-              Trazabilidad de producto {traceProduct ? `· ${traceProduct}` : ""}
+            <DialogTitle className="flex flex-col gap-0.5">
+              <span className="text-sm font-medium text-slate-500">Trazabilidad de producto</span>
+              <span className="text-[28px] font-bold leading-tight tracking-tight text-slate-900">{traceProduct}</span>
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
-            <p className="text-xs text-slate-500">
-              Entradas corresponden a cargas, ajustes o inventario inicial. Las
-              salidas se muestran en modo lectura. El saldo se calcula desde el
-              baseline {BASELINE_DATE}.
-            </p>
-            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 px-2 py-1 text-sky-700 ring-1 ring-inset ring-sky-100">
-                <span className="h-1.5 w-1.5 rounded-full bg-sky-500/70" />
-                Semana seleccionada {selectedWeekCode}
-              </span>
-              <span>
-                Las filas con este tono pertenecen a la semana filtrada.
-              </span>
-            </div>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 px-2 py-1 text-xs text-sky-700 ring-1 ring-inset ring-sky-100">
+              <span className="h-1.5 w-1.5 rounded-full bg-sky-500/70" />
+              Semana seleccionada {selectedWeekCode}
+            </span>
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead className="text-xs text-slate-500">
@@ -1915,7 +1905,7 @@ export default function InventarioCarroPage() {
                                 handleEditOpen(row.ledgerRow);
                               }
                             }}
-                            className="inline-flex items-center gap-1 text-xs text-slate-600 hover:text-slate-900"
+                            className="inline-flex min-h-[44px] items-center gap-1 px-2 text-xs text-slate-600 transition-colors [@media(hover:hover)]:hover:text-slate-900"
                           >
                             <Pencil className="h-3.5 w-3.5" />
                             Editar
@@ -2022,7 +2012,7 @@ export default function InventarioCarroPage() {
                       <button
                         type="button"
                         onClick={() => handleRemoveItem(item.id)}
-                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-700"
+                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition-colors [@media(hover:hover)]:hover:bg-slate-200 [@media(hover:hover)]:hover:text-slate-700"
                         aria-label="Quitar producto"
                       >
                         <Minus className="h-5 w-5" />
@@ -2036,7 +2026,7 @@ export default function InventarioCarroPage() {
                 layout
                 type="button"
                 onClick={handleAddItem}
-                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 text-base font-semibold text-white hover:bg-slate-800"
+                className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 text-base font-semibold text-white transition-colors [@media(hover:hover)]:hover:bg-slate-800"
                 transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
               >
                 <Plus className="h-3.5 w-3.5" />
@@ -2072,7 +2062,7 @@ export default function InventarioCarroPage() {
                         "relative flex flex-col rounded-lg border p-3 text-left transition-all",
                         isSelected
                           ? "border-slate-900 bg-slate-50 ring-1 ring-slate-900"
-                          : "border-slate-200 bg-white hover:border-slate-300",
+                          : "border-slate-200 bg-white [@media(hover:hover)]:hover:border-slate-300",
                       )}
                     >
                       <div className="flex items-start justify-between">
@@ -2186,7 +2176,7 @@ export default function InventarioCarroPage() {
               <button
                 type="button"
                 onClick={() => setIsAddOpen(false)}
-                className="px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-700"
+                className="min-h-[44px] px-4 rounded-lg border border-slate-200 text-sm text-slate-700 transition-colors [@media(hover:hover)]:hover:bg-slate-50"
               >
                 Cancelar
               </button>
@@ -2194,7 +2184,7 @@ export default function InventarioCarroPage() {
                 type="button"
                 onClick={handleAddSubmit}
                 disabled={isSaving}
-                className="px-3 py-2 rounded-lg bg-slate-900 text-white text-sm disabled:opacity-60"
+                className="min-h-[44px] px-4 rounded-lg bg-slate-900 text-white text-sm transition-colors [@media(hover:hover)]:hover:bg-slate-800 disabled:opacity-60"
               >
                 Guardar
               </button>
@@ -2485,7 +2475,7 @@ export default function InventarioCarroPage() {
                 <button
                   type="button"
                   onClick={() => setIsEditOpen(false)}
-                  className="px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-700"
+                  className="min-h-[44px] px-4 rounded-lg border border-slate-200 text-sm text-slate-700 transition-colors [@media(hover:hover)]:hover:bg-slate-50"
                 >
                   Cancelar
                 </button>
@@ -2493,7 +2483,7 @@ export default function InventarioCarroPage() {
                   type="button"
                   onClick={handleEditSubmit}
                   disabled={isSaving}
-                  className="px-3 py-2 rounded-lg bg-slate-900 text-white text-sm disabled:opacity-60"
+                  className="min-h-[44px] px-4 rounded-lg bg-slate-900 text-white text-sm transition-colors [@media(hover:hover)]:hover:bg-slate-800 disabled:opacity-60"
                 >
                   Guardar cambios
                 </button>
