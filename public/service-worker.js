@@ -34,9 +34,11 @@ const STORE_NAME = "pending-orders";
 const PHOTO_DB_NAME = "elrey-photo-store";
 const PHOTO_STORE_NAME = "cley-photos";
 const MAX_RETRIES = 5;
-const REQUEST_TIMEOUT_MS = 10000; // 10 seconds per network attempt
+const REQUEST_TIMEOUT_MS = 25000; // 25 seconds per network attempt
 const PHOTO_UPLOAD_TIMEOUT_MS = 15000; // 15 seconds per photo upload
 const STALE_SENDING_MS = 45000; // Recover "sending" items after 45 seconds
+const RETRY_DELAY_BASE = 2000;
+const PROCESSING_RETRY_DELAY_MS = 15000;
 
 const CACHEABLE_DESTINATIONS = new Set(["script", "style", "font", "worker"]);
 
@@ -80,6 +82,17 @@ const shouldBypassCaching = (request, url) => {
   if (url.pathname.startsWith("/_next/webpack-hmr")) return true;
   return false;
 };
+
+function getRetryDelayMs(retryCount) {
+  return Math.min(RETRY_DELAY_BASE * 2 ** retryCount, 16000);
+}
+
+function parseSubmissionState(value) {
+  if (value === "processing" || value === "submitted" || value === "unknown") {
+    return value;
+  }
+  return null;
+}
 
 async function precacheAppShell() {
   const cache = await caches.open(APP_SHELL_CACHE);
@@ -356,7 +369,11 @@ async function getPendingSubmissions() {
     const request = store.getAll();
 
     request.onsuccess = () => {
-      const all = request.result || [];
+      const all = (request.result || []).map((item) => ({
+        ...item,
+        lastServerState: item.lastServerState ?? null,
+        nextRetryAt: item.nextRetryAt ?? null,
+      }));
       // Filter to only pending items (not completed, failed, or currently sending)
       const pending = all.filter((s) => s.status === "pending");
       resolve(pending);
@@ -374,7 +391,14 @@ async function getAllSubmissions() {
     const store = transaction.objectStore(STORE_NAME);
     const request = store.getAll();
 
-    request.onsuccess = () => resolve(request.result || []);
+    request.onsuccess = () =>
+      resolve(
+        (request.result || []).map((item) => ({
+          ...item,
+          lastServerState: item.lastServerState ?? null,
+          nextRetryAt: item.nextRetryAt ?? null,
+        })),
+      );
     request.onerror = () => reject(request.error);
   });
 }
@@ -434,6 +458,8 @@ async function claimSubmission(id, source) {
         lastAttemptAt: Date.now(),
         lastAttemptSource: source,
         lastHttpStatus: null,
+        lastServerState: null,
+        nextRetryAt: null,
       };
       const putRequest = store.put(claimed);
 
@@ -494,6 +520,54 @@ function getErrorStatus(error) {
   return null;
 }
 
+function getErrorCode(error) {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof error.code === "string"
+  ) {
+    return error.code;
+  }
+  return null;
+}
+
+function getErrorSubmissionState(error) {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "submissionState" in error
+  ) {
+    return parseSubmissionState(error.submissionState);
+  }
+  return null;
+}
+
+function getErrorRetryAfterMs(error) {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "retryAfterMs" in error &&
+    typeof error.retryAfterMs === "number"
+  ) {
+    return error.retryAfterMs;
+  }
+  return null;
+}
+
+function isErrorPermanent(error) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "permanent" in error &&
+    error.permanent === true
+  );
+}
+
+function isPermanentHttpStatus(status) {
+  return status >= 400 && status < 500 && status !== 408 && status !== 429;
+}
+
 async function recoverStaleSendingSubmissions() {
   const now = Date.now();
   const all = await getAllSubmissions();
@@ -512,6 +586,8 @@ async function recoverStaleSendingSubmissions() {
         status: "failed",
         retryCount: nextRetryCount,
         errorMessage: timeoutMessage,
+        lastServerState: "unknown",
+        nextRetryAt: null,
       });
       console.error(
         `[SW] ${submission.id} recovered from stale sending -> failed`,
@@ -524,6 +600,8 @@ async function recoverStaleSendingSubmissions() {
       status: "pending",
       retryCount: nextRetryCount,
       errorMessage: timeoutMessage,
+      lastServerState: "unknown",
+      nextRetryAt: Date.now() + getRetryDelayMs(submission.retryCount || 0),
     });
     console.warn(
       `[SW] ${submission.id} recovered from stale sending -> pending`,
@@ -570,6 +648,8 @@ async function sendSubmission(submission) {
     return {
       ...data,
       httpStatus: response.status,
+      submissionState:
+        parseSubmissionState(data?.submissionState) || "submitted",
     };
   }
 
@@ -579,10 +659,26 @@ async function sendSubmission(submission) {
   } catch {
     // Ignore body parse errors on error responses
   }
+
+  if (response.status === 409 && errorData.code === "SUBMISSION_IN_PROGRESS") {
+    const error = new Error(
+      errorData.error || "Este pedido sigue procesandose en el servidor.",
+    );
+    error.status = response.status;
+    error.code = "SUBMISSION_IN_PROGRESS";
+    error.submissionState = "processing";
+    error.retryAfterMs = PROCESSING_RETRY_DELAY_MS;
+    throw error;
+  }
+
   const error = new Error(
     errorData.error || `Server error: ${response.status}`,
   );
   error.status = response.status;
+  error.code = errorData.code || null;
+  error.submissionState =
+    parseSubmissionState(errorData.submissionState) || "unknown";
+  error.permanent = isPermanentHttpStatus(response.status);
   throw error;
 }
 
@@ -616,6 +712,7 @@ async function uploadPhotoBlob(photoId, submissionId, allowDuplicatePhotos) {
     const error = new Error(message);
     error.status = response.status;
     if (data.duplicate || response.status === 409) {
+      error.code = "DUPLICATE_PHOTO";
       error.message = `DUPLICATE_PHOTO:${message}`;
       throw error;
     }
@@ -690,6 +787,10 @@ async function processQueuedOrders() {
     console.log(`[SW] Found ${pending.length} pending submissions`);
 
     for (const submission of pending) {
+      if (submission.nextRetryAt && submission.nextRetryAt > Date.now()) {
+        continue;
+      }
+
       results.processed++;
       let claimed = null;
 
@@ -748,16 +849,17 @@ async function processQueuedOrders() {
           typeof error?.message === "string"
             ? error.message
             : "Error desconocido";
-        const isDuplicate =
-          typeof errorMessage === "string" &&
-          errorMessage.startsWith("DUPLICATE_PHOTO:");
+        const errorCode = getErrorCode(error);
+        const isDuplicate = errorCode === "DUPLICATE_PHOTO";
         const isPhotoLost =
           typeof errorMessage === "string" &&
           errorMessage.startsWith("PHOTO_LOST:");
+        const isProcessing = errorCode === "SUBMISSION_IN_PROGRESS";
 
         const newRetryCount =
           (claimed?.retryCount || submission.retryCount || 0) + 1;
         const httpStatus = getErrorStatus(error);
+        const submissionState = getErrorSubmissionState(error);
 
         if (isDuplicate || isPhotoLost) {
           const cleanMessage = errorMessage
@@ -771,6 +873,8 @@ async function processQueuedOrders() {
             retryCount: newRetryCount,
             errorMessage: cleanMessage || fallbackMessage,
             lastHttpStatus: httpStatus,
+            lastServerState: null,
+            nextRetryAt: null,
           });
 
           notifyClients({
@@ -783,12 +887,49 @@ async function processQueuedOrders() {
           continue;
         }
 
+        if (isProcessing) {
+          await updateSubmission(submission.id, {
+            status: "pending",
+            retryCount: claimed?.retryCount || submission.retryCount || 0,
+            errorMessage: null,
+            lastHttpStatus: httpStatus,
+            lastServerState: "processing",
+            nextRetryAt:
+              Date.now() +
+              (getErrorRetryAfterMs(error) || PROCESSING_RETRY_DELAY_MS),
+          });
+          console.warn(`[SW] ${submission.id} -> pending (server processing)`);
+          continue;
+        }
+
+        if (isErrorPermanent(error)) {
+          await updateSubmission(submission.id, {
+            status: "failed",
+            retryCount: newRetryCount,
+            errorMessage: error.message || "Error permanente del servidor",
+            lastHttpStatus: httpStatus,
+            lastServerState: submissionState || "unknown",
+            nextRetryAt: null,
+          });
+
+          notifyClients({
+            type: "SUBMISSION_FAILED",
+            submissionId: submission.id,
+            error: error.message,
+          });
+
+          results.failed++;
+          continue;
+        }
+
         if (newRetryCount >= MAX_RETRIES) {
           await updateSubmission(submission.id, {
             status: "failed",
             retryCount: newRetryCount,
             errorMessage: error.message || "Maximo de reintentos alcanzado",
             lastHttpStatus: httpStatus,
+            lastServerState: submissionState || "unknown",
+            nextRetryAt: null,
           });
 
           // Notify about failure
@@ -803,6 +944,12 @@ async function processQueuedOrders() {
             retryCount: newRetryCount,
             errorMessage: error.message,
             lastHttpStatus: httpStatus,
+            lastServerState: submissionState || "unknown",
+            nextRetryAt:
+              Date.now() +
+              getRetryDelayMs(
+                claimed?.retryCount || submission.retryCount || 0,
+              ),
           });
         }
 

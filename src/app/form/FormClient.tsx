@@ -1523,10 +1523,13 @@ export default function FormPage() {
 
   const handleClearQueue = useCallback(() => {
     if (queueState.pendingCount === 0) return;
-    // Warn before clearing if any item is in-flight or has already been retried —
-    // the order may have reached the server even if the queue still shows it.
+    // Warn before clearing if any item is in-flight or the backend state is still uncertain.
     const hasRiskyItems = queueState.items.some(
-      (item) => item.status === "sending" || item.retryCount > 0,
+      (item) =>
+        item.status === "sending" ||
+        item.retryCount > 0 ||
+        item.lastServerState === "processing" ||
+        item.lastServerState === "unknown",
     );
     if (hasRiskyItems) {
       setShowClearConfirm(true);
@@ -1987,9 +1990,9 @@ export default function FormPage() {
           <DialogHeader>
             <DialogTitle>Verificar antes de limpiar</DialogTitle>
             <DialogDescription>
-              Algunos pedidos podrían haberse enviado ya. Verifica en el
-              Dashboard antes de limpiar para evitar pedidos duplicados o
-              perdidos.
+              Limpiar quitara el seguimiento local de pedidos cuyo estado aun no
+              esta confirmado por el servidor. Si alguno sigue procesandose,
+              podria aparecer despues en el Dashboard.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="flex gap-2 pt-2">

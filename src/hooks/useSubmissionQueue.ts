@@ -6,15 +6,17 @@ import { deletePhotos, getPhoto } from "@/utils/photoStore";
 import {
   type QueueAttemptSource,
   type QueuedSubmission,
+  type SubmissionServerState,
   submissionQueue,
 } from "@/utils/submissionQueue";
 
 const MAX_RETRIES = 5;
 const RETRY_DELAY_BASE = 2000; // 2 seconds
 const PROCESS_INTERVAL = 5000; // Check queue every 5 seconds
-const REQUEST_TIMEOUT_MS = 10000; // 10 seconds per network attempt
+const REQUEST_TIMEOUT_MS = 25_000; // 25 seconds per network attempt
 const PHOTO_UPLOAD_TIMEOUT_MS = 15000; // 15 seconds per photo upload
 const STALE_SENDING_MS = 45000; // Recover "sending" items after 45 seconds
+const PROCESSING_RETRY_DELAY_MS = 15_000;
 
 // Service Worker message types
 interface SWMessage {
@@ -66,6 +68,17 @@ function getErrorStatus(error: unknown): number | null {
   return null;
 }
 
+function getRetryDelayMs(retryCount: number): number {
+  return Math.min(RETRY_DELAY_BASE * 2 ** retryCount, 16_000);
+}
+
+function parseSubmissionState(value: unknown): SubmissionServerState | null {
+  if (value === "processing" || value === "submitted" || value === "unknown") {
+    return value;
+  }
+  return null;
+}
+
 export interface QueueState {
   pendingCount: number;
   isProcessing: boolean;
@@ -84,6 +97,8 @@ export interface UseSubmissionQueueReturn {
       | "lastAttemptAt"
       | "lastAttemptSource"
       | "lastHttpStatus"
+      | "lastServerState"
+      | "nextRetryAt"
       | "retryCount"
       | "errorMessage"
     >,
@@ -166,6 +181,8 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
       duplicate?: boolean;
       permanent?: boolean;
       httpStatus: number | null;
+      submissionState: SubmissionServerState | null;
+      retryAfterMs?: number | null;
     }> => {
       try {
         const response = await fetchWithTimeout(
@@ -190,7 +207,10 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
         // the body completes — throwing here would leave the item in "pending"
         // even though the server already wrote the order to Google Sheets.
         if (response.ok) {
-          let data: { duplicate?: boolean } = {};
+          let data: {
+            duplicate?: boolean;
+            submissionState?: SubmissionServerState;
+          } = {};
           try {
             const parsed = await response.json();
             if (
@@ -209,17 +229,42 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
             success: true,
             duplicate: data?.duplicate,
             httpStatus: response.status,
+            submissionState:
+              parseSubmissionState(data?.submissionState) ?? "submitted",
           };
         }
 
-        let errorData: { error?: string } = {};
+        let errorData: {
+          error?: string;
+          code?: string;
+          submissionState?: SubmissionServerState;
+        } = {};
         try {
           const parsed = await response.json();
           if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-            errorData = parsed as { error?: string };
+            errorData = parsed as {
+              error?: string;
+              code?: string;
+              submissionState?: SubmissionServerState;
+            };
           }
         } catch {
           // Ignore body parse errors on error responses
+        }
+
+        if (
+          response.status === 409 &&
+          errorData.code === "SUBMISSION_IN_PROGRESS"
+        ) {
+          return {
+            success: false,
+            error:
+              errorData.error ||
+              "Este pedido sigue procesandose en el servidor.",
+            httpStatus: response.status,
+            submissionState: "processing",
+            retryAfterMs: PROCESSING_RETRY_DELAY_MS,
+          };
         }
 
         // 4xx errors (except 408 Request Timeout and 429 Too Many Requests)
@@ -235,6 +280,8 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
           error: errorData?.error || `Error del servidor: ${response.status}`,
           permanent: isPermanent,
           httpStatus: response.status,
+          submissionState:
+            parseSubmissionState(errorData.submissionState) ?? "unknown",
         };
       } catch (error: unknown) {
         // Network errors and timeouts are always transient
@@ -243,12 +290,14 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
             success: false,
             error: "Sin conexion a internet",
             httpStatus: null,
+            submissionState: "unknown",
           };
         }
         return {
           success: false,
           error: getErrorMessage(error),
           httpStatus: getErrorStatus(error),
+          submissionState: "unknown",
         };
       }
     },
@@ -418,6 +467,8 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
               retryCount: newRetryCount,
               errorMessage: prepared.error || "No se pudieron subir las fotos",
               lastHttpStatus: prepared.httpStatus ?? null,
+              lastServerState: null,
+              nextRetryAt: null,
             });
             console.error(
               `[Queue] ${claimed.id} -> failed (fatal photo error)`,
@@ -433,6 +484,8 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
               retryCount: newRetryCount,
               errorMessage: prepared.error || "Maximo de reintentos alcanzado",
               lastHttpStatus: prepared.httpStatus ?? null,
+              lastServerState: null,
+              nextRetryAt: null,
             });
             console.error(
               `[Queue] ${claimed.id} -> failed (max retries reached)`,
@@ -446,6 +499,8 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
             retryCount: newRetryCount,
             errorMessage: prepared.error,
             lastHttpStatus: prepared.httpStatus ?? null,
+            lastServerState: "unknown",
+            nextRetryAt: Date.now() + getRetryDelayMs(claimed.retryCount),
           });
           console.warn(`[Queue] ${claimed.id} -> pending (will retry)`, {
             retryCount: newRetryCount,
@@ -473,6 +528,20 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
           return true;
         }
 
+        if (result.submissionState === "processing") {
+          await submissionQueue.update(claimed.id, {
+            status: "pending",
+            retryCount: claimed.retryCount,
+            errorMessage: null,
+            lastHttpStatus: result.httpStatus,
+            lastServerState: "processing",
+            nextRetryAt:
+              Date.now() + (result.retryAfterMs ?? PROCESSING_RETRY_DELAY_MS),
+          });
+          console.warn(`[Queue] ${claimed.id} -> pending (server processing)`);
+          return false;
+        }
+
         // Permanent errors (4xx validation failures) — fail immediately, no retry.
         // These are errors like "too far from client" or "GPS accuracy insufficient"
         // that won't resolve by retrying.
@@ -482,6 +551,8 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
             retryCount: claimed.retryCount + 1,
             errorMessage: result.error || "Error permanente del servidor",
             lastHttpStatus: result.httpStatus,
+            lastServerState: result.submissionState,
+            nextRetryAt: null,
           });
           console.error(
             `[Queue] ${claimed.id} -> failed (permanent error: ${result.error})`,
@@ -500,6 +571,8 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
             retryCount: newRetryCount,
             errorMessage: result.error || "Maximo de reintentos alcanzado",
             lastHttpStatus: result.httpStatus,
+            lastServerState: result.submissionState,
+            nextRetryAt: null,
           });
           console.error(
             `[Queue] ${claimed.id} -> failed (max retries reached)`,
@@ -514,6 +587,8 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
           retryCount: newRetryCount,
           errorMessage: result.error,
           lastHttpStatus: result.httpStatus,
+          lastServerState: result.submissionState ?? "unknown",
+          nextRetryAt: Date.now() + getRetryDelayMs(claimed.retryCount),
         });
         console.warn(`[Queue] ${claimed.id} -> pending (will retry)`, {
           retryCount: newRetryCount,
@@ -535,6 +610,8 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
             retryCount: claimed.retryCount + 1,
             errorMessage: getErrorMessage(unexpectedError),
             lastHttpStatus: getErrorStatus(unexpectedError),
+            lastServerState: "unknown",
+            nextRetryAt: Date.now() + getRetryDelayMs(claimed.retryCount),
           });
         } catch {
           // If even this fails, the stale recovery interval will handle it
@@ -564,6 +641,8 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
           status: "failed",
           retryCount: newRetryCount,
           errorMessage: timeoutMessage,
+          lastServerState: "unknown",
+          nextRetryAt: null,
         });
         console.error(
           `[Queue] ${item.id} recovered from stale sending -> failed`,
@@ -578,6 +657,8 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
         status: "pending",
         retryCount: newRetryCount,
         errorMessage: timeoutMessage,
+        lastServerState: "unknown",
+        nextRetryAt: Date.now() + getRetryDelayMs(item.retryCount),
       });
       console.warn(
         `[Queue] ${item.id} recovered from stale sending -> pending`,
@@ -610,6 +691,7 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
         // Skip items that are already being sent or have failed
         if (item.status === "sending") continue;
         if (item.status === "failed") continue;
+        if (item.nextRetryAt && item.nextRetryAt > Date.now()) continue;
 
         // NOTE: Queue processing does not re-validate location.
         // Location was validated at submission time - the stored coordinates are proof
@@ -649,6 +731,8 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
         | "lastAttemptAt"
         | "lastAttemptSource"
         | "lastHttpStatus"
+        | "lastServerState"
+        | "nextRetryAt"
         | "retryCount"
         | "errorMessage"
       >,
@@ -678,6 +762,8 @@ export function useSubmissionQueue(): UseSubmissionQueueReturn {
         retryCount: 0,
         errorMessage: null,
         lastHttpStatus: null,
+        lastServerState: null,
+        nextRetryAt: null,
       });
       await loadQueue();
 

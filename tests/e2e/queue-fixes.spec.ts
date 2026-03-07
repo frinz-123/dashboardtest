@@ -51,6 +51,8 @@ async function seedQueueItem(
       lastAttemptAt: null,
       lastAttemptSource: null,
       lastHttpStatus: null,
+      lastServerState: null,
+      nextRetryAt: null,
       errorMessage: null,
       isAdmin: false,
       payload: {
@@ -71,23 +73,44 @@ async function seedQueueItem(
   );
 }
 
-/** Remove all items from the queue IndexedDB store. */
-async function clearIndexedDB(page: Page) {
+/** Reset the queue IndexedDB database before each test. */
+async function resetIndexedDB(page: Page) {
+  await page.evaluate(() => {
+    return new Promise<void>((resolve, reject) => {
+      const deleteReq = indexedDB.deleteDatabase("elrey-submissions");
+      deleteReq.onsuccess = () => resolve();
+      deleteReq.onerror = () => reject(deleteReq.error);
+      deleteReq.onblocked = () => resolve();
+    });
+  });
+}
+
+/** Clear the queue store while keeping the database available to the page. */
+async function clearQueueStore(page: Page) {
   await page.evaluate(() => {
     return new Promise<void>((resolve, reject) => {
       const req = indexedDB.open("elrey-submissions", 1);
+      req.onupgradeneeded = () => {
+        if (!req.result.objectStoreNames.contains("pending-orders")) {
+          req.result.createObjectStore("pending-orders", { keyPath: "id" });
+        }
+      };
       req.onsuccess = () => {
         const db = req.result;
         if (!db.objectStoreNames.contains("pending-orders")) {
+          db.close();
           resolve();
           return;
         }
         const tx = db.transaction("pending-orders", "readwrite");
         tx.objectStore("pending-orders").clear();
-        tx.oncomplete = () => resolve();
+        tx.oncomplete = () => {
+          db.close();
+          resolve();
+        };
         tx.onerror = () => reject(tx.error);
       };
-      req.onerror = () => resolve(); // store may not exist yet
+      req.onerror = () => reject(req.error);
     });
   });
 }
@@ -113,12 +136,39 @@ async function countQueueItems(page: Page): Promise<number> {
   });
 }
 
+async function getQueueItem(page: Page, id: string) {
+  return page.evaluate((submissionId) => {
+    return new Promise<Record<string, unknown> | null>((resolve, reject) => {
+      const req = indexedDB.open("elrey-submissions", 1);
+      req.onsuccess = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains("pending-orders")) {
+          resolve(null);
+          return;
+        }
+        const tx = db.transaction("pending-orders", "readonly");
+        const getReq = tx.objectStore("pending-orders").get(submissionId);
+        getReq.onsuccess = () => resolve(getReq.result ?? null);
+        getReq.onerror = () => reject(getReq.error);
+      };
+      req.onerror = () => resolve(null);
+    });
+  }, id);
+}
+
+async function emulateOfflineAppState(page: Page) {
+  await page.addInitScript(() => {
+    Object.defineProperty(window.navigator, "onLine", {
+      configurable: true,
+      get: () => false,
+    });
+  });
+}
+
 /** Navigate to the form page and wait for it to be ready. */
 async function goToForm(page: Page) {
-  // Block the real API calls so nothing actually sends to Google Sheets
-  await page.route("**/api/submit-form", (route) =>
-    route.fulfill({ status: 200, body: JSON.stringify({ success: true }) }),
-  );
+  await page.context().setOffline(false);
+  await emulateOfflineAppState(page);
   await page.route("**/api/clientes**", (route) =>
     route.fulfill({ status: 200, body: JSON.stringify({ clients: [] }) }),
   );
@@ -140,6 +190,7 @@ async function goToFormWithMocks(
     submitContentType?: string;
   },
 ) {
+  await page.context().setOffline(false);
   if (options.disableServiceWorker) {
     await page.route("**/service-worker.js", (route) =>
       route.fulfill({ status: 404, body: "" }),
@@ -171,8 +222,8 @@ async function goToFormWithMocks(
 test.describe("Queue fixes", () => {
   test.beforeEach(async ({ page }) => {
     await setAuthCookie(page);
-    await page.goto("/form").catch(() => {}); // prime the cookie
-    await clearIndexedDB(page);
+    await page.goto("/offline.html");
+    await resetIndexedDB(page);
   });
 
   // -------------------------------------------------------------------------
@@ -283,24 +334,27 @@ test.describe("Queue fixes", () => {
   test("Retried items show queue diagnostics instead of a generic duplicate warning", async ({
     page,
   }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
     await seedQueueItem(page, {
+      id: "12345678-abcdef-9876",
       retryCount: 1,
       status: "pending",
       lastAttemptSource: "hook",
       lastHttpStatus: 500,
+      lastServerState: "unknown",
+      nextRetryAt: Date.now() + 15000,
       errorMessage: "Error del servidor: 500",
     });
     await goToForm(page);
 
     await expect(page.locator("text=pendiente")).toBeVisible({ timeout: 8000 });
-    await expect(page.getByText("ID: test-submission-001")).toBeVisible();
+    await expect(page.getByText(/ID 12345678\.\.\.9876/)).toBeVisible();
     await expect(page.getByText("App web")).toBeVisible();
     await expect(page.getByText("HTTP 500")).toBeVisible();
+    await expect(page.getByText(/Proximo/)).toBeVisible();
     await expect(page.getByText("Error del servidor: 500")).toBeVisible();
     await expect(
-      page.getByText(
-        "Ultimo intento fallido; no implica duplicado. Si ya aparece en el Dashboard, puedes limpiar este pendiente.",
-      ),
+      page.getByText("Estado no confirmado. Reintentaremos automaticamente."),
     ).toBeVisible({ timeout: 3000 });
   });
 
@@ -310,9 +364,7 @@ test.describe("Queue fixes", () => {
 
     await expect(page.locator("text=pendiente")).toBeVisible({ timeout: 8000 });
     await expect(
-      page.getByText(
-        "Ultimo intento fallido; no implica duplicado. Si ya aparece en el Dashboard, puedes limpiar este pendiente.",
-      ),
+      page.getByText("Estado no confirmado. Reintentaremos automaticamente."),
     ).not.toBeVisible();
   });
 
@@ -347,7 +399,7 @@ test.describe("Queue fixes", () => {
       }),
     });
 
-    await expect(page.getByText("Error - Toca para reintentar")).toBeVisible({
+    await expect(page.getByText("Error", { exact: true })).toBeVisible({
       timeout: 8000,
     });
     await expect(page.getByText("App web")).toBeVisible();
@@ -356,8 +408,110 @@ test.describe("Queue fixes", () => {
       page.getByText("La precision del GPS es insuficiente."),
     ).toBeVisible();
     await expect(
-      page.getByText("Verifica en el Dashboard si este pedido ya aparece"),
+      page.getByText("Estado no confirmado. Reintentaremos automaticamente."),
     ).not.toBeVisible();
+  });
+
+  test("HTTP 409 keeps the item pending and shows processing status", async ({
+    page,
+  }) => {
+    await seedQueueItem(page, { retryCount: 0, status: "pending" });
+    await goToFormWithMocks(page, {
+      disableServiceWorker: true,
+      submitStatus: 409,
+      submitBody: JSON.stringify({
+        code: "SUBMISSION_IN_PROGRESS",
+        error: "Este pedido sigue procesandose en el servidor.",
+        submissionState: "processing",
+      }),
+    });
+
+    await expect
+      .poll(
+        async () => {
+          const item = await getQueueItem(page, "test-submission-001");
+          return item
+            ? {
+                retryCount: item.retryCount,
+                lastServerState: item.lastServerState,
+                hasNextRetryAt: typeof item.nextRetryAt === "number",
+              }
+            : null;
+        },
+        { timeout: 8000 },
+      )
+      .toEqual({
+        retryCount: 0,
+        lastServerState: "processing",
+        hasNextRetryAt: true,
+      });
+
+    await expect(page.getByText("Procesando en servidor")).toBeVisible({
+      timeout: 8000,
+    });
+    await expect(page.getByText("Procesando", { exact: true })).toBeVisible();
+  });
+
+  test("HTTP 500 keeps the item pending with neutral unknown status", async ({
+    page,
+  }) => {
+    await seedQueueItem(page, { retryCount: 0, status: "pending" });
+    await goToFormWithMocks(page, {
+      disableServiceWorker: true,
+      submitStatus: 500,
+      submitBody: JSON.stringify({
+        error:
+          "Error al guardar en la base de datos. Estado no confirmado; se reintentara automaticamente.",
+        retryable: true,
+        submissionState: "unknown",
+      }),
+    });
+
+    await expect
+      .poll(
+        async () => {
+          const item = await getQueueItem(page, "test-submission-001");
+          return item
+            ? {
+                retryCount: item.retryCount,
+                lastServerState: item.lastServerState,
+                hasNextRetryAt: typeof item.nextRetryAt === "number",
+              }
+            : null;
+        },
+        { timeout: 8000 },
+      )
+      .toEqual({
+        retryCount: 1,
+        lastServerState: "unknown",
+        hasNextRetryAt: true,
+      });
+
+    await expect(
+      page.getByText("Estado no confirmado. Reintentaremos automaticamente."),
+    ).toBeVisible({ timeout: 8000 });
+  });
+
+  test("Confirmed submitted duplicate clears the queued item", async ({
+    page,
+  }) => {
+    await seedQueueItem(page, { retryCount: 0, status: "pending" });
+    await goToFormWithMocks(page, {
+      disableServiceWorker: true,
+      submitStatus: 200,
+      submitBody: JSON.stringify({
+        success: true,
+        duplicate: true,
+        submissionState: "submitted",
+      }),
+    });
+
+    await expect
+      .poll(async () => countQueueItems(page), { timeout: 8000 })
+      .toBe(0);
+    await expect(page.locator(".bg-blue-50")).not.toBeVisible({
+      timeout: 8000,
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -374,7 +528,10 @@ test.describe("Queue fixes", () => {
     await expect(page.locator("text=pendiente")).toBeVisible({ timeout: 8000 });
 
     // Simulate the item being removed from IndexedDB externally (as the SW would do)
-    await clearIndexedDB(page);
+    await clearQueueStore(page);
+    await expect
+      .poll(async () => countQueueItems(page), { timeout: 5000 })
+      .toBe(0);
 
     // Simulate the tab becoming visible again (triggers handleVisibilityChange)
     await page.evaluate(() => {
@@ -400,7 +557,10 @@ test.describe("Queue fixes", () => {
     await expect(page.locator("text=pendiente")).toBeVisible({ timeout: 8000 });
 
     // Remove item externally (simulates SW success)
-    await clearIndexedDB(page);
+    await clearQueueStore(page);
+    await expect
+      .poll(async () => countQueueItems(page), { timeout: 5000 })
+      .toBe(0);
 
     // Dispatch focus event (triggers handleFocus → loadQueue)
     await page.evaluate(() => window.dispatchEvent(new Event("focus")));

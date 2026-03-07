@@ -31,6 +31,7 @@ interface SubmitError extends Error {
 
 interface SubmitApiSuccess {
   duplicate?: boolean;
+  submissionState?: "submitted" | "processing" | "unknown";
 }
 
 type JsonObject = Record<string, unknown>;
@@ -124,7 +125,14 @@ async function submitImmediateAttempt(
         "[OrderSubmit] HTTP 200 but body parse failed, treating as success",
       );
     }
-    return { duplicate: data.duplicate === true };
+    return {
+      duplicate: data.duplicate === true,
+      submissionState:
+        data.submissionState === "processing" ||
+        data.submissionState === "unknown"
+          ? data.submissionState
+          : "submitted",
+    };
   }
 
   let errorData: JsonObject = {};
@@ -137,8 +145,24 @@ async function submitImmediateAttempt(
     // Ignore parse errors for non-2xx responses
   }
 
-  if (response.status === 409 || errorData.duplicate === true) {
-    return { duplicate: true };
+  if (response.status === 409 && errorData.code === "SUBMISSION_IN_PROGRESS") {
+    throw buildSubmitError(
+      typeof errorData.error === "string" && errorData.error.trim()
+        ? errorData.error.trim()
+        : "Este pedido sigue procesandose en el servidor.",
+      {
+        status: response.status,
+        retryable: true,
+        queueable: true,
+      },
+    );
+  }
+
+  if (
+    errorData.duplicate === true &&
+    errorData.submissionState === "submitted"
+  ) {
+    return { duplicate: true, submissionState: "submitted" };
   }
 
   const errorText =

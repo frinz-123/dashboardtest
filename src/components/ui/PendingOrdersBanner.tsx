@@ -35,7 +35,19 @@ function formatTime(timestamp: number) {
   });
 }
 
+function formatSubmissionId(id: string) {
+  if (id.length <= 18) {
+    return id;
+  }
+
+  return `${id.slice(0, 8)}...${id.slice(-4)}`;
+}
+
 function getStatusIcon(item: QueuedSubmission) {
+  if (item.lastServerState === "processing" && item.status === "pending") {
+    return <RefreshCw className="h-4 w-4 animate-spin text-blue-500" />;
+  }
+
   switch (item.status) {
     case "sending":
       return <RefreshCw className="h-4 w-4 animate-spin text-blue-500" />;
@@ -49,13 +61,17 @@ function getStatusIcon(item: QueuedSubmission) {
 }
 
 function getStatusText(item: QueuedSubmission, isOnline: boolean) {
+  if (item.lastServerState === "processing" && item.status === "pending") {
+    return "Procesando";
+  }
+
   switch (item.status) {
     case "sending":
-      return "Enviando...";
+      return "Enviando";
     case "failed":
-      return "Error - Toca para reintentar";
+      return "Error";
     case "pending":
-      return isOnline ? "En cola..." : "Esperando conexion...";
+      return isOnline ? "En cola" : "Sin conexion";
     default:
       return "Pendiente";
   }
@@ -76,15 +92,39 @@ function getAttemptSummary(item: QueuedSubmission): string | null {
     parts.push(`HTTP ${item.lastHttpStatus}`);
   }
 
+  if (item.nextRetryAt && item.nextRetryAt > Date.now()) {
+    parts.push(`Proximo ${formatTime(item.nextRetryAt)}`);
+  }
+
   return parts.length > 0 ? parts.join(" • ") : null;
 }
 
-function getRetryNote(item: QueuedSubmission): string | null {
-  if (item.retryCount === 0 || item.status === "sending") {
-    return null;
+function getQueueNote(item: QueuedSubmission): string | null {
+  if (item.lastServerState === "processing" && item.status === "pending") {
+    return "Procesando en servidor";
   }
 
-  return "Ultimo intento fallido; no implica duplicado. Si ya aparece en el Dashboard, puedes limpiar este pendiente.";
+  if (item.lastServerState === "unknown" && item.status === "pending") {
+    return "Estado no confirmado. Reintentaremos automaticamente.";
+  }
+
+  return null;
+}
+
+function getStatusPillClass(item: QueuedSubmission) {
+  if (item.lastServerState === "processing" && item.status === "pending") {
+    return "bg-blue-100 text-blue-700";
+  }
+
+  if (item.status === "sending") {
+    return "bg-blue-100 text-blue-700";
+  }
+
+  if (item.status === "failed") {
+    return "bg-red-100 text-red-700";
+  }
+
+  return "bg-gray-100 text-gray-700";
 }
 
 export default function PendingOrdersBanner({
@@ -95,7 +135,6 @@ export default function PendingOrdersBanner({
 }: PendingOrdersBannerProps) {
   const { pendingCount, isProcessing, isOnline, items, currentItem } = state;
 
-  // Don't show anything if there are no pending items and we're online
   if (pendingCount === 0 && isOnline) {
     return null;
   }
@@ -106,14 +145,14 @@ export default function PendingOrdersBanner({
         <div className="flex items-center justify-center gap-2 bg-red-500 px-4 py-2 text-white">
           <WifiOff className="h-4 w-4" />
           <span className="text-sm font-medium">
-            Sin conexion - Los pedidos se enviaran automaticamente
+            Sin conexion. Los pedidos se enviaran automaticamente.
           </span>
         </div>
       )}
 
       {pendingCount > 0 && (
-        <div className="border-b border-blue-200 bg-blue-50 px-4 py-2">
-          <div className="mb-2 flex items-center justify-between">
+        <div className="border-b border-blue-200 bg-blue-50 px-4 py-3">
+          <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-2">
               {isProcessing ? (
                 <RefreshCw className="h-4 w-4 animate-spin text-blue-600" />
@@ -128,118 +167,118 @@ export default function PendingOrdersBanner({
                 {pendingCount !== 1 ? "s" : ""}
               </span>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center justify-between gap-2 sm:justify-end">
               {isProcessing && currentItem && (
-                <span className="text-xs text-blue-600">
+                <span className="truncate text-xs text-blue-700 sm:max-w-48">
                   Enviando: {currentItem.payload.clientName}
                 </span>
               )}
               <button
                 type="button"
                 onClick={onClearQueue}
-                className="rounded-full bg-blue-100 px-2 py-1 text-xs font-semibold text-blue-700 transition-colors hover:bg-blue-200"
+                className="min-h-11 rounded-full bg-blue-100 px-3 py-2 text-xs font-semibold text-blue-700 transition-colors hover:bg-blue-200"
               >
                 Limpiar
               </button>
             </div>
           </div>
 
-          <div className="max-h-48 space-y-1 overflow-y-auto">
+          <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
             {items.slice(0, 5).map((item) => {
               const attemptSummary = getAttemptSummary(item);
-              const retryNote = getRetryNote(item);
+              const queueNote = getQueueNote(item);
 
               return (
                 <div
                   key={item.id}
-                  className={`flex items-center justify-between rounded bg-white px-2 py-1.5 text-sm ${
+                  className={`rounded-xl bg-white px-3 py-3 text-sm shadow-sm ${
                     item.status === "failed"
                       ? "border border-red-200"
-                      : item.status === "sending"
+                      : item.lastServerState === "processing"
                         ? "border border-blue-200"
                         : "border border-gray-200"
                   }`}
                 >
-                  <div className="flex min-w-0 flex-1 items-start gap-2">
-                    <div className="pt-0.5">{getStatusIcon(item)}</div>
+                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                     <div className="min-w-0 flex-1">
-                      <div className="truncate font-medium text-gray-900">
-                        {item.payload.clientName}
-                      </div>
-                      <div className="flex items-center gap-2 text-xs text-gray-500">
-                        <span>${item.payload.total.toFixed(2)}</span>
-                        <span>•</span>
-                        <span>Creado {formatTime(item.createdAt)}</span>
-                        {item.retryCount > 0 && (
-                          <>
-                            <span>•</span>
-                            <span className="text-orange-600">
-                              Intento {item.retryCount + 1}
-                            </span>
-                          </>
-                        )}
-                      </div>
-                      <div className="mt-0.5 break-all font-mono text-[11px] text-slate-500">
-                        ID: {item.id}
-                      </div>
-                      {attemptSummary && (
-                        <div className="mt-0.5 text-[11px] text-slate-600">
-                          {attemptSummary}
+                      <div className="flex items-start gap-2">
+                        <div className="pt-0.5">{getStatusIcon(item)}</div>
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate font-medium text-gray-900">
+                            {item.payload.clientName}
+                          </div>
+                          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500 tabular-nums">
+                            <span>${item.payload.total.toFixed(2)}</span>
+                            <span>Creado {formatTime(item.createdAt)}</span>
+                            {item.retryCount > 0 && (
+                              <span className="text-orange-600">
+                                Intento {item.retryCount + 1}
+                              </span>
+                            )}
+                          </div>
+                          <div
+                            className="mt-1 truncate font-mono text-[11px] text-slate-500"
+                            title={item.id}
+                          >
+                            ID {formatSubmissionId(item.id)}
+                          </div>
+                          {attemptSummary && (
+                            <div className="mt-1 text-[11px] text-slate-600 tabular-nums">
+                              {attemptSummary}
+                            </div>
+                          )}
+                          {queueNote && (
+                            <div className="mt-2 rounded-lg bg-blue-50 px-2.5 py-2 text-xs font-medium text-blue-800">
+                              {queueNote}
+                            </div>
+                          )}
+                          {item.errorMessage && (
+                            <div
+                              className={`mt-2 text-xs ${
+                                item.status === "failed"
+                                  ? "text-red-600"
+                                  : "text-slate-600"
+                              }`}
+                            >
+                              {item.errorMessage}
+                            </div>
+                          )}
                         </div>
-                      )}
-                      {item.errorMessage && (
-                        <div
-                          className={`mt-1 text-xs ${
-                            item.status === "failed"
-                              ? "text-red-600"
-                              : "text-amber-700"
-                          }`}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 md:max-w-44 md:justify-end">
+                      <span
+                        className={`rounded-full px-2.5 py-1 text-xs font-medium ${getStatusPillClass(
+                          item,
+                        )}`}
+                      >
+                        {getStatusText(item, isOnline)}
+                      </span>
+
+                      {item.status === "failed" && (
+                        <button
+                          type="button"
+                          onClick={() => onRetry(item.id)}
+                          className="min-h-11 rounded-full bg-orange-100 px-3 py-2 text-xs font-semibold text-orange-700 transition-colors hover:bg-orange-200"
+                          title="Volver a intentar"
                         >
-                          {item.errorMessage}
-                        </div>
+                          Volver a intentar
+                        </button>
                       )}
-                      {retryNote && (
-                        <div className="mt-0.5 text-xs text-amber-700">
-                          {retryNote}
-                        </div>
+
+                      {item.status === "failed" && (
+                        <button
+                          type="button"
+                          onClick={() => onRemove(item.id)}
+                          className="flex min-h-11 min-w-11 items-center justify-center rounded-full border border-red-200 bg-white text-red-600 transition-colors hover:bg-red-50"
+                          title="Eliminar"
+                          aria-label={`Eliminar pedido pendiente ${item.payload.clientName}`}
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
                       )}
                     </div>
-                  </div>
-
-                  <div className="ml-2 flex items-center gap-1">
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-xs ${
-                        item.status === "sending"
-                          ? "bg-blue-100 text-blue-700"
-                          : item.status === "failed"
-                            ? "bg-red-100 text-red-700"
-                            : "bg-gray-100 text-gray-700"
-                      }`}
-                    >
-                      {getStatusText(item, isOnline)}
-                    </span>
-
-                    {item.status === "failed" && (
-                      <button
-                        type="button"
-                        onClick={() => onRetry(item.id)}
-                        className="rounded-full bg-orange-100 px-2 py-1 text-xs font-semibold text-orange-700 transition-colors hover:bg-orange-200"
-                        title="Volver a intentar"
-                      >
-                        Volver a intentar
-                      </button>
-                    )}
-
-                    {item.status === "failed" && (
-                      <button
-                        type="button"
-                        onClick={() => onRemove(item.id)}
-                        className="rounded p-1 hover:bg-red-100"
-                        title="Eliminar"
-                      >
-                        <X className="h-3 w-3 text-red-600" />
-                      </button>
-                    )}
                   </div>
                 </div>
               );

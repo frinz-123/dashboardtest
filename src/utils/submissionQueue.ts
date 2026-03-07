@@ -22,6 +22,7 @@ export type SubmissionStatus =
   | "completed"; // Successfully sent
 
 export type QueueAttemptSource = "hook" | "service-worker";
+export type SubmissionServerState = "processing" | "submitted" | "unknown";
 
 const ACTIVE_DUPLICATE_STATUSES: SubmissionStatus[] = ["pending", "sending"];
 
@@ -63,6 +64,8 @@ export interface QueuedSubmission {
   lastAttemptAt: number | null; // Last retry attempt timestamp
   lastAttemptSource: QueueAttemptSource | null; // Where the last attempt ran
   lastHttpStatus: number | null; // Last HTTP status returned by the network step
+  lastServerState: SubmissionServerState | null; // Last state reported by the backend
+  nextRetryAt: number | null; // Cooldown before the next retry attempt
   retryCount: number; // Number of retry attempts
   errorMessage: string | null; // Last error message
   isAdmin: boolean; // Admin users bypass location checks
@@ -75,6 +78,14 @@ export function findActiveDuplicateSubmission(
   return items.find(
     (item) => item.id === id && isActiveDuplicateStatus(item.status),
   );
+}
+
+function normalizeQueuedSubmission(item: QueuedSubmission): QueuedSubmission {
+  return {
+    ...item,
+    lastServerState: item.lastServerState ?? null,
+    nextRetryAt: item.nextRetryAt ?? null,
+  };
 }
 
 class SubmissionQueue {
@@ -255,6 +266,8 @@ class SubmissionQueue {
       lastAttemptAt: null,
       lastAttemptSource: null,
       lastHttpStatus: null,
+      lastServerState: null,
+      nextRetryAt: null,
       retryCount: 0,
       errorMessage: null,
     };
@@ -309,7 +322,9 @@ class SubmissionQueue {
         const request = store.getAll();
 
         request.onsuccess = () => {
-          const all = request.result as QueuedSubmission[];
+          const all = (request.result as QueuedSubmission[]).map(
+            normalizeQueuedSubmission,
+          );
           // Return items that are not completed, sorted by creation time
           const pending = all
             .filter((s) => s.status !== "completed")
@@ -400,6 +415,8 @@ class SubmissionQueue {
             lastAttemptAt: Date.now(),
             lastAttemptSource: source,
             lastHttpStatus: null,
+            lastServerState: null,
+            nextRetryAt: null,
           };
           const putRequest = store.put(claimed);
 
@@ -425,6 +442,8 @@ class SubmissionQueue {
         lastAttemptAt: Date.now(),
         lastAttemptSource: source,
         lastHttpStatus: null,
+        lastServerState: null,
+        nextRetryAt: null,
       };
       localStorage.setItem("pending-submissions", JSON.stringify(queue));
       this.notifyListeners();
@@ -526,7 +545,11 @@ class SubmissionQueue {
   private getLocalStorageQueue(): QueuedSubmission[] {
     try {
       const stored = localStorage.getItem("pending-submissions");
-      return stored ? JSON.parse(stored) : [];
+      return stored
+        ? (JSON.parse(stored) as QueuedSubmission[]).map(
+            normalizeQueuedSubmission,
+          )
+        : [];
     } catch {
       return [];
     }

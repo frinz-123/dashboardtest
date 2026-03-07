@@ -8,30 +8,19 @@ import {
   parseBooleanLike,
 } from "@/utils/formSubmission";
 import { sheetsAuth } from "@/utils/googleAuth";
+import {
+  appendSubmissionStatusEntry,
+  decideSubmissionLedgerAction,
+  ensureSubmissionStatusHeader,
+  findFormSubmissionMatch,
+  getLatestSubmissionStatusEntry,
+} from "@/utils/submissionStatusLedger";
 
 const spreadsheetId = "1a0jZVdKFNWTHDsM-68LT5_OLPMGejAKs9wfCxYqqe_g";
 
 // Location validation constants
 const MAX_LOCATION_ACCURACY = 100; // meters - reject if GPS accuracy is worse than this
 const MAX_CLIENT_DISTANCE = 450; // meters - maximum allowed distance to client
-
-// 🔧 DEDUPLICATION: In-memory cache for recent submissions (expires after 2 minutes)
-const recentSubmissions = new Map<
-  string,
-  { timestamp: number; data: unknown }
->();
-const inFlightSubmissions = new Set<string>();
-const DEDUPLICATION_WINDOW = 120000; // 2 minutes
-
-// Clean up old entries periodically
-setInterval(() => {
-  const now = Date.now();
-  for (const [id, entry] of recentSubmissions.entries()) {
-    if (now - entry.timestamp > DEDUPLICATION_WINDOW) {
-      recentSubmissions.delete(id);
-    }
-  }
-}, 60000); // Clean every minute
 
 // Helper function to check if user is an admin with override permissions
 function isOverrideEmail(email: string | null | undefined): boolean {
@@ -87,6 +76,7 @@ function normalizePhotoUrls(value: unknown): string[] {
 export async function POST(req: Request) {
   const startTime = Date.now();
   let submissionId: string | undefined;
+  let ledgerAttemptCount = 1;
 
   try {
     const body = await req.json();
@@ -116,28 +106,17 @@ export async function POST(req: Request) {
       typeof clientSubmissionId === "string" && clientSubmissionId.trim()
         ? clientSubmissionId.trim()
         : undefined;
-    const photoUrls = normalizePhotoUrls(rawPhotoUrls);
-
-    // 🔧 DEDUPLICATION: Check if we've seen this submission recently
-    if (submissionId && recentSubmissions.has(submissionId)) {
-      const cached = recentSubmissions.get(submissionId);
-      const age = Date.now() - cached?.timestamp;
-
-      console.log("🔄 DUPLICATE SUBMISSION DETECTED:", {
-        submissionId,
-        age,
-        clientName,
-        timestamp: new Date().toISOString(),
-      });
-
-      // Return the cached result
-      return NextResponse.json({
-        success: true,
-        duplicate: true,
-        message: "Pedido ya procesado (duplicado)",
-        data: cached?.data,
-      });
+    if (!submissionId) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "submissionId requerido.",
+        },
+        { status: 400 },
+      );
     }
+    const resolvedSubmissionId = submissionId;
+    const photoUrls = normalizePhotoUrls(rawPhotoUrls);
 
     const adminEmailForValidation = actorEmail ?? userEmail ?? null;
     const isAdmin = isOverrideEmail(adminEmailForValidation);
@@ -167,15 +146,188 @@ export async function POST(req: Request) {
       typeof queuedAt === "number" ? Date.now() - queuedAt : null;
     const isQueuedSubmission = typeof queuedAt === "number";
     const normalizedAttemptNumber =
-      typeof attemptNumber === "number" ? attemptNumber : 1;
+      typeof attemptNumber === "number" && Number.isFinite(attemptNumber)
+        ? Math.max(1, Math.trunc(attemptNumber))
+        : 1;
 
     // Queued submissions already passed client-side checks (button gating),
     // so skip all location validations on the server for queued attempts.
     const shouldBypassLocationChecks = !isAdmin && isQueuedSubmission;
+    const sheets = google.sheets({ version: "v4", auth: sheetsAuth });
+
+    const writeLedgerStatus = async (
+      status:
+        | "processing"
+        | "submitted"
+        | "retryable_failed"
+        | "permanent_failed",
+      options?: {
+        leaseExpiresAt?: string | null;
+        lastError?: string | null;
+        formRowRef?: string | null;
+      },
+    ) => {
+      await appendSubmissionStatusEntry(sheets, spreadsheetId, {
+        submissionId: resolvedSubmissionId,
+        status,
+        leaseExpiresAt: options?.leaseExpiresAt ?? null,
+        updatedAt: new Date().toISOString(),
+        attemptCount: ledgerAttemptCount,
+        lastError: options?.lastError ?? null,
+        formRowRef: options?.formRowRef ?? null,
+      });
+    };
+
+    const buildSubmittedResponse = (
+      options: {
+        duplicate: boolean;
+        formRowRef: string | null;
+        message: string;
+        data?: unknown;
+      },
+      processingTime = Date.now() - startTime,
+    ) =>
+      NextResponse.json({
+        success: true,
+        duplicate: options.duplicate,
+        submissionState: "submitted",
+        formRowRef: options.formRowRef,
+        message: options.message,
+        data: options.data,
+        processingTime,
+      });
+
+    const buildInProgressResponse = () =>
+      NextResponse.json(
+        {
+          success: false,
+          code: "SUBMISSION_IN_PROGRESS",
+          retryable: true,
+          submissionState: "processing",
+          error: "Este pedido sigue procesandose en el servidor.",
+          submissionId: resolvedSubmissionId,
+          processingTime: Date.now() - startTime,
+        },
+        { status: 409 },
+      );
+
+    const respondPermanentFailure = async (
+      message: string,
+      statusCode = 400,
+    ) => {
+      try {
+        await writeLedgerStatus("permanent_failed", {
+          lastError: message,
+        });
+      } catch (ledgerError) {
+        console.error(
+          "❌ Failed to record permanent ledger state:",
+          ledgerError,
+        );
+      }
+
+      return NextResponse.json(
+        {
+          success: false,
+          error: message,
+          retryable: false,
+          submissionId: resolvedSubmissionId,
+          processingTime: Date.now() - startTime,
+        },
+        { status: statusCode },
+      );
+    };
+
+    const respondRetryableFailure = async (message: string) => {
+      try {
+        await writeLedgerStatus("retryable_failed", {
+          lastError: message,
+        });
+      } catch (ledgerError) {
+        console.error(
+          "❌ Failed to record retryable ledger state:",
+          ledgerError,
+        );
+      }
+
+      return NextResponse.json(
+        {
+          success: false,
+          error: message,
+          retryable: true,
+          submissionState: "unknown",
+          submissionId: resolvedSubmissionId,
+          processingTime: Date.now() - startTime,
+        },
+        { status: 500 },
+      );
+    };
+
+    await ensureSubmissionStatusHeader(sheets, spreadsheetId);
+    const initialFormMatch = await findFormSubmissionMatch(
+      sheets,
+      spreadsheetId,
+      resolvedSubmissionId,
+    );
+    const latestLedgerEntry = await getLatestSubmissionStatusEntry(
+      sheets,
+      spreadsheetId,
+      resolvedSubmissionId,
+    );
+    const ledgerDecision = decideSubmissionLedgerAction({
+      formMatch: initialFormMatch,
+      latestEntry: latestLedgerEntry,
+      clientAttemptNumber: normalizedAttemptNumber,
+    });
+
+    if (ledgerDecision.type === "duplicate-submitted") {
+      ledgerAttemptCount = ledgerDecision.attemptCount;
+      try {
+        await writeLedgerStatus("submitted", {
+          formRowRef: ledgerDecision.formRowRef,
+        });
+      } catch (ledgerError) {
+        console.error(
+          "❌ Failed to confirm submitted ledger state:",
+          ledgerError,
+        );
+      }
+
+      return buildSubmittedResponse({
+        duplicate: true,
+        formRowRef: ledgerDecision.formRowRef,
+        message: "Pedido ya procesado (sheet duplicate)",
+      });
+    }
+
+    if (ledgerDecision.type === "in-progress") {
+      return buildInProgressResponse();
+    }
+
+    if (ledgerDecision.type === "permanent-failed") {
+      ledgerAttemptCount =
+        latestLedgerEntry?.attemptCount ?? normalizedAttemptNumber;
+      return NextResponse.json(
+        {
+          success: false,
+          error: ledgerDecision.error,
+          retryable: false,
+          submissionId: resolvedSubmissionId,
+          processingTime: Date.now() - startTime,
+        },
+        { status: 400 },
+      );
+    }
+
+    ledgerAttemptCount = ledgerDecision.attemptCount;
+    await writeLedgerStatus("processing", {
+      leaseExpiresAt: ledgerDecision.leaseExpiresAt,
+    });
+
     // ✅ VALIDATION: Enhanced logging for email tracking
     console.log("🔍 FORM SUBMISSION RECEIVED:", {
       timestamp: new Date().toISOString(),
-      submissionId,
+      submissionId: resolvedSubmissionId,
       attemptNumber: attemptNumber || 1,
       clientName,
       clientCode,
@@ -221,7 +373,7 @@ export async function POST(req: Request) {
       console.warn(
         "⚠️ OVERRIDE REQUEST IGNORED: request contains override fields but actor is not admin",
         {
-          submissionId,
+          submissionId: resolvedSubmissionId,
           actorEmail,
           userEmail,
           overrideTargetEmail,
@@ -241,12 +393,8 @@ export async function POST(req: Request) {
       !skipRequiredPhotos &&
       photoUrls.length < PHOTO_MIN_REQUIRED
     ) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Fotos requeridas (minimo ${PHOTO_MIN_REQUIRED}) para este cliente.`,
-        },
-        { status: 400 },
+      return respondPermanentFailure(
+        `Fotos requeridas (minimo ${PHOTO_MIN_REQUIRED}) para este cliente.`,
       );
     }
 
@@ -256,13 +404,8 @@ export async function POST(req: Request) {
         location,
         timestamp: new Date().toISOString(),
       });
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Ubicación requerida. Por favor, asegúrate de que el GPS esté activado.",
-        },
-        { status: 400 },
+      return respondPermanentFailure(
+        "Ubicación requerida. Por favor, asegúrate de que el GPS esté activado.",
       );
     }
 
@@ -292,12 +435,8 @@ export async function POST(req: Request) {
           clientName,
           userEmail,
         });
-        return NextResponse.json(
-          {
-            success: false,
-            error: `La precisión del GPS es insuficiente (±${Math.round(location.accuracy)}m). Por favor, espera unos segundos para obtener una mejor señal.`,
-          },
-          { status: 400 },
+        return respondPermanentFailure(
+          `La precisión del GPS es insuficiente (±${Math.round(location.accuracy)}m). Por favor, espera unos segundos para obtener una mejor señal.`,
         );
       }
     }
@@ -327,27 +466,8 @@ export async function POST(req: Request) {
         }
       : null;
 
-    if (submissionId && inFlightSubmissions.has(submissionId)) {
-      console.log("🔁 IN-FLIGHT DUPLICATE BLOCKED:", {
-        submissionId,
-        clientName,
-      });
-      return NextResponse.json({
-        success: true,
-        duplicate: true,
-        message: "Pedido ya en proceso (duplicado)",
-      });
-    }
-
-    if (submissionId) {
-      inFlightSubmissions.add(submissionId);
-    }
-
-    const sheets = google.sheets({ version: "v4", auth: sheetsAuth });
-
     try {
-      // Fetch client location, row count, and submission ids in parallel
-      const [clientData, currentData, submissionIdData] = await Promise.all([
+      const [clientData, _currentData] = await Promise.all([
         sheets.spreadsheets.values.get({
           spreadsheetId,
           range: "Form_Data!A:C",
@@ -356,35 +476,10 @@ export async function POST(req: Request) {
           spreadsheetId,
           range: "Form_Data!A:A",
         }),
-        submissionId
-          ? sheets.spreadsheets.values.get({
-              spreadsheetId,
-              range: "Form_Data!AE:AE",
-            })
-          : Promise.resolve(null),
       ]);
 
-      if (submissionId) {
-        const seenSubmissionIds =
-          submissionIdData?.data.values
-            ?.map((row) => (typeof row[0] === "string" ? row[0].trim() : ""))
-            .filter(Boolean) || [];
-
-        if (seenSubmissionIds.includes(submissionId)) {
-          console.log("🔄 SHEET DUPLICATE DETECTED:", {
-            submissionId,
-            clientName,
-          });
-          return NextResponse.json({
-            success: true,
-            duplicate: true,
-            message: "Pedido ya procesado (sheet duplicate)",
-          });
-        }
-      }
-
-      let clientLat = "",
-        clientLng = "";
+      let clientLat = "";
+      let clientLng = "";
       if (clientData.data.values) {
         const clientRow = clientData.data.values.find(
           (row) => row[0] === clientName,
@@ -443,12 +538,8 @@ export async function POST(req: Request) {
                   timestamp: new Date().toISOString(),
                 },
               );
-              return NextResponse.json(
-                {
-                  success: false,
-                  error: `Estás demasiado lejos del cliente (${Math.round(distanceToClient)}m). Por favor, acércate a la ubicación del cliente para continuar.`,
-                },
-                { status: 400 },
+              return respondPermanentFailure(
+                `Estás demasiado lejos del cliente (${Math.round(distanceToClient)}m). Por favor, acércate a la ubicación del cliente para continuar.`,
               );
             }
           }
@@ -466,13 +557,6 @@ export async function POST(req: Request) {
           }
         }
       }
-
-      const lastRow = currentData.data.values
-        ? currentData.data.values.length + 1
-        : 2;
-
-      // Ensure we're explicitly including column AQ
-      const _range = `Form_Data!A${lastRow}:AQ${lastRow}`;
 
       // Format current date/time using Mazatlan timezone (GMT-7)
       // 🔧 ADMIN OVERRIDE: Use override date if provided by admin user
@@ -606,7 +690,7 @@ export async function POST(req: Request) {
       rowData[4] = formattedTime; // Column E (Submission time)
       rowData[5] = location.lat.toString(); // Column F (Current lat)
       rowData[6] = location.lng.toString(); // Column G (Current lng)
-      rowData[7] = userEmail; // Column H (Add this line)
+      rowData[7] = userEmail; // Column H
       rowData[8] = products["Chiltepin Molido 50 g"] || ""; // Column I
       rowData[9] = products["Chiltepin Molido 20 g"] || ""; // Column J
       rowData[10] = products["Chiltepin Entero 30 g"] || ""; // Column K
@@ -629,26 +713,25 @@ export async function POST(req: Request) {
       rowData[27] = products["El Rey Mix Original"] || ""; // Column AB
       rowData[28] = products["El Rey Mix Especial"] || ""; // Column AC
       rowData[29] = products["Medio Kilo Chiltepin Entero"] || ""; // Column AD
-      rowData[30] = submissionId || ""; // Column AE - Idempotency key
+      rowData[30] = resolvedSubmissionId; // Column AE - Idempotency key
       rowData[31] = clientCode; // Column AF
-      rowData[32] = formattedDate; // Column AG (now in MM/DD/YYYY format)
+      rowData[32] = formattedDate; // Column AG
       rowData[33] = total.toString(); // Column AH
       rowData[34] = products["Michela Mix Picafresa"] || ""; // Column AI
       rowData[35] = products["Habanero Molido 50 g"] || ""; // Column AJ
       rowData[36] = products["Habanero Molido 20 g"] || ""; // Column AK
       rowData[42] = products["Molinillo Habanero 20 g"] || ""; // Column AQ
-      rowData[37] = periodWeekCode; // Column AL - Always use the period/week code here
+      rowData[37] = periodWeekCode; // Column AL
 
       // CLEY order value for Column AM (index 38)
-      if (clientCode.toUpperCase() === "CLEY" && cleyOrderValue) {
-        const amValue = cleyOrderValue === "1" ? "No" : "Si";
-        rowData[38] = amValue; // Column AM - CLEY Order value
+      if (normalizedClientCode === "CLEY" && cleyOrderValue) {
+        rowData[38] = cleyOrderValue === "1" ? "No" : "Si";
       } else {
-        rowData[38] = ""; // Empty string but explicitly set to ensure column AM is included
+        rowData[38] = "";
       }
 
-      rowData[40] = monthYearCode; // Column AO - Month_Year code (e.g. NOV_25)
-      rowData[41] = photoLinksValue; // Column AP - Photo URLs (JSON array)
+      rowData[40] = monthYearCode; // Column AO
+      rowData[41] = photoLinksValue; // Column AP
 
       console.log("Final row data:", {
         columnAL: rowData[37],
@@ -666,7 +749,35 @@ export async function POST(req: Request) {
         allowDuplicatePhotos,
       });
 
-      // Try using append instead of update to handle the column range better
+      const preWriteFormMatch = await findFormSubmissionMatch(
+        sheets,
+        spreadsheetId,
+        resolvedSubmissionId,
+      );
+      if (preWriteFormMatch) {
+        console.log("🔄 PRE-WRITE SHEET DUPLICATE DETECTED:", {
+          submissionId: resolvedSubmissionId,
+          clientName,
+          formRowRef: preWriteFormMatch.rowRef,
+        });
+        try {
+          await writeLedgerStatus("submitted", {
+            formRowRef: preWriteFormMatch.rowRef,
+          });
+        } catch (ledgerError) {
+          console.error(
+            "❌ Failed to confirm pre-write duplicate:",
+            ledgerError,
+          );
+        }
+
+        return buildSubmittedResponse({
+          duplicate: true,
+          formRowRef: preWriteFormMatch.rowRef,
+          message: "Pedido ya procesado (sheet duplicate)",
+        });
+      }
+
       const response = await sheets.spreadsheets.values.append({
         spreadsheetId,
         range: "Form_Data!A:AQ",
@@ -678,24 +789,23 @@ export async function POST(req: Request) {
       });
 
       const processingTime = Date.now() - startTime;
+      const formRowRef = response.data.updates?.updatedRange ?? null;
+      await writeLedgerStatus("submitted", {
+        formRowRef,
+      });
       const successData = {
         success: true,
+        duplicate: false,
+        submissionState: "submitted",
+        formRowRef,
         data: response.data,
         processingTime,
       };
 
-      // 🔧 DEDUPLICATION: Cache successful submission
-      if (submissionId) {
-        recentSubmissions.set(submissionId, {
-          timestamp: Date.now(),
-          data: successData,
-        });
-      }
-
       const jsonResponse = NextResponse.json(successData);
       after(async () => {
         console.log("✅ SUBMISSION SUCCESSFUL:", {
-          submissionId,
+          submissionId: resolvedSubmissionId,
           clientName,
           processingTime,
           timestamp: new Date().toISOString(),
@@ -711,132 +821,133 @@ export async function POST(req: Request) {
           });
         }
 
-        // Post-write duplicate verification — compensating transaction pattern.
-        // After writing, check if the same submissionId exists more than once
-        // and clean up duplicates. This handles the TOCTOU race between
-        // concurrent requests on different serverless instances.
-        if (submissionId) {
-          try {
-            const verifyData = await sheets.spreadsheets.values.get({
-              spreadsheetId,
-              range: "Form_Data!AE:AE",
-            });
-            const allIds = verifyData.data.values || [];
-            const matchingRows: number[] = [];
-            for (let i = 0; i < allIds.length; i++) {
-              if (
-                typeof allIds[i][0] === "string" &&
-                allIds[i][0].trim() === submissionId
-              ) {
-                matchingRows.push(i);
-              }
+        try {
+          const verifyData = await sheets.spreadsheets.values.get({
+            spreadsheetId,
+            range: "Form_Data!AE:AE",
+          });
+          const allIds = verifyData.data.values || [];
+          const matchingRows: number[] = [];
+          for (let i = 0; i < allIds.length; i++) {
+            if (
+              typeof allIds[i][0] === "string" &&
+              allIds[i][0].trim() === resolvedSubmissionId
+            ) {
+              matchingRows.push(i);
             }
+          }
 
-            if (matchingRows.length > 1) {
-              console.warn(
-                `⚠️ DUPLICATE ROWS DETECTED for ${submissionId}: ${matchingRows.length} rows at indices ${matchingRows.join(", ")}`,
-              );
-              // Keep the first occurrence, delete the rest (in reverse order to preserve indices)
-              const rowsToDelete = matchingRows.slice(1).reverse();
+          if (matchingRows.length > 1) {
+            console.warn(
+              `⚠️ DUPLICATE ROWS DETECTED for ${resolvedSubmissionId}: ${matchingRows.length} rows at indices ${matchingRows.join(", ")}`,
+            );
+            const rowsToDelete = matchingRows.slice(1).reverse();
 
-              // Fetch sheetId once outside the loop
-              const sheetMeta = await sheets.spreadsheets.get({
-                spreadsheetId,
-                fields: "sheets(properties(sheetId,title))",
-              });
-              const formDataSheet = sheetMeta.data.sheets?.find(
-                (s) => s.properties?.title === "Form_Data",
-              );
-              // Use == null to correctly treat sheetId 0 as valid
-              if (formDataSheet?.properties?.sheetId == null) return;
+            const sheetMeta = await sheets.spreadsheets.get({
+              spreadsheetId,
+              fields: "sheets(properties(sheetId,title))",
+            });
+            const formDataSheet = sheetMeta.data.sheets?.find(
+              (sheet) => sheet.properties?.title === "Form_Data",
+            );
+            if (formDataSheet?.properties?.sheetId == null) return;
 
-              for (const rowIndex of rowsToDelete) {
-                try {
-                  // Re-read the cell at this row to confirm it still holds our submissionId.
-                  // Another after() callback may have already deleted a row above,
-                  // shifting indices and making ours stale.
-                  const cellCheck = await sheets.spreadsheets.values.get({
-                    spreadsheetId,
-                    range: `Form_Data!AE${rowIndex + 1}`,
-                  });
-                  const cellValue = cellCheck.data.values?.[0]?.[0];
-                  if (
-                    typeof cellValue !== "string" ||
-                    cellValue.trim() !== submissionId
-                  ) {
-                    console.log(
-                      `⏭️ Row ${rowIndex} no longer holds ${submissionId} (found "${cellValue}") — skipping`,
-                    );
-                    continue;
-                  }
+            for (const rowIndex of rowsToDelete) {
+              try {
+                const cellCheck = await sheets.spreadsheets.values.get({
+                  spreadsheetId,
+                  range: `Form_Data!AE${rowIndex + 1}`,
+                });
+                const cellValue = cellCheck.data.values?.[0]?.[0];
+                if (
+                  typeof cellValue !== "string" ||
+                  cellValue.trim() !== resolvedSubmissionId
+                ) {
+                  console.log(
+                    `⏭️ Row ${rowIndex} no longer holds ${resolvedSubmissionId} (found "${cellValue}") — skipping`,
+                  );
+                  continue;
+                }
 
-                  await sheets.spreadsheets.batchUpdate({
-                    spreadsheetId,
-                    requestBody: {
-                      requests: [
-                        {
-                          deleteDimension: {
-                            range: {
-                              sheetId: formDataSheet.properties.sheetId,
-                              dimension: "ROWS",
-                              startIndex: rowIndex,
-                              endIndex: rowIndex + 1,
-                            },
+                await sheets.spreadsheets.batchUpdate({
+                  spreadsheetId,
+                  requestBody: {
+                    requests: [
+                      {
+                        deleteDimension: {
+                          range: {
+                            sheetId: formDataSheet.properties.sheetId,
+                            dimension: "ROWS",
+                            startIndex: rowIndex,
+                            endIndex: rowIndex + 1,
                           },
                         },
-                      ],
-                    },
-                  });
-                  console.log(
-                    `🗑️ DELETED duplicate row ${rowIndex} for ${submissionId}`,
-                  );
-                } catch (deleteError) {
-                  console.error(
-                    `❌ Failed to delete duplicate row ${rowIndex}:`,
-                    deleteError,
-                  );
-                }
+                      },
+                    ],
+                  },
+                });
+                console.log(
+                  `🗑️ DELETED duplicate row ${rowIndex} for ${resolvedSubmissionId}`,
+                );
+              } catch (deleteError) {
+                console.error(
+                  `❌ Failed to delete duplicate row ${rowIndex}:`,
+                  deleteError,
+                );
               }
             }
-          } catch (verifyError) {
-            console.error(
-              "❌ Post-write duplicate verification failed:",
-              verifyError,
-            );
           }
+        } catch (verifyError) {
+          console.error(
+            "❌ Post-write duplicate verification failed:",
+            verifyError,
+          );
         }
       });
       return jsonResponse;
     } catch (error) {
       console.error("❌ SHEETS API ERROR:", {
-        submissionId,
+        submissionId: resolvedSubmissionId,
         error: error instanceof Error ? error.message : "Unknown error",
         timestamp: new Date().toISOString(),
       });
 
-      // More specific error handling
-      if (error instanceof Error && error.message.includes("permission")) {
-        return NextResponse.json(
-          {
-            success: false,
-            error: "Error de permisos. Contacta al administrador.",
-          },
-          { status: 403 },
+      let formMatchAfterError = null;
+      try {
+        formMatchAfterError = await findFormSubmissionMatch(
+          sheets,
+          spreadsheetId,
+          resolvedSubmissionId,
+        );
+      } catch (reconciliationError) {
+        console.error(
+          "❌ Failed to reconcile Form_Data after Sheets error:",
+          reconciliationError,
         );
       }
 
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            "Error al guardar en la base de datos. Por favor intenta de nuevo.",
-        },
-        { status: 500 },
-      );
-    } finally {
-      if (submissionId) {
-        inFlightSubmissions.delete(submissionId);
+      if (formMatchAfterError) {
+        try {
+          await writeLedgerStatus("submitted", {
+            formRowRef: formMatchAfterError.rowRef,
+          });
+        } catch (ledgerError) {
+          console.error(
+            "❌ Failed to reconcile submitted ledger state:",
+            ledgerError,
+          );
+        }
+
+        return buildSubmittedResponse({
+          duplicate: true,
+          formRowRef: formMatchAfterError.rowRef,
+          message: "Pedido confirmado tras reconciliacion del backend.",
+        });
       }
+
+      return respondRetryableFailure(
+        "Error al guardar en la base de datos. Estado no confirmado; se reintentara automaticamente.",
+      );
     }
   } catch (error) {
     const processingTime = Date.now() - startTime;
@@ -849,7 +960,6 @@ export async function POST(req: Request) {
       timestamp: new Date().toISOString(),
     });
 
-    // Provide specific error messages based on error type
     let errorMessage =
       "Error al enviar el formulario. Por favor intenta de nuevo.";
     let statusCode = 500;
@@ -874,6 +984,7 @@ export async function POST(req: Request) {
       {
         success: false,
         error: errorMessage,
+        retryable: statusCode >= 500,
         submissionId,
         processingTime,
       },

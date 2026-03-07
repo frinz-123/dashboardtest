@@ -2,6 +2,7 @@
 
 import { Calligraph } from "calligraph";
 import {
+  Bomb,
   Calendar,
   Check,
   ChevronDown,
@@ -48,6 +49,15 @@ import {
   getCurrentPeriodInfo,
   getPeriodWeeks,
 } from "@/utils/dateUtils";
+import {
+  buildLiveSaldoTotals,
+  buildResetAdjustments,
+  createProductTotals,
+  getWeekKey,
+  isOnOrAfterWeekKey,
+  sumLedgerTotals,
+  sumSalesTotals,
+} from "@/utils/inventarioCarroReset";
 import { PRODUCT_COLUMN_INDEX, PRODUCT_NAMES } from "@/utils/productCatalog";
 
 const EFT_PRICES: Record<string, number> = {
@@ -182,25 +192,11 @@ type AddLedgerFormState = {
   items: LedgerFormItem[];
 };
 
-const parseWeekCode = (code: string) => {
-  const match = code.match(/P(\d+)S(\d+)/i);
-  if (!match) return null;
-  return { period: Number(match[1]), week: Number(match[2]) };
-};
-
-const getWeekKey = (code: string) => {
-  const parsed = parseWeekCode(code);
-  if (!parsed) return null;
-  return parsed.period * 10 + parsed.week;
-};
-
-const isOnOrAfterBaselineWeek = (code: string) => {
-  const key = getWeekKey(code);
-  return key !== null && key >= BASELINE_WEEK_KEY;
-};
-
 const formatNumber = (value: number) =>
   new Intl.NumberFormat("es-MX").format(value);
+
+const formatSignedNumber = (value: number) =>
+  `${value > 0 ? "+" : ""}${formatNumber(value)}`;
 
 const compareProductTraceRows = (
   a: ProductTraceTimelineRow,
@@ -798,10 +794,14 @@ export default function InventarioCarroPage() {
         throw new Error("No se pudo cargar Inventario Carro");
       }
       const data = await response.json();
-      setLedgerRows(data.rows || []);
+      const rows = data.rows || [];
+      setLedgerRows(rows);
       setWarnings(parseWarnings(data));
+      return rows as LedgerRow[];
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error desconocido");
+      const message = err instanceof Error ? err.message : "Error desconocido";
+      setError(message);
+      throw err instanceof Error ? err : new Error(message);
     } finally {
       setIsLedgerLoading(false);
     }
@@ -809,8 +809,9 @@ export default function InventarioCarroPage() {
 
   const fetchSales = useCallback(async () => {
     if (!googleApiKey || !spreadsheetId) {
-      setError("Falta configurar Google Sheets en el entorno");
-      return;
+      const message = "Falta configurar Google Sheets en el entorno";
+      setError(message);
+      throw new Error(message);
     }
     setIsSalesLoading(true);
     try {
@@ -837,8 +838,12 @@ export default function InventarioCarroPage() {
         };
       });
       setSalesRows(parsed);
+      return parsed;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error al cargar ventas");
+      const message =
+        err instanceof Error ? err.message : "Error al cargar ventas";
+      setError(message);
+      throw err instanceof Error ? err : new Error(message);
     } finally {
       setIsSalesLoading(false);
     }
@@ -846,14 +851,14 @@ export default function InventarioCarroPage() {
 
   useEffect(() => {
     if (status !== "authenticated" || !isAdmin) return;
-    void fetchLedger();
-    void fetchSales();
+    void fetchLedger().catch(() => {});
+    void fetchSales().catch(() => {});
   }, [status, isAdmin, fetchLedger, fetchSales]);
 
   const handleRefresh = async () => {
     setNotice(null);
     setWarnings([]);
-    await Promise.all([fetchLedger(), fetchSales()]);
+    await Promise.all([fetchLedger(), fetchSales()]).catch(() => {});
   };
 
   const handleOpenAdd = () => {
@@ -1115,6 +1120,100 @@ export default function InventarioCarroPage() {
     }
   };
 
+  const handleNuke = async () => {
+    if (!selectedSeller) return;
+
+    setIsSaving(true);
+    setNotice(null);
+    setWarnings([]);
+
+    try {
+      const resetDate = getDefaultDate();
+      const [latestLedgerRows, latestSalesRows] = await Promise.all([
+        fetchLedger(),
+        fetchSales(),
+      ]);
+
+      const resetProductList = Array.from(
+        new Set(
+          [
+            ...PRODUCT_NAMES,
+            ...latestLedgerRows.map((row) => row.product),
+          ].filter(Boolean),
+        ),
+      );
+
+      const sellerIdentifiers = getVendorIdentifiers(selectedSeller);
+      const normalizedSellerLedgerRows = latestLedgerRows.filter((row) =>
+        sellerIdentifiers.has(normalizeVendorValue(row.sellerEmail)),
+      );
+      const normalizedSellerSalesRows = latestSalesRows.filter((row) =>
+        sellerIdentifiers.has(normalizeVendorValue(row.sellerEmail)),
+      );
+
+      const liveSaldoTotals = buildLiveSaldoTotals({
+        baselineWeekKey: BASELINE_WEEK_KEY,
+        ledgerRows: normalizedSellerLedgerRows,
+        productList: resetProductList,
+        salesRows: normalizedSellerSalesRows,
+      });
+
+      const adjustments = buildResetAdjustments({
+        productList: resetProductList,
+        saldoTotals: liveSaldoTotals,
+      });
+
+      if (adjustments.length === 0) {
+        setNotice("El vendedor ya está en 0");
+        return;
+      }
+
+      const summaryLines = adjustments.map(
+        ({ currentSaldo, product, quantity }) =>
+          `${product}: ${formatSignedNumber(currentSaldo)} -> ${formatSignedNumber(quantity)} -> 0`,
+      );
+      const shouldContinue = window.confirm(
+        [
+          `Resetear saldo de ${selectedSellerDisplayName}?`,
+          "",
+          `Se crearán ${adjustments.length} ajustes con fecha ${resetDate}.`,
+          ...summaryLines,
+        ].join("\n"),
+      );
+
+      if (!shouldContinue) {
+        return;
+      }
+
+      const response = await fetch("/api/inventario-carros", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          entries: adjustments.map(({ product, quantity }) => ({
+            date: resetDate,
+            sellerEmail: selectedSeller,
+            product,
+            quantity,
+            movementType: "Ajuste",
+            notes: "Reset saldo a 0 (nuke)",
+          })),
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.error || "No se pudo resetear el saldo");
+      }
+
+      setWarnings(parseWarnings(payload));
+      await Promise.all([fetchLedger(), fetchSales()]);
+      setNotice(`Saldo reseteado a 0 para ${selectedSellerDisplayName}`);
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : "Error al resetear saldo");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const productList = useMemo(() => {
     const set = new Set<string>(PRODUCT_NAMES);
     ledgerRows.forEach((row) => {
@@ -1128,19 +1227,22 @@ export default function InventarioCarroPage() {
     return getVendorIdentifiers(selectedSeller);
   }, [selectedSeller]);
 
-  const matchesSeller = (value: string) => {
-    if (!selectedSeller) return true;
-    return sellerIdentifiers.has(normalizeVendorValue(value));
-  };
+  const matchesSeller = useCallback(
+    (value: string) => {
+      if (!selectedSeller) return true;
+      return sellerIdentifiers.has(normalizeVendorValue(value));
+    },
+    [selectedSeller, sellerIdentifiers],
+  );
 
   const ledgerForSeller = useMemo(
     () => ledgerRows.filter((row) => matchesSeller(row.sellerEmail)),
-    [ledgerRows, sellerIdentifiers, selectedSeller],
+    [ledgerRows, matchesSeller],
   );
 
   const salesForSeller = useMemo(
     () => salesRows.filter((row) => matchesSeller(row.sellerEmail)),
-    [salesRows, sellerIdentifiers, selectedSeller],
+    [salesRows, matchesSeller],
   );
 
   const ledgerBefore = useMemo(
@@ -1185,58 +1287,25 @@ export default function InventarioCarroPage() {
     [salesForSeller, selectedWeekCode],
   );
 
-  const createTotals = () =>
-    productList.reduce(
-      (acc, product) => ({
-        ...acc,
-        [product]: 0,
-      }),
-      {} as Record<string, number>,
-    );
-
-  const sumLedgerTotals = (rows: LedgerRow[]) => {
-    const totals = createTotals();
-    rows.forEach((row) => {
-      if (!totals[row.product]) {
-        totals[row.product] = 0;
-      }
-      totals[row.product] += row.quantity || 0;
-    });
-    return totals;
-  };
-
-  const sumSalesTotals = (rows: SalesRow[]) => {
-    const totals = createTotals();
-    rows.forEach((row) => {
-      Object.entries(row.products).forEach(([product, quantity]) => {
-        if (!totals[product]) {
-          totals[product] = 0;
-        }
-        totals[product] += quantity || 0;
-      });
-    });
-    return totals;
-  };
-
   const ledgerBeforeTotals = useMemo(
-    () => sumLedgerTotals(ledgerBefore),
+    () => sumLedgerTotals(ledgerBefore, productList),
     [ledgerBefore, productList],
   );
   const ledgerWeekTotals = useMemo(
-    () => sumLedgerTotals(ledgerInWeek),
+    () => sumLedgerTotals(ledgerInWeek, productList),
     [ledgerInWeek, productList],
   );
   const salesBeforeTotals = useMemo(
-    () => sumSalesTotals(salesBefore),
+    () => sumSalesTotals(salesBefore, productList),
     [salesBefore, productList],
   );
   const salesWeekTotals = useMemo(
-    () => sumSalesTotals(salesInWeek),
+    () => sumSalesTotals(salesInWeek, productList),
     [salesInWeek, productList],
   );
 
   const saldoInicial = useMemo(() => {
-    const totals = createTotals();
+    const totals = createProductTotals(productList);
     productList.forEach((product) => {
       totals[product] =
         (ledgerBeforeTotals[product] || 0) - (salesBeforeTotals[product] || 0);
@@ -1293,7 +1362,8 @@ export default function InventarioCarroPage() {
     const ledgerEntries: ProductTraceTimelineRow[] = ledgerForSeller
       .filter(
         (row) =>
-          row.product === traceProduct && isOnOrAfterBaselineWeek(row.weekCode),
+          row.product === traceProduct &&
+          isOnOrAfterWeekKey(row.weekCode, BASELINE_WEEK_KEY),
       )
       .map((row) => ({
         id: `ledger-${row.rowNumber}`,
@@ -1318,7 +1388,7 @@ export default function InventarioCarroPage() {
     const salesEntries: ProductTraceTimelineRow[] = salesForSeller.flatMap(
       (row, index) => {
         const quantity = row.products[traceProduct] || 0;
-        if (!quantity || !isOnOrAfterBaselineWeek(row.weekCode)) {
+        if (!quantity || !isOnOrAfterWeekKey(row.weekCode, BASELINE_WEEK_KEY)) {
           return [];
         }
 
@@ -1397,10 +1467,26 @@ export default function InventarioCarroPage() {
               <button
                 type="button"
                 onClick={handleRefresh}
+                disabled={isSaving}
                 className="inline-flex items-center justify-center px-3 py-2 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-100"
                 aria-label="Actualizar"
               >
                 <RefreshCcw className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={handleNuke}
+                disabled={
+                  !selectedSeller ||
+                  isSaving ||
+                  isLedgerLoading ||
+                  isSalesLoading
+                }
+                className="inline-flex items-center justify-center px-3 py-2 rounded-lg border border-red-200 text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label="Resetear saldo del vendedor"
+                title="Resetear saldo del vendedor"
+              >
+                <Bomb className="h-4 w-4" />
               </button>
               <button
                 type="button"
