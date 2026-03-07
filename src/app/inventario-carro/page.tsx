@@ -1261,7 +1261,7 @@ export default function InventarioCarroPage() {
       ledgerForSeller.filter(
         (row) =>
           row.weekCode === selectedWeekCode &&
-          isOnOrAfterBaselineWeek(row.weekCode),
+          isOnOrAfterWeekKey(row.weekCode, BASELINE_WEEK_KEY),
       ),
     [ledgerForSeller, selectedWeekCode],
   );
@@ -1282,7 +1282,7 @@ export default function InventarioCarroPage() {
       salesForSeller.filter(
         (row) =>
           row.weekCode === selectedWeekCode &&
-          isOnOrAfterBaselineWeek(row.weekCode),
+          isOnOrAfterWeekKey(row.weekCode, BASELINE_WEEK_KEY),
       ),
     [salesForSeller, selectedWeekCode],
   );
@@ -1314,7 +1314,7 @@ export default function InventarioCarroPage() {
   }, [ledgerBeforeTotals, salesBeforeTotals, productList]);
 
   const saldoFinal = useMemo(() => {
-    const totals = createTotals();
+    const totals = createProductTotals(productList);
     productList.forEach((product) => {
       totals[product] =
         (saldoInicial[product] || 0) +

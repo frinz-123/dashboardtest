@@ -99,7 +99,7 @@ const SelectPopup = React.forwardRef<HTMLDivElement, SelectPopupProps>(
     <SelectPrimitive.Portal>
       <SelectPrimitive.Positioner
         align="start"
-        alignItemToTrigger={alignItemWithTrigger}
+        alignItemWithTrigger={alignItemWithTrigger}
         className="z-[200]"
         data-slot="select-positioner"
         sideOffset={sideOffset}
