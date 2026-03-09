@@ -110,6 +110,8 @@ export default function NavegarPage() {
   const [drawingDropdownOpen, setDrawingDropdownOpen] = useState(false);
   const [isDrawingLoading, setIsDrawingLoading] = useState(false);
   const [isSavingDrawing, setIsSavingDrawing] = useState(false);
+  const [isNamingDrawing, setIsNamingDrawing] = useState(false);
+  const [newDrawingName, setNewDrawingName] = useState("Zona nueva");
   const drawingChipRef = useRef<HTMLButtonElement>(null);
   const [printContainer, setPrintContainer] = useState<HTMLDivElement | null>(
     null,
@@ -691,10 +693,9 @@ export default function NavegarPage() {
   };
 
   const handleSaveManualDrawing = async () => {
-    if (!currentManualPolygon || typeof window === "undefined") return;
-
-    const nombre = window.prompt("Nombre del dibujo:", "Zona nueva");
-    if (!nombre?.trim()) return;
+    if (!currentManualPolygon) return;
+    const normalizedName = newDrawingName.trim();
+    if (!normalizedName) return;
 
     setIsSavingDrawing(true);
     try {
@@ -702,7 +703,7 @@ export default function NavegarPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          nombre: nombre.trim(),
+          nombre: normalizedName,
           scope: "user",
           geometry: currentManualPolygon,
         }),
@@ -717,6 +718,7 @@ export default function NavegarPage() {
       if (drawing?.id) {
         setSavedDrawings((prev) => [drawing, ...prev]);
         setSelectedDrawingId(drawing.id);
+        setIsNamingDrawing(false);
       } else {
         await loadSavedDrawings();
       }
@@ -846,6 +848,9 @@ export default function NavegarPage() {
           hasPolygon,
           selectedClients: clientsInArea.length,
         });
+      }
+      if (!hasPolygon) {
+        setIsNamingDrawing(false);
       }
       setCurrentManualPolygon(polygonFeature);
       setHasDrawnPolygon((prev) => (prev === hasPolygon ? prev : hasPolygon));
@@ -1206,13 +1211,16 @@ export default function NavegarPage() {
                 {isDrawingLoading ? "Actualizando..." : "Actualizar dibujos"}
               </button>
               <button
-                onClick={handleSaveManualDrawing}
+                onClick={() => {
+                  setIsNamingDrawing(true);
+                  setDrawingDropdownOpen(false);
+                }}
                 disabled={!currentManualPolygon || isSavingDrawing}
                 className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 text-gray-700 disabled:text-gray-400"
               >
                 {isSavingDrawing
                   ? "Guardando..."
-                  : "Guardar polígono manual actual"}
+                  : "Guardar polígono manual actual (con nombre)"}
               </button>
               <button
                 onClick={() => {
@@ -1343,6 +1351,14 @@ export default function NavegarPage() {
                     <div className="flex items-center gap-1.5">
                       <button
                         type="button"
+                        onClick={() => setIsNamingDrawing((prev) => !prev)}
+                        disabled={!currentManualPolygon || isSavingDrawing}
+                        className="px-2 py-1 text-xs rounded-md border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        Guardar dibujo
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => mapRef.current?.clearDrawnArea?.()}
                         className="px-2 py-1 text-xs rounded-md border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
                       >
@@ -1359,6 +1375,36 @@ export default function NavegarPage() {
                       </button>
                     </div>
                   </div>
+                  {isNamingDrawing && currentManualPolygon && (
+                    <div className="mb-2 rounded-lg border border-gray-200 bg-gray-50 p-2">
+                      <label
+                        htmlFor="drawing-name-input"
+                        className="mb-1 block text-xs font-medium text-gray-600"
+                      >
+                        Nombre del dibujo
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          id="drawing-name-input"
+                          type="text"
+                          value={newDrawingName}
+                          onChange={(event) =>
+                            setNewDrawingName(event.target.value)
+                          }
+                          className="h-8 flex-1 rounded-md border border-gray-200 px-2 text-xs"
+                          placeholder="Ej. Zona Centro"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleSaveManualDrawing}
+                          disabled={isSavingDrawing || !newDrawingName.trim()}
+                          className="h-8 rounded-md bg-gray-900 px-2 text-xs font-medium text-white disabled:opacity-50"
+                        >
+                          {isSavingDrawing ? "Guardando..." : "Guardar"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   <div className="max-h-40 overflow-y-auto -mx-2 px-2">
                     {areaClientsWithMeta.length > 0 ? (
                       areaClientsWithMeta.map((client) => (
