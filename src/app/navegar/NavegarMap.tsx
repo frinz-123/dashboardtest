@@ -15,6 +15,14 @@ import "@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css";
 import convex from "@turf/convex";
 import { featureCollection, point } from "@turf/helpers";
 import { PenTool } from "lucide-react";
+import {
+  extractPolygonsFromFeature,
+  hasPolygonGeometry,
+  isPointInsidePolygon,
+  type LngLatTuple,
+  type PolygonCoordinates,
+  type PolygonFeature,
+} from "@/utils/polygonGeometry";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
 
@@ -68,129 +76,11 @@ type NavegarMapProps = {
   onAreaSelectionChange?: (
     clientsInArea: Client[],
     hasPolygon: boolean,
+    polygonFeature: PolygonFeature | null,
   ) => void;
+  savedDrawingFeature?: PolygonFeature | null;
+  savedDrawingName?: string | null;
   disableDrawing?: boolean;
-};
-
-type LngLatTuple = [number, number];
-type PolygonCoordinates = LngLatTuple[][];
-type MultiPolygonCoordinates = PolygonCoordinates[];
-
-const EPSILON = 1e-10;
-
-const isFiniteNumber = (value: unknown): value is number =>
-  typeof value === "number" && Number.isFinite(value);
-
-const isLngLatTuple = (value: unknown): value is LngLatTuple =>
-  Array.isArray(value) &&
-  value.length >= 2 &&
-  isFiniteNumber(value[0]) &&
-  isFiniteNumber(value[1]);
-
-const isPolygonCoordinates = (value: unknown): value is PolygonCoordinates =>
-  Array.isArray(value) &&
-  value.every(
-    (ring) =>
-      Array.isArray(ring) && ring.length >= 3 && ring.every(isLngLatTuple),
-  );
-
-const isMultiPolygonCoordinates = (
-  value: unknown,
-): value is MultiPolygonCoordinates =>
-  Array.isArray(value) && value.every(isPolygonCoordinates);
-
-const isPointOnSegment = (
-  point: LngLatTuple,
-  start: LngLatTuple,
-  end: LngLatTuple,
-): boolean => {
-  const [px, py] = point;
-  const [x1, y1] = start;
-  const [x2, y2] = end;
-
-  const cross = (px - x1) * (y2 - y1) - (py - y1) * (x2 - x1);
-  if (Math.abs(cross) > EPSILON) return false;
-
-  const dot = (px - x1) * (px - x2) + (py - y1) * (py - y2);
-  return dot <= EPSILON;
-};
-
-const isPointInsideRing = (
-  point: LngLatTuple,
-  ring: LngLatTuple[],
-): boolean => {
-  if (ring.length < 3) return false;
-
-  let isInside = false;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const start = ring[j];
-    const end = ring[i];
-
-    if (isPointOnSegment(point, start, end)) {
-      return true;
-    }
-
-    const [x1, y1] = start;
-    const [x2, y2] = end;
-    const [px, py] = point;
-
-    const intersects =
-      y1 > py !== y2 > py &&
-      px < ((x2 - x1) * (py - y1)) / (y2 - y1 + EPSILON) + x1;
-
-    if (intersects) {
-      isInside = !isInside;
-    }
-  }
-
-  return isInside;
-};
-
-const isPointInsidePolygon = (
-  point: LngLatTuple,
-  polygon: PolygonCoordinates,
-): boolean => {
-  if (!polygon.length) return false;
-  if (!isPointInsideRing(point, polygon[0])) return false;
-
-  for (let i = 1; i < polygon.length; i++) {
-    if (isPointInsideRing(point, polygon[i])) {
-      return false;
-    }
-  }
-
-  return true;
-};
-
-const extractPolygonsFromFeature = (feature: unknown): PolygonCoordinates[] => {
-  if (!feature || typeof feature !== "object") return [];
-  const geometry = (
-    feature as { geometry?: { type?: string; coordinates?: unknown } }
-  ).geometry;
-  if (!geometry || !geometry.type) return [];
-
-  if (
-    geometry.type === "Polygon" &&
-    isPolygonCoordinates(geometry.coordinates)
-  ) {
-    return [geometry.coordinates];
-  }
-
-  if (
-    geometry.type === "MultiPolygon" &&
-    isMultiPolygonCoordinates(geometry.coordinates)
-  ) {
-    return geometry.coordinates;
-  }
-
-  return [];
-};
-
-const hasPolygonGeometry = (feature: unknown): boolean => {
-  if (!feature || typeof feature !== "object") return false;
-  const geometryType = (feature as { geometry?: { type?: string } }).geometry
-    ?.type;
-  return geometryType === "Polygon" || geometryType === "MultiPolygon";
 };
 
 const NavegarMap = forwardRef(function NavegarMap(
@@ -199,10 +89,12 @@ const NavegarMap = forwardRef(function NavegarMap(
     selectedClient,
     onSelectClient,
     currentLocation,
-    routeTo,
+    routeTo: _routeTo,
     onRouteInfo,
     onUserLocationChange,
     onAreaSelectionChange,
+    savedDrawingFeature = null,
+    savedDrawingName = null,
     disableDrawing = false,
   }: NavegarMapProps & {
     onUserLocationChange?: (loc: { lat: number; lng: number } | null) => void;
@@ -226,12 +118,19 @@ const NavegarMap = forwardRef(function NavegarMap(
   const isHandlingDrawEventRef = useRef(false);
   const autoPolygonLayerId = "clients-polygon";
   const autoPolygonSourceId = "clients-polygon-source";
+  const savedPolygonLayerId = "saved-drawing-polygon";
+  const savedPolygonSourceId = "saved-drawing-polygon-source";
+  const savedPolygonOutlineLayerId = "saved-drawing-polygon-outline";
+  const savedPolygonLabelMarkerRef = useRef<mapboxgl.Marker | null>(null);
 
   const emitClientsInArea = useCallback(
-    (polygons: PolygonCoordinates[]) => {
+    (
+      polygons: PolygonCoordinates[],
+      polygonFeature?: PolygonFeature | null,
+    ) => {
       if (!polygons.length) {
         setSelectedAreaCount(0);
-        onAreaSelectionChange?.([], false);
+        onAreaSelectionChange?.([], false, null);
         if (DEBUG_AREA_SELECTION) {
           console.debug("[NavegarMap][draw] no polygons to evaluate");
         }
@@ -244,7 +143,7 @@ const NavegarMap = forwardRef(function NavegarMap(
       });
 
       setSelectedAreaCount(clientsInArea.length);
-      onAreaSelectionChange?.(clientsInArea, true);
+      onAreaSelectionChange?.(clientsInArea, true, polygonFeature ?? null);
       if (DEBUG_AREA_SELECTION) {
         console.debug("[NavegarMap][draw] clients in polygon:", {
           totalVisibleClients: clients.length,
@@ -270,7 +169,7 @@ const NavegarMap = forwardRef(function NavegarMap(
     const drawnPolygon = getDrawnPolygonFeature();
     if (!drawnPolygon) {
       setSelectedAreaCount(0);
-      onAreaSelectionChange?.([], false);
+      onAreaSelectionChange?.([], false, null);
       if (DEBUG_AREA_SELECTION) {
         console.debug("[NavegarMap][draw] no drawn polygon in store");
       }
@@ -278,14 +177,14 @@ const NavegarMap = forwardRef(function NavegarMap(
     }
 
     const polygons = extractPolygonsFromFeature(drawnPolygon);
-    emitClientsInArea(polygons);
+    emitClientsInArea(polygons, drawnPolygon as PolygonFeature);
   }, [emitClientsInArea, getDrawnPolygonFeature, onAreaSelectionChange]);
 
   const clearDrawnArea = useCallback(() => {
     if (!drawControlRef.current) return;
     drawControlRef.current.deleteAll();
     setSelectedAreaCount(0);
-    onAreaSelectionChange?.([], false);
+    onAreaSelectionChange?.([], false, null);
   }, [onAreaSelectionChange]);
 
   const removeAutoPolygon = useCallback(() => {
@@ -300,6 +199,43 @@ const NavegarMap = forwardRef(function NavegarMap(
       map.current.removeSource(autoPolygonSourceId);
     }
   }, []);
+
+  const removeSavedPolygon = useCallback(() => {
+    if (!map.current) return;
+
+    if (savedPolygonLabelMarkerRef.current) {
+      savedPolygonLabelMarkerRef.current.remove();
+      savedPolygonLabelMarkerRef.current = null;
+    }
+
+    if (map.current.getLayer(savedPolygonLayerId)) {
+      map.current.removeLayer(savedPolygonLayerId);
+    }
+    if (map.current.getLayer(savedPolygonOutlineLayerId)) {
+      map.current.removeLayer(savedPolygonOutlineLayerId);
+    }
+    if (map.current.getSource(savedPolygonSourceId)) {
+      map.current.removeSource(savedPolygonSourceId);
+    }
+  }, []);
+
+  const computeFeatureCenter = useCallback(
+    (feature: PolygonFeature): [number, number] | null => {
+      const polygons = extractPolygonsFromFeature(feature);
+      const allPoints = polygons.flatMap((polygon) => polygon.flat());
+      if (!allPoints.length) return null;
+
+      const lngs = allPoints.map((point) => point[0]);
+      const lats = allPoints.map((point) => point[1]);
+      const minLng = Math.min(...lngs);
+      const maxLng = Math.max(...lngs);
+      const minLat = Math.min(...lats);
+      const maxLat = Math.max(...lats);
+
+      return [(minLng + maxLng) / 2, (minLat + maxLat) / 2];
+    },
+    [],
+  );
 
   // Try to get user location on mount
   useEffect(() => {
@@ -667,6 +603,67 @@ const NavegarMap = forwardRef(function NavegarMap(
   }, [showDibujo, isManualDibujo, clients, removeAutoPolygon]);
 
   useEffect(() => {
+    if (!map.current) return;
+
+    if (!savedDrawingFeature) {
+      removeSavedPolygon();
+      return;
+    }
+
+    removeSavedPolygon();
+
+    map.current.addSource(savedPolygonSourceId, {
+      type: "geojson",
+      data: savedDrawingFeature,
+    });
+
+    map.current.addLayer({
+      id: savedPolygonLayerId,
+      type: "fill",
+      source: savedPolygonSourceId,
+      paint: {
+        "fill-color": "#2563EB",
+        "fill-opacity": 0.12,
+      },
+    });
+
+    map.current.addLayer({
+      id: savedPolygonOutlineLayerId,
+      type: "line",
+      source: savedPolygonSourceId,
+      paint: {
+        "line-color": "#1D4ED8",
+        "line-width": 2,
+        "line-dasharray": [3, 2],
+      },
+    });
+
+    const labelCenter = computeFeatureCenter(savedDrawingFeature);
+    if (labelCenter && savedDrawingName) {
+      const label = document.createElement("div");
+      label.className =
+        "rounded-md border border-blue-200 bg-white/90 px-2 py-1 text-[11px] font-medium text-blue-700 shadow-sm";
+      label.textContent = savedDrawingName;
+
+      savedPolygonLabelMarkerRef.current = new mapboxgl.Marker({
+        element: label,
+        anchor: "center",
+      })
+        .setLngLat(labelCenter)
+        .addTo(map.current);
+    }
+
+    return () => {
+      removeSavedPolygon();
+    };
+  }, [
+    savedDrawingFeature,
+    savedDrawingName,
+    removeSavedPolygon,
+    computeFeatureCenter,
+  ]);
+
+  useEffect(() => {
     if (!map.current || !drawControlRef.current) return;
 
     const getEventPolygons = (event: unknown): PolygonCoordinates[] => {
@@ -700,9 +697,10 @@ const NavegarMap = forwardRef(function NavegarMap(
       isHandlingDrawEventRef.current = true;
 
       const polygons = getEventPolygons(event);
+      const polygonFeature = getDrawnPolygonFeature() as PolygonFeature | null;
       try {
         if (polygons.length > 0) {
-          emitClientsInArea(polygons);
+          emitClientsInArea(polygons, polygonFeature);
         } else {
           emitAreaSelection();
         }
@@ -729,8 +727,10 @@ const NavegarMap = forwardRef(function NavegarMap(
 
       try {
         const polygons = getEventPolygons(event);
+        const polygonFeature =
+          getDrawnPolygonFeature() as PolygonFeature | null;
         if (polygons.length > 0) {
-          emitClientsInArea(polygons);
+          emitClientsInArea(polygons, polygonFeature);
         } else {
           emitAreaSelection();
         }
@@ -744,7 +744,7 @@ const NavegarMap = forwardRef(function NavegarMap(
         return;
       }
       setSelectedAreaCount(0);
-      onAreaSelectionChange?.([], false);
+      onAreaSelectionChange?.([], false, null);
     };
 
     const mapInstance = map.current;
@@ -763,6 +763,7 @@ const NavegarMap = forwardRef(function NavegarMap(
     emitClientsInArea,
     showDibujo,
     isManualDibujo,
+    getDrawnPolygonFeature,
   ]);
 
   useEffect(() => {
@@ -780,7 +781,7 @@ const NavegarMap = forwardRef(function NavegarMap(
       drawControlRef.current.changeMode("simple_select");
       clearDrawnArea();
       removeAutoPolygon();
-      onAreaSelectionChange?.([], false);
+      onAreaSelectionChange?.([], false, null);
       return;
     }
 
@@ -793,7 +794,7 @@ const NavegarMap = forwardRef(function NavegarMap(
 
     drawControlRef.current.changeMode("simple_select");
     clearDrawnArea();
-    onAreaSelectionChange?.([], false);
+    onAreaSelectionChange?.([], false, null);
   }, [
     disableDrawing,
     showDibujo,
