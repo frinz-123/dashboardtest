@@ -104,9 +104,7 @@ export default function NavegarPage() {
   const [currentManualPolygon, setCurrentManualPolygon] =
     useState<PolygonFeature | null>(null);
   const [savedDrawings, setSavedDrawings] = useState<SavedDrawing[]>([]);
-  const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(
-    null,
-  );
+  const [selectedDrawingIds, setSelectedDrawingIds] = useState<string[]>([]);
   const [drawingDropdownOpen, setDrawingDropdownOpen] = useState(false);
   const [isDrawingLoading, setIsDrawingLoading] = useState(false);
   const [isSavingDrawing, setIsSavingDrawing] = useState(false);
@@ -277,35 +275,33 @@ export default function NavegarPage() {
     return emails.sort();
   }, [clientLastEmailMap]);
 
-  const selectedDrawing = useMemo(
+  const selectedDrawings = useMemo(
     () =>
-      selectedDrawingId
-        ? savedDrawings.find((drawing) => drawing.id === selectedDrawingId) ||
-          null
-        : null,
-    [savedDrawings, selectedDrawingId],
+      savedDrawings.filter((drawing) =>
+        selectedDrawingIds.includes(drawing.id),
+      ),
+    [savedDrawings, selectedDrawingIds],
   );
 
   useEffect(() => {
-    if (selectedDrawingId && !selectedDrawing) {
-      setSelectedDrawingId(null);
-    }
-  }, [selectedDrawing, selectedDrawingId]);
+    setSelectedDrawingIds((prev) =>
+      prev.filter((id) => savedDrawings.some((drawing) => drawing.id === id)),
+    );
+  }, [savedDrawings]);
 
   const drawingFilteredNames = useMemo(() => {
-    if (!selectedDrawing) return null;
+    if (selectedDrawings.length === 0) return null;
 
     const namesInDrawing = clientNames.filter((name) => {
       const location = clientLocations[name];
       if (!location) return false;
-      return isPointInsideFeature(
-        [location.lng, location.lat],
-        selectedDrawing.geometry,
+      return selectedDrawings.some((drawing) =>
+        isPointInsideFeature([location.lng, location.lat], drawing.geometry),
       );
     });
 
     return namesInDrawing;
-  }, [clientLocations, clientNames, selectedDrawing]);
+  }, [clientLocations, clientNames, selectedDrawings]);
 
   // Helper: convert sheet date (MM/DD/YYYY) to ISO (YYYY-MM-DD)
   const sheetDateToISO = (sheetDate: string): string | null => {
@@ -429,7 +425,7 @@ export default function NavegarPage() {
       !sinVisitarFilter &&
       !dateFilter &&
       !emailFilter &&
-      !selectedDrawing
+      selectedDrawingIds.length === 0
     ) {
       return null;
     }
@@ -512,7 +508,7 @@ export default function NavegarPage() {
         if (clientLastEmailMap[name] !== emailFilter) matches = false;
       }
 
-      if (matches && selectedDrawing) {
+      if (matches && selectedDrawingIds.length > 0) {
         if (!drawingFilteredNames?.includes(name)) {
           matches = false;
         }
@@ -535,7 +531,7 @@ export default function NavegarPage() {
     clientVendedorMapping,
     clientLastVisitMap,
     clientLastEmailMap,
-    selectedDrawing,
+    selectedDrawingIds,
     drawingFilteredNames,
     isoToDate,
     sheetDateToISO,
@@ -567,7 +563,7 @@ export default function NavegarPage() {
       sinVisitarFilter ||
       dateFilter ||
       emailFilter ||
-      selectedDrawing,
+      selectedDrawingIds.length > 0,
   );
 
   // Get the final filtered client list with visit dates
@@ -665,8 +661,14 @@ export default function NavegarPage() {
       });
     }
     if (emailFilter) filters.push({ label: "Email", value: emailFilter });
-    if (selectedDrawing)
-      filters.push({ label: "Dibujo", value: selectedDrawing.nombre });
+    if (selectedDrawings.length > 0)
+      filters.push({
+        label: "Dibujos",
+        value:
+          selectedDrawings.length === 1
+            ? selectedDrawings[0].nombre
+            : `${selectedDrawings.length} seleccionados`,
+      });
     if (searchTerm) filters.push({ label: "Búsqueda", value: searchTerm });
     if (filters.length === 0)
       filters.push({ label: "Filtros", value: "Ninguno" });
@@ -677,7 +679,7 @@ export default function NavegarPage() {
     sinVisitarFilter,
     dateFilter,
     emailFilter,
-    selectedDrawing,
+    selectedDrawings,
     searchTerm,
   ]);
 
@@ -717,7 +719,7 @@ export default function NavegarPage() {
       const drawing = data?.drawing as SavedDrawing | undefined;
       if (drawing?.id) {
         setSavedDrawings((prev) => [drawing, ...prev]);
-        setSelectedDrawingId(drawing.id);
+        setSelectedDrawingIds([drawing.id]);
         setIsNamingDrawing(false);
       } else {
         await loadSavedDrawings();
@@ -942,8 +944,11 @@ export default function NavegarPage() {
           onRouteInfo={setRouteInfo}
           onUserLocationChange={handleUserLocationChange}
           onAreaSelectionChange={handleAreaSelectionChange}
-          savedDrawingFeature={selectedDrawing?.geometry || null}
-          savedDrawingName={selectedDrawing?.nombre || null}
+          savedDrawings={selectedDrawings.map((drawing) => ({
+            id: drawing.id,
+            name: drawing.nombre,
+            feature: drawing.geometry,
+          }))}
           disableDrawing={routeMode}
         />
       </div>
@@ -1025,12 +1030,16 @@ export default function NavegarPage() {
             <FilterChip
               ref={drawingChipRef}
               label="Dibujos"
-              value={selectedDrawing?.nombre || null}
-              count={selectedDrawing ? 1 : 0}
+              value={
+                selectedDrawings.length > 0
+                  ? `${selectedDrawings.length} dibujo${selectedDrawings.length === 1 ? "" : "s"}`
+                  : null
+              }
+              count={selectedDrawings.length}
               isOpen={drawingDropdownOpen}
               onToggle={() => setDrawingDropdownOpen((open) => !open)}
               onClear={() => {
-                setSelectedDrawingId(null);
+                setSelectedDrawingIds([]);
                 setDrawingDropdownOpen(false);
               }}
               icon={<PenTool className="w-3.5 h-3.5" />}
@@ -1226,12 +1235,25 @@ export default function NavegarPage() {
               </button>
               <button
                 onClick={() => {
-                  setSelectedDrawingId(null);
+                  setSelectedDrawingIds([]);
                   setDrawingDropdownOpen(false);
                 }}
                 className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 text-gray-700"
               >
                 Quitar filtro de dibujo
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedDrawingIds(
+                    savedDrawings.map((drawing) => drawing.id),
+                  );
+                  setDrawingDropdownOpen(false);
+                }}
+                disabled={savedDrawings.length === 0}
+                className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 text-gray-700 disabled:text-gray-400"
+              >
+                Seleccionar todos
               </button>
 
               <div className="my-1 border-t border-gray-100" />
@@ -1241,17 +1263,20 @@ export default function NavegarPage() {
                   <button
                     key={drawing.id}
                     onClick={() => {
-                      setSelectedDrawingId(drawing.id);
-                      setDrawingDropdownOpen(false);
+                      setSelectedDrawingIds((prev) =>
+                        prev.includes(drawing.id)
+                          ? prev.filter((id) => id !== drawing.id)
+                          : [...prev, drawing.id],
+                      );
                     }}
                     className={`w-full px-3 py-2 text-left text-sm flex items-center justify-between transition-colors ${
-                      selectedDrawingId === drawing.id
+                      selectedDrawingIds.includes(drawing.id)
                         ? "bg-blue-50 text-blue-700"
                         : "hover:bg-gray-50 text-gray-700"
                     }`}
                   >
                     <span className="truncate pr-2">{drawing.nombre}</span>
-                    {selectedDrawingId === drawing.id && (
+                    {selectedDrawingIds.includes(drawing.id) && (
                       <Check className="w-4 h-4" />
                     )}
                   </button>
@@ -1474,7 +1499,7 @@ export default function NavegarPage() {
                       setSinVisitarFilter(false);
                       setDateFilter(null);
                       setEmailFilter(null);
-                      setSelectedDrawingId(null);
+                      setSelectedDrawingIds([]);
                       mapRef.current?.clearDrawnArea?.();
                     }}
                     className="text-xs text-gray-500 hover:text-gray-700 transition-colors"

@@ -78,8 +78,7 @@ type NavegarMapProps = {
     hasPolygon: boolean,
     polygonFeature: PolygonFeature | null,
   ) => void;
-  savedDrawingFeature?: PolygonFeature | null;
-  savedDrawingName?: string | null;
+  savedDrawings?: Array<{ id: string; name: string; feature: PolygonFeature }>;
   disableDrawing?: boolean;
 };
 
@@ -93,8 +92,7 @@ const NavegarMap = forwardRef(function NavegarMap(
     onRouteInfo,
     onUserLocationChange,
     onAreaSelectionChange,
-    savedDrawingFeature = null,
-    savedDrawingName = null,
+    savedDrawings = [],
     disableDrawing = false,
   }: NavegarMapProps & {
     onUserLocationChange?: (loc: { lat: number; lng: number } | null) => void;
@@ -121,7 +119,7 @@ const NavegarMap = forwardRef(function NavegarMap(
   const savedPolygonLayerId = "saved-drawing-polygon";
   const savedPolygonSourceId = "saved-drawing-polygon-source";
   const savedPolygonOutlineLayerId = "saved-drawing-polygon-outline";
-  const savedPolygonLabelMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const savedPolygonLabelMarkerRef = useRef<mapboxgl.Marker[]>([]);
 
   const emitClientsInArea = useCallback(
     (
@@ -203,10 +201,8 @@ const NavegarMap = forwardRef(function NavegarMap(
   const removeSavedPolygon = useCallback(() => {
     if (!map.current) return;
 
-    if (savedPolygonLabelMarkerRef.current) {
-      savedPolygonLabelMarkerRef.current.remove();
-      savedPolygonLabelMarkerRef.current = null;
-    }
+    savedPolygonLabelMarkerRef.current.forEach((marker) => marker.remove());
+    savedPolygonLabelMarkerRef.current = [];
 
     if (map.current.getLayer(savedPolygonLayerId)) {
       map.current.removeLayer(savedPolygonLayerId);
@@ -605,7 +601,7 @@ const NavegarMap = forwardRef(function NavegarMap(
   useEffect(() => {
     if (!map.current) return;
 
-    if (!savedDrawingFeature) {
+    if (savedDrawings.length === 0) {
       removeSavedPolygon();
       return;
     }
@@ -614,7 +610,10 @@ const NavegarMap = forwardRef(function NavegarMap(
 
     map.current.addSource(savedPolygonSourceId, {
       type: "geojson",
-      data: savedDrawingFeature,
+      data: {
+        type: "FeatureCollection",
+        features: savedDrawings.map((drawing) => drawing.feature),
+      },
     });
 
     map.current.addLayer({
@@ -638,30 +637,31 @@ const NavegarMap = forwardRef(function NavegarMap(
       },
     });
 
-    const labelCenter = computeFeatureCenter(savedDrawingFeature);
-    if (labelCenter && savedDrawingName) {
+    const nextMarkers: mapboxgl.Marker[] = [];
+    for (const drawing of savedDrawings) {
+      const labelCenter = computeFeatureCenter(drawing.feature);
+      if (!labelCenter || !drawing.name) continue;
+
       const label = document.createElement("div");
       label.className =
         "rounded-md border border-blue-200 bg-white/90 px-2 py-1 text-[11px] font-medium text-blue-700 shadow-sm";
-      label.textContent = savedDrawingName;
+      label.textContent = drawing.name;
 
-      savedPolygonLabelMarkerRef.current = new mapboxgl.Marker({
+      const marker = new mapboxgl.Marker({
         element: label,
         anchor: "center",
       })
         .setLngLat(labelCenter)
         .addTo(map.current);
+
+      nextMarkers.push(marker);
     }
+    savedPolygonLabelMarkerRef.current = nextMarkers;
 
     return () => {
       removeSavedPolygon();
     };
-  }, [
-    savedDrawingFeature,
-    savedDrawingName,
-    removeSavedPolygon,
-    computeFeatureCenter,
-  ]);
+  }, [savedDrawings, removeSavedPolygon, computeFeatureCenter]);
 
   useEffect(() => {
     if (!map.current || !drawControlRef.current) return;
