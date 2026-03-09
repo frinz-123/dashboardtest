@@ -7,6 +7,7 @@ import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import SearchInput from "@/components/ui/SearchInput";
+import { createNavegarCsv, type ExportRow } from "@/utils/navegarExport";
 import {
   isPointInsideFeature,
   type PolygonFeature,
@@ -33,6 +34,13 @@ type SavedDrawing = {
   createdAtIso: string;
   updatedAtIso: string;
   isActive: boolean;
+};
+
+type ExportTarget = "manual-area" | "drawing-filter";
+
+type ExportFilterBadge = {
+  label: string;
+  value: string;
 };
 
 export default function NavegarPage() {
@@ -114,6 +122,7 @@ export default function NavegarPage() {
   const [printContainer, setPrintContainer] = useState<HTMLDivElement | null>(
     null,
   );
+  const [printTarget, setPrintTarget] = useState<ExportTarget | null>(null);
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -131,6 +140,7 @@ export default function NavegarPage() {
     if (typeof window === "undefined") return;
     const handleAfterPrint = () => {
       document.body.classList.remove("print-mode");
+      setPrintTarget(null);
     };
     window.addEventListener("afterprint", handleAfterPrint);
     return () => window.removeEventListener("afterprint", handleAfterPrint);
@@ -193,6 +203,15 @@ export default function NavegarPage() {
           row.name && row.code && !row.name.includes("**ARCHIVADO NO USAR**"),
       );
   }, [sheetRows, sheetHeaders]);
+
+  const clientCodeMap = useMemo(
+    () =>
+      allClientCodes.reduce<Record<string, string>>((acc, client) => {
+        acc[client.name] = client.code;
+        return acc;
+      }, {}),
+    [allClientCodes],
+  );
 
   const clientLastEmailMap = useMemo(() => {
     const emailIndex = sheetHeaders.findIndex(
@@ -304,22 +323,22 @@ export default function NavegarPage() {
   }, [clientLocations, clientNames, selectedDrawings]);
 
   // Helper: convert sheet date (MM/DD/YYYY) to ISO (YYYY-MM-DD)
-  const sheetDateToISO = (sheetDate: string): string | null => {
+  const sheetDateToISO = useCallback((sheetDate: string): string | null => {
     if (!sheetDate) return null;
     const [month, day, year] = sheetDate.split("/").map(Number);
     if (!month || !day || !year) return null;
     return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-  };
+  }, []);
 
   // Helper: convert ISO date (YYYY-MM-DD) to Date object at midnight
-  const isoToDate = (isoDate: string): Date | null => {
+  const isoToDate = useCallback((isoDate: string): Date | null => {
     if (!isoDate) return null;
     const [year, month, day] = isoDate.split("-").map(Number);
     if (!year || !month || !day) return null;
     const d = new Date(year, month - 1, day);
     d.setHours(0, 0, 0, 0);
     return d;
-  };
+  }, []);
 
   // Debounced search
   useEffect(() => {
@@ -343,10 +362,13 @@ export default function NavegarPage() {
   }, [debouncedSearchTerm, clientNames]);
 
   // Utility: get last visit date for a client
-  const getLastVisitDate = (name: string) => clientLastVisitMap[name] || null;
+  const getLastVisitDate = useCallback(
+    (name: string) => clientLastVisitMap[name] || null,
+    [clientLastVisitMap],
+  );
 
   // Utility: check if client is 'sin visitar'
-  const isSinVisitar = (name: string) => {
+  const isSinVisitar = useCallback((name: string) => {
     const fecha = getLastVisitDate(name);
     if (!fecha || fecha === DEFAULT_VISIT_DATE) return true;
     const [month, day, year] = fecha.split("/").map(Number);
@@ -359,7 +381,7 @@ export default function NavegarPage() {
     const diffDays =
       (now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24);
     return diffDays > DAYS_WITHOUT_VISIT;
-  };
+  }, [getLastVisitDate]);
 
   // Fetch all client names on load
   useEffect(() => {
@@ -592,8 +614,18 @@ export default function NavegarPage() {
     return result;
   }, [filteredNames, hasActiveFilters, getLastVisitDate, isSinVisitar]);
 
+  const visibleFilteredClientsWithDates = useMemo(() => {
+    if (!hasActiveFilters) return [];
+    if (!searchTerm) return filteredClientsWithDates;
+
+    const searchLower = searchTerm.toLowerCase();
+    return filteredClientsWithDates.filter((client) =>
+      client.name.toLowerCase().includes(searchLower),
+    );
+  }, [filteredClientsWithDates, hasActiveFilters, searchTerm]);
+
   // Format date for display
-  const formatVisitDate = (dateStr: string | null) => {
+  const formatVisitDate = useCallback((dateStr: string | null) => {
     if (!dateStr || dateStr === DEFAULT_VISIT_DATE) return "Sin visitas";
 
     try {
@@ -621,9 +653,9 @@ export default function NavegarPage() {
     } catch {
       return "Fecha inválida";
     }
-  };
+  }, []);
 
-  const areaClientsWithMeta = useMemo(
+  const manualAreaExportRows = useMemo<ExportRow[]>(
     () =>
       areaSelectedClients
         .map((client) => {
@@ -637,6 +669,7 @@ export default function NavegarPage() {
             lastVisitLabel: formatVisitDate(lastVisit),
             lat: client.lat,
             lng: client.lng,
+            dibujoLabel: "",
           };
         })
         .sort((a, b) => a.name.localeCompare(b.name)),
@@ -648,8 +681,45 @@ export default function NavegarPage() {
     ],
   );
 
-  const areaPrintFilters = useMemo(() => {
-    const filters: Array<{ label: string; value: string }> = [];
+  const drawingFilterExportRows = useMemo<ExportRow[]>(() => {
+    if (selectedDrawingIds.length === 0) return [];
+
+    return visibleFilteredClientsWithDates
+      .map((client) => {
+        const location = clientLocations[client.name];
+        if (!location) return null;
+
+        const lastVisit = client.lastVisitDate || null;
+        const dibujoLabel = selectedDrawings
+          .filter((drawing) =>
+            isPointInsideFeature([location.lng, location.lat], drawing.geometry),
+          )
+          .map((drawing) => drawing.nombre)
+          .join(", ");
+        return {
+          name: client.name,
+          code: clientCodeMap[client.name] || "Sin código",
+          vendedor: clientVendedorMapping[client.name] || "Sin vendedor",
+          lastVisit,
+          lastVisitLabel: formatVisitDate(lastVisit),
+          lat: location.lat,
+          lng: location.lng,
+          dibujoLabel,
+        };
+      })
+      .filter((client): client is ExportRow => client !== null);
+  }, [
+    selectedDrawingIds.length,
+    selectedDrawings,
+    visibleFilteredClientsWithDates,
+    clientLocations,
+    clientCodeMap,
+    clientVendedorMapping,
+    formatVisitDate,
+  ]);
+
+  const activeExportFilters = useMemo(() => {
+    const filters: ExportFilterBadge[] = [];
     if (codigoFilter) filters.push({ label: "Código", value: codigoFilter });
     if (vendedorFilter)
       filters.push({ label: "Vendedor", value: vendedorFilter });
@@ -683,15 +753,64 @@ export default function NavegarPage() {
     searchTerm,
   ]);
 
-  const isAreaPrintDisabled =
-    !hasDrawnPolygon || areaClientsWithMeta.length === 0;
+  const isManualAreaExportDisabled =
+    !hasDrawnPolygon || manualAreaExportRows.length === 0;
+  const isDrawingFilterExportDisabled = drawingFilterExportRows.length === 0;
 
-  const handlePrintAreaClients = () => {
-    if (typeof window === "undefined" || isAreaPrintDisabled) return;
+  const getExportDateLabel = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  const exportConfig = {
+    "manual-area": {
+      title: "Navegar · Clientes en Área Dibujada",
+      description: "Lista de clientes dentro del polígono manual.",
+      rows: manualAreaExportRows,
+      emptyMessage: "No hay clientes para imprimir en el área manual.",
+      csvFileName: `navegar_area_manual_${getExportDateLabel()}.csv`,
+    },
+    "drawing-filter": {
+      title: "Navegar · Clientes filtrados por Dibujos",
+      description:
+        "Lista de clientes del filtro Dibujos con los filtros activos aplicados.",
+      rows: drawingFilterExportRows,
+      emptyMessage: "No hay clientes para imprimir en el filtro Dibujos.",
+      csvFileName: `navegar_dibujos_${getExportDateLabel()}.csv`,
+    },
+  };
+
+  const handlePrintExport = (target: ExportTarget) => {
+    const config = exportConfig[target];
+    if (typeof window === "undefined" || config.rows.length === 0) return;
+
+    setPrintTarget(target);
     document.body.classList.add("print-mode");
     setTimeout(() => {
       window.print();
     }, 0);
+  };
+
+  const handleCsvExport = (target: ExportTarget) => {
+    if (typeof document === "undefined") return;
+
+    const config = exportConfig[target];
+    if (config.rows.length === 0) return;
+
+    const blob = new Blob([createNavegarCsv(config.rows)], {
+      type: "text/csv;charset=utf-8;",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = config.csvFileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const handleSaveManualDrawing = async () => {
@@ -731,18 +850,20 @@ export default function NavegarPage() {
     }
   };
 
-  const areaPrintContent = (
+  const printExportConfig = printTarget ? exportConfig[printTarget] : null;
+
+  const exportPrintContent = (
     <div className="print-page">
       <div className="mb-4 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-lg font-semibold text-gray-900">
-            Navegar · Clientes en Área Dibujada
+            {printExportConfig?.title}
           </h1>
           <p className="text-xs text-gray-500">
-            Lista de clientes dentro del polígono manual.
+            {printExportConfig?.description}
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
-            {areaPrintFilters.map((filter) => (
+            {activeExportFilters.map((filter) => (
               <span key={filter.label} className="print-badge text-[10px]">
                 <span className="font-semibold">{filter.label}:</span>{" "}
                 {filter.value}
@@ -752,12 +873,14 @@ export default function NavegarPage() {
         </div>
         <div className="text-right text-[10px] print-muted">
           <p>Generado: {new Date().toLocaleString("es-ES")}</p>
-          <p>Total: {areaClientsWithMeta.length}</p>
+          <p>Total: {printExportConfig?.rows.length ?? 0}</p>
         </div>
       </div>
 
-      {areaClientsWithMeta.length === 0 ? (
-        <p className="text-sm text-gray-600">No hay clientes para imprimir.</p>
+      {!printExportConfig || printExportConfig.rows.length === 0 ? (
+        <p className="text-sm text-gray-600">
+          {printExportConfig?.emptyMessage || "No hay clientes para imprimir."}
+        </p>
       ) : (
         <table className="print-table text-[11px]">
           <thead>
@@ -768,10 +891,11 @@ export default function NavegarPage() {
               <th className="text-left">Última visita</th>
               <th className="text-right">Lat</th>
               <th className="text-right">Lng</th>
+              <th className="text-left">Dibujo</th>
             </tr>
           </thead>
           <tbody>
-            {areaClientsWithMeta.map((client) => (
+            {printExportConfig.rows.map((client) => (
               <tr key={client.name} className="print-row">
                 <td>{client.name}</td>
                 <td>{client.code}</td>
@@ -783,6 +907,7 @@ export default function NavegarPage() {
                 <td className="text-right tabular-nums">
                   {client.lng.toFixed(5)}
                 </td>
+                <td>{client.dibujoLabel || "-"}</td>
               </tr>
             ))}
           </tbody>
@@ -793,33 +918,41 @@ export default function NavegarPage() {
 
   // Prepare client list for map (memoized to avoid remapping on every render)
   const clientList: NavegarClient[] = useMemo(() => {
-    const names =
-      filteredNames || (searchTerm ? filteredClientsBySearch : clientNames);
+    const names = hasActiveFilters
+      ? visibleFilteredClientsWithDates.map((client) => client.name)
+      : searchTerm
+        ? filteredClientsBySearch
+        : clientNames;
     return names
       .map((name) => {
-        const clientCode = allClientCodes.find((c) => c.name === name)?.code;
         return {
           name,
           lat: clientLocations[name]?.lat,
           lng: clientLocations[name]?.lng,
-          codigo: clientCode,
+          codigo: clientCodeMap[name],
         };
       })
       .filter((c) => c.lat && c.lng);
   }, [
-    filteredNames,
+    hasActiveFilters,
+    visibleFilteredClientsWithDates,
     searchTerm,
     filteredClientsBySearch,
     clientNames,
-    allClientCodes,
+    clientCodeMap,
     clientLocations,
   ]);
+
+  const visibleClientNames = useMemo(
+    () => new Set(clientList.map((client) => client.name)),
+    [clientList],
+  );
 
   // Only show selected client if it is in the filtered list
   const selectedClientLocation =
     selectedClient &&
     clientLocations[selectedClient] &&
-    (!filteredNames || filteredNames.includes(selectedClient))
+    visibleClientNames.has(selectedClient)
       ? clientLocations[selectedClient]
       : null;
 
@@ -916,18 +1049,38 @@ export default function NavegarPage() {
     }
   };
 
+  const mapSavedDrawings = useMemo(
+    () =>
+      selectedDrawings.map((drawing) => ({
+        id: drawing.id,
+        name: drawing.nombre,
+        feature: drawing.geometry,
+      })),
+    [selectedDrawings],
+  );
+
   // Only show selected client in route mode if it is in the filtered list
-  const mapClients =
-    routeMode && selectedClient && selectedClientLocation
-      ? [
-          {
-            name: selectedClient,
-            lat: selectedClientLocation.lat,
-            lng: selectedClientLocation.lng,
-            codigo: allClientCodes.find((c) => c.name === selectedClient)?.code,
-          },
-        ]
-      : clientList;
+  const mapClients = useMemo(() => {
+    if (routeMode && selectedClient && selectedClientLocation) {
+      return [
+        {
+          name: selectedClient,
+          lat: selectedClientLocation.lat,
+          lng: selectedClientLocation.lng,
+          codigo:
+            allClientCodes.find((c) => c.name === selectedClient)?.code || "",
+        },
+      ];
+    }
+
+    return clientList;
+  }, [
+    routeMode,
+    selectedClient,
+    selectedClientLocation,
+    allClientCodes,
+    clientList,
+  ]);
 
   return (
     <div
@@ -944,11 +1097,7 @@ export default function NavegarPage() {
           onRouteInfo={setRouteInfo}
           onUserLocationChange={handleUserLocationChange}
           onAreaSelectionChange={handleAreaSelectionChange}
-          savedDrawings={selectedDrawings.map((drawing) => ({
-            id: drawing.id,
-            name: drawing.nombre,
-            feature: drawing.geometry,
-          }))}
+          savedDrawings={mapSavedDrawings}
           disableDrawing={routeMode}
         />
       </div>
@@ -1372,8 +1521,8 @@ export default function NavegarPage() {
                 <div className="mt-3 border-t border-gray-100 pt-3">
                   <div className="mb-2 flex items-center justify-between gap-2">
                     <span className="text-xs text-gray-500">
-                      Área seleccionada: {areaClientsWithMeta.length} cliente
-                      {areaClientsWithMeta.length !== 1 ? "s" : ""}
+                      Área seleccionada: {manualAreaExportRows.length} cliente
+                      {manualAreaExportRows.length !== 1 ? "s" : ""}
                     </span>
                     <div className="flex items-center gap-1.5">
                       <button
@@ -1393,12 +1542,20 @@ export default function NavegarPage() {
                       </button>
                       <button
                         type="button"
-                        onClick={handlePrintAreaClients}
-                        disabled={isAreaPrintDisabled}
+                        onClick={() => handleCsvExport("manual-area")}
+                        disabled={isManualAreaExportDisabled}
+                        className="px-2 py-1 text-xs rounded-md border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        CSV área
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handlePrintExport("manual-area")}
+                        disabled={isManualAreaExportDisabled}
                         className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                       >
                         <Printer className="w-3.5 h-3.5" />
-                        Imprimir
+                        Imprimir área
                       </button>
                     </div>
                   </div>
@@ -1433,8 +1590,8 @@ export default function NavegarPage() {
                     </div>
                   )}
                   <div className="max-h-40 overflow-y-auto -mx-2 px-2">
-                    {areaClientsWithMeta.length > 0 ? (
-                      areaClientsWithMeta.map((client) => (
+                    {manualAreaExportRows.length > 0 ? (
+                      manualAreaExportRows.map((client) => (
                         <button
                           type="button"
                           key={client.name}
@@ -1488,8 +1645,8 @@ export default function NavegarPage() {
                   <div className="flex items-center gap-2">
                     <Filter className="w-4 h-4 text-gray-400" />
                     <span className="text-xs text-gray-500">
-                      {filteredClientsWithDates.length} resultado
-                      {filteredClientsWithDates.length !== 1 ? "s" : ""}
+                      {visibleFilteredClientsWithDates.length} resultado
+                      {visibleFilteredClientsWithDates.length !== 1 ? "s" : ""}
                     </span>
                   </div>
                   <button
@@ -1508,12 +1665,41 @@ export default function NavegarPage() {
                   </button>
                 </div>
               )}
+              {selectedDrawingIds.length > 0 && (
+                <div className="mt-3 rounded-lg border border-gray-100 bg-gray-50 p-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs text-gray-500">
+                      Dibujos filtrados: {drawingFilterExportRows.length} cliente
+                      {drawingFilterExportRows.length !== 1 ? "s" : ""}
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => handleCsvExport("drawing-filter")}
+                        disabled={isDrawingFilterExportDisabled}
+                        className="px-2 py-1 text-xs rounded-md border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        CSV dibujos
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handlePrintExport("drawing-filter")}
+                        disabled={isDrawingFilterExportDisabled}
+                        className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        <Printer className="w-3.5 h-3.5" />
+                        Imprimir dibujos
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
               {/* Filtered clients */}
               {hasActiveFilters && (
                 <div className="mt-2 border-t border-gray-100 pt-2">
                   <div className="max-h-48 overflow-y-auto -mx-2 px-2">
-                    {filteredClientsWithDates.length > 0 ? (
-                      filteredClientsWithDates.map((client) => (
+                    {visibleFilteredClientsWithDates.length > 0 ? (
+                      visibleFilteredClientsWithDates.map((client) => (
                         <button
                           key={client.name}
                           onClick={() => {
@@ -1708,7 +1894,9 @@ export default function NavegarPage() {
           )}
         </div>
       </div>
-      {printContainer ? createPortal(areaPrintContent, printContainer) : null}
+      {printContainer && printExportConfig
+        ? createPortal(exportPrintContent, printContainer)
+        : null}
     </div>
   );
 }
