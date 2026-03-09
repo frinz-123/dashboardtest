@@ -7,6 +7,10 @@ import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import SearchInput from "@/components/ui/SearchInput";
+import {
+  isPointInsideFeature,
+  type PolygonFeature,
+} from "@/utils/polygonGeometry";
 import type { Client as NavegarClient, RouteInfo } from "./NavegarMap";
 
 const NavegarMap = dynamic(() => import("./NavegarMap"), { ssr: false });
@@ -19,6 +23,17 @@ const DEBUG_FILTER_INTERACTIONS = process.env.NODE_ENV !== "production";
 const DAYS_WITHOUT_VISIT = 30;
 const DEFAULT_VISIT_DATE = "1/1/2024";
 const DEBUG_AREA_SELECTION = process.env.NODE_ENV !== "production";
+
+type SavedDrawing = {
+  id: string;
+  nombre: string;
+  scope: "global" | "user";
+  geometry: PolygonFeature;
+  createdByEmail: string;
+  createdAtIso: string;
+  updatedAtIso: string;
+  isActive: boolean;
+};
 
 export default function NavegarPage() {
   const [clientNames, setClientNames] = useState<string[]>([]);
@@ -86,6 +101,16 @@ export default function NavegarPage() {
     NavegarClient[]
   >([]);
   const [hasDrawnPolygon, setHasDrawnPolygon] = useState(false);
+  const [currentManualPolygon, setCurrentManualPolygon] =
+    useState<PolygonFeature | null>(null);
+  const [savedDrawings, setSavedDrawings] = useState<SavedDrawing[]>([]);
+  const [selectedDrawingIds, setSelectedDrawingIds] = useState<string[]>([]);
+  const [drawingDropdownOpen, setDrawingDropdownOpen] = useState(false);
+  const [isDrawingLoading, setIsDrawingLoading] = useState(false);
+  const [isSavingDrawing, setIsSavingDrawing] = useState(false);
+  const [isNamingDrawing, setIsNamingDrawing] = useState(false);
+  const [newDrawingName, setNewDrawingName] = useState("Zona nueva");
+  const drawingChipRef = useRef<HTMLButtonElement>(null);
   const [printContainer, setPrintContainer] = useState<HTMLDivElement | null>(
     null,
   );
@@ -110,6 +135,28 @@ export default function NavegarPage() {
     window.addEventListener("afterprint", handleAfterPrint);
     return () => window.removeEventListener("afterprint", handleAfterPrint);
   }, []);
+
+  const loadSavedDrawings = useCallback(async () => {
+    setIsDrawingLoading(true);
+    try {
+      const response = await fetch("/api/navegar/dibujos", {
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        throw new Error("Failed to load drawings");
+      }
+      const data = await response.json();
+      setSavedDrawings(Array.isArray(data.drawings) ? data.drawings : []);
+    } catch (_error) {
+      setSavedDrawings([]);
+    } finally {
+      setIsDrawingLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadSavedDrawings();
+  }, [loadSavedDrawings]);
 
   // Batch fetch all data from Google Sheets once
   useEffect(() => {
@@ -227,6 +274,34 @@ export default function NavegarPage() {
     );
     return emails.sort();
   }, [clientLastEmailMap]);
+
+  const selectedDrawings = useMemo(
+    () =>
+      savedDrawings.filter((drawing) =>
+        selectedDrawingIds.includes(drawing.id),
+      ),
+    [savedDrawings, selectedDrawingIds],
+  );
+
+  useEffect(() => {
+    setSelectedDrawingIds((prev) =>
+      prev.filter((id) => savedDrawings.some((drawing) => drawing.id === id)),
+    );
+  }, [savedDrawings]);
+
+  const drawingFilteredNames = useMemo(() => {
+    if (selectedDrawings.length === 0) return null;
+
+    const namesInDrawing = clientNames.filter((name) => {
+      const location = clientLocations[name];
+      if (!location) return false;
+      return selectedDrawings.some((drawing) =>
+        isPointInsideFeature([location.lng, location.lat], drawing.geometry),
+      );
+    });
+
+    return namesInDrawing;
+  }, [clientLocations, clientNames, selectedDrawings]);
 
   // Helper: convert sheet date (MM/DD/YYYY) to ISO (YYYY-MM-DD)
   const sheetDateToISO = (sheetDate: string): string | null => {
@@ -349,7 +424,8 @@ export default function NavegarPage() {
       !vendedorFilter &&
       !sinVisitarFilter &&
       !dateFilter &&
-      !emailFilter
+      !emailFilter &&
+      selectedDrawingIds.length === 0
     ) {
       return null;
     }
@@ -432,6 +508,12 @@ export default function NavegarPage() {
         if (clientLastEmailMap[name] !== emailFilter) matches = false;
       }
 
+      if (matches && selectedDrawingIds.length > 0) {
+        if (!drawingFilteredNames?.includes(name)) {
+          matches = false;
+        }
+      }
+
       if (matches) {
         filteredSet.add(name);
       }
@@ -449,6 +531,8 @@ export default function NavegarPage() {
     clientVendedorMapping,
     clientLastVisitMap,
     clientLastEmailMap,
+    selectedDrawingIds,
+    drawingFilteredNames,
     isoToDate,
     sheetDateToISO,
   ]);
@@ -478,7 +562,8 @@ export default function NavegarPage() {
       vendedorFilter ||
       sinVisitarFilter ||
       dateFilter ||
-      emailFilter,
+      emailFilter ||
+      selectedDrawingIds.length > 0,
   );
 
   // Get the final filtered client list with visit dates
@@ -576,6 +661,14 @@ export default function NavegarPage() {
       });
     }
     if (emailFilter) filters.push({ label: "Email", value: emailFilter });
+    if (selectedDrawings.length > 0)
+      filters.push({
+        label: "Dibujos",
+        value:
+          selectedDrawings.length === 1
+            ? selectedDrawings[0].nombre
+            : `${selectedDrawings.length} seleccionados`,
+      });
     if (searchTerm) filters.push({ label: "Búsqueda", value: searchTerm });
     if (filters.length === 0)
       filters.push({ label: "Filtros", value: "Ninguno" });
@@ -586,6 +679,7 @@ export default function NavegarPage() {
     sinVisitarFilter,
     dateFilter,
     emailFilter,
+    selectedDrawings,
     searchTerm,
   ]);
 
@@ -598,6 +692,43 @@ export default function NavegarPage() {
     setTimeout(() => {
       window.print();
     }, 0);
+  };
+
+  const handleSaveManualDrawing = async () => {
+    if (!currentManualPolygon) return;
+    const normalizedName = newDrawingName.trim();
+    if (!normalizedName) return;
+
+    setIsSavingDrawing(true);
+    try {
+      const response = await fetch("/api/navegar/dibujos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          nombre: normalizedName,
+          scope: "user",
+          geometry: currentManualPolygon,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("No fue posible guardar el dibujo");
+      }
+
+      const data = await response.json();
+      const drawing = data?.drawing as SavedDrawing | undefined;
+      if (drawing?.id) {
+        setSavedDrawings((prev) => [drawing, ...prev]);
+        setSelectedDrawingIds([drawing.id]);
+        setIsNamingDrawing(false);
+      } else {
+        await loadSavedDrawings();
+      }
+    } catch (_error) {
+      // no-op, silent for now
+    } finally {
+      setIsSavingDrawing(false);
+    }
   };
 
   const areaPrintContent = (
@@ -709,13 +840,21 @@ export default function NavegarPage() {
   };
 
   const handleAreaSelectionChange = useCallback(
-    (clientsInArea: NavegarClient[], hasPolygon: boolean) => {
+    (
+      clientsInArea: NavegarClient[],
+      hasPolygon: boolean,
+      polygonFeature: PolygonFeature | null,
+    ) => {
       if (DEBUG_AREA_SELECTION) {
         console.debug("[NavegarPage][draw] area selection changed:", {
           hasPolygon,
           selectedClients: clientsInArea.length,
         });
       }
+      if (!hasPolygon) {
+        setIsNamingDrawing(false);
+      }
+      setCurrentManualPolygon(polygonFeature);
       setHasDrawnPolygon((prev) => (prev === hasPolygon ? prev : hasPolygon));
       setAreaSelectedClients((prev) => {
         if (prev.length !== clientsInArea.length) return clientsInArea;
@@ -805,6 +944,11 @@ export default function NavegarPage() {
           onRouteInfo={setRouteInfo}
           onUserLocationChange={handleUserLocationChange}
           onAreaSelectionChange={handleAreaSelectionChange}
+          savedDrawings={selectedDrawings.map((drawing) => ({
+            id: drawing.id,
+            name: drawing.nombre,
+            feature: drawing.geometry,
+          }))}
           disableDrawing={routeMode}
         />
       </div>
@@ -882,6 +1026,23 @@ export default function NavegarPage() {
                 setEmailDropdownOpen(false);
               }}
               icon={<Mail className="w-3.5 h-3.5" />}
+            />
+            <FilterChip
+              ref={drawingChipRef}
+              label="Dibujos"
+              value={
+                selectedDrawings.length > 0
+                  ? `${selectedDrawings.length} dibujo${selectedDrawings.length === 1 ? "" : "s"}`
+                  : null
+              }
+              count={selectedDrawings.length}
+              isOpen={drawingDropdownOpen}
+              onToggle={() => setDrawingDropdownOpen((open) => !open)}
+              onClear={() => {
+                setSelectedDrawingIds([]);
+                setDrawingDropdownOpen(false);
+              }}
+              icon={<PenTool className="w-3.5 h-3.5" />}
             />
           </div>
         </div>
@@ -1044,6 +1205,90 @@ export default function NavegarPage() {
             </div>
           </Dropdown>
         )}
+        {drawingDropdownOpen && (
+          <Dropdown
+            anchorRef={drawingChipRef}
+            onClose={() => setDrawingDropdownOpen(false)}
+            align="right"
+            debugName="dibujos"
+          >
+            <div className="py-1">
+              <button
+                onClick={async () => {
+                  await loadSavedDrawings();
+                }}
+                className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 text-gray-700"
+              >
+                {isDrawingLoading ? "Actualizando..." : "Actualizar dibujos"}
+              </button>
+              <button
+                onClick={() => {
+                  setIsNamingDrawing(true);
+                  setDrawingDropdownOpen(false);
+                }}
+                disabled={!currentManualPolygon || isSavingDrawing}
+                className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 text-gray-700 disabled:text-gray-400"
+              >
+                {isSavingDrawing
+                  ? "Guardando..."
+                  : "Guardar polígono manual actual (con nombre)"}
+              </button>
+              <button
+                onClick={() => {
+                  setSelectedDrawingIds([]);
+                  setDrawingDropdownOpen(false);
+                }}
+                className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 text-gray-700"
+              >
+                Quitar filtro de dibujo
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedDrawingIds(
+                    savedDrawings.map((drawing) => drawing.id),
+                  );
+                  setDrawingDropdownOpen(false);
+                }}
+                disabled={savedDrawings.length === 0}
+                className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 text-gray-700 disabled:text-gray-400"
+              >
+                Seleccionar todos
+              </button>
+
+              <div className="my-1 border-t border-gray-100" />
+
+              {savedDrawings.length > 0 ? (
+                savedDrawings.map((drawing) => (
+                  <button
+                    key={drawing.id}
+                    onClick={() => {
+                      setSelectedDrawingIds((prev) =>
+                        prev.includes(drawing.id)
+                          ? prev.filter((id) => id !== drawing.id)
+                          : [...prev, drawing.id],
+                      );
+                    }}
+                    className={`w-full px-3 py-2 text-left text-sm flex items-center justify-between transition-colors ${
+                      selectedDrawingIds.includes(drawing.id)
+                        ? "bg-blue-50 text-blue-700"
+                        : "hover:bg-gray-50 text-gray-700"
+                    }`}
+                  >
+                    <span className="truncate pr-2">{drawing.nombre}</span>
+                    {selectedDrawingIds.includes(drawing.id) && (
+                      <Check className="w-4 h-4" />
+                    )}
+                  </button>
+                ))
+              ) : (
+                <div className="px-3 py-4 text-sm text-gray-400 text-center">
+                  No hay dibujos guardados
+                </div>
+              )}
+            </div>
+          </Dropdown>
+        )}
         {/* Main content card */}
         <div className="bg-white rounded-t-2xl shadow-[0_-4px_20px_rgba(0,0,0,0.08)] w-full max-w-md mx-auto p-4 border-t border-gray-100 pointer-events-auto">
           {/* Route Mode UI */}
@@ -1133,6 +1378,14 @@ export default function NavegarPage() {
                     <div className="flex items-center gap-1.5">
                       <button
                         type="button"
+                        onClick={() => setIsNamingDrawing((prev) => !prev)}
+                        disabled={!currentManualPolygon || isSavingDrawing}
+                        className="px-2 py-1 text-xs rounded-md border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        Guardar dibujo
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => mapRef.current?.clearDrawnArea?.()}
                         className="px-2 py-1 text-xs rounded-md border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
                       >
@@ -1149,6 +1402,36 @@ export default function NavegarPage() {
                       </button>
                     </div>
                   </div>
+                  {isNamingDrawing && currentManualPolygon && (
+                    <div className="mb-2 rounded-lg border border-gray-200 bg-gray-50 p-2">
+                      <label
+                        htmlFor="drawing-name-input"
+                        className="mb-1 block text-xs font-medium text-gray-600"
+                      >
+                        Nombre del dibujo
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          id="drawing-name-input"
+                          type="text"
+                          value={newDrawingName}
+                          onChange={(event) =>
+                            setNewDrawingName(event.target.value)
+                          }
+                          className="h-8 flex-1 rounded-md border border-gray-200 px-2 text-xs"
+                          placeholder="Ej. Zona Centro"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleSaveManualDrawing}
+                          disabled={isSavingDrawing || !newDrawingName.trim()}
+                          className="h-8 rounded-md bg-gray-900 px-2 text-xs font-medium text-white disabled:opacity-50"
+                        >
+                          {isSavingDrawing ? "Guardando..." : "Guardar"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                   <div className="max-h-40 overflow-y-auto -mx-2 px-2">
                     {areaClientsWithMeta.length > 0 ? (
                       areaClientsWithMeta.map((client) => (
@@ -1216,6 +1499,7 @@ export default function NavegarPage() {
                       setSinVisitarFilter(false);
                       setDateFilter(null);
                       setEmailFilter(null);
+                      setSelectedDrawingIds([]);
                       mapRef.current?.clearDrawnArea?.();
                     }}
                     className="text-xs text-gray-500 hover:text-gray-700 transition-colors"
@@ -1593,6 +1877,7 @@ import {
   Filter,
   Hash,
   Mail,
+  PenTool,
   Printer,
   SearchX,
   User,
