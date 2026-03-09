@@ -718,6 +718,31 @@ export default function NavegarPage() {
     formatVisitDate,
   ]);
 
+  const groupedDrawingClients = useMemo(() => {
+    if (selectedDrawingIds.length === 0) return [];
+
+    return selectedDrawings
+      .map((drawing) => ({
+        id: drawing.id,
+        name: drawing.nombre,
+        clients: visibleFilteredClientsWithDates.filter((client) => {
+          const location = clientLocations[client.name];
+          if (!location) return false;
+
+          return isPointInsideFeature(
+            [location.lng, location.lat],
+            drawing.geometry,
+          );
+        }),
+      }))
+      .filter((group) => group.clients.length > 0);
+  }, [
+    selectedDrawingIds.length,
+    selectedDrawings,
+    visibleFilteredClientsWithDates,
+    clientLocations,
+  ]);
+
   const activeExportFilters = useMemo(() => {
     const filters: ExportFilterBadge[] = [];
     if (codigoFilter) filters.push({ label: "Código", value: codigoFilter });
@@ -1081,6 +1106,40 @@ export default function NavegarPage() {
     allClientCodes,
     clientList,
   ]);
+
+  const renderFilteredClientButton = (
+    client: (typeof visibleFilteredClientsWithDates)[number],
+    key: string,
+  ) => (
+    <button
+      key={key}
+      onClick={() => {
+        setSelectedClient(client.name);
+        setRouteInfo(null);
+        setRouteMode(false);
+      }}
+      className={`w-full px-3 py-2.5 text-left rounded-lg transition-all ${
+        selectedClient === client.name
+          ? "bg-gray-900 text-white"
+          : "hover:bg-gray-50 text-gray-900"
+      }`}
+    >
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium truncate pr-2">{client.name}</span>
+        <span
+          className={`text-xs flex-shrink-0 ${
+            selectedClient === client.name
+              ? "text-gray-400"
+              : client.isSinVisitar
+                ? "text-amber-500"
+                : "text-gray-400"
+          }`}
+        >
+          {formatVisitDate(client.lastVisitDate)}
+        </span>
+      </div>
+    </button>
+  );
 
   return (
     <div
@@ -1699,38 +1758,30 @@ export default function NavegarPage() {
                 <div className="mt-2 border-t border-gray-100 pt-2">
                   <div className="max-h-48 overflow-y-auto -mx-2 px-2">
                     {visibleFilteredClientsWithDates.length > 0 ? (
-                      visibleFilteredClientsWithDates.map((client) => (
-                        <button
-                          key={client.name}
-                          onClick={() => {
-                            setSelectedClient(client.name);
-                            setRouteInfo(null);
-                            setRouteMode(false);
-                          }}
-                          className={`w-full px-3 py-2.5 text-left rounded-lg transition-all ${
-                            selectedClient === client.name
-                              ? "bg-gray-900 text-white"
-                              : "hover:bg-gray-50 text-gray-900"
-                          }`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium truncate pr-2">
-                              {client.name}
-                            </span>
-                            <span
-                              className={`text-xs flex-shrink-0 ${
-                                selectedClient === client.name
-                                  ? "text-gray-400"
-                                  : client.isSinVisitar
-                                    ? "text-amber-500"
-                                    : "text-gray-400"
-                              }`}
-                            >
-                              {formatVisitDate(client.lastVisitDate)}
-                            </span>
+                      selectedDrawingIds.length > 0 ? (
+                        groupedDrawingClients.map((group) => (
+                          <div
+                            key={group.id}
+                            className="mb-3 last:mb-0 overflow-hidden rounded-lg border border-gray-100"
+                          >
+                            <div className="border-b border-gray-100 bg-gray-50 px-3 py-2 text-[11px] font-semibold uppercase tracking-[0.08em] text-gray-500">
+                              {group.name}
+                            </div>
+                            <div className="p-1">
+                              {group.clients.map((client) =>
+                                renderFilteredClientButton(
+                                  client,
+                                  `${group.id}:${client.name}`,
+                                ),
+                              )}
+                            </div>
                           </div>
-                        </button>
-                      ))
+                        ))
+                      ) : (
+                        visibleFilteredClientsWithDates.map((client) =>
+                          renderFilteredClientButton(client, client.name),
+                        )
+                      )
                     ) : (
                       <div className="py-8 text-center">
                         <SearchX className="w-8 h-8 mx-auto text-gray-300 mb-2" />
