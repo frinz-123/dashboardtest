@@ -942,6 +942,8 @@ export default function NavegarPage() {
           onRouteInfo={setRouteInfo}
           onUserLocationChange={handleUserLocationChange}
           onAreaSelectionChange={handleAreaSelectionChange}
+          savedDrawingFeature={selectedDrawing?.geometry || null}
+          savedDrawingName={selectedDrawing?.nombre || null}
           disableDrawing={routeMode}
         />
       </div>

@@ -78,6 +78,8 @@ type NavegarMapProps = {
     hasPolygon: boolean,
     polygonFeature: PolygonFeature | null,
   ) => void;
+  savedDrawingFeature?: PolygonFeature | null;
+  savedDrawingName?: string | null;
   disableDrawing?: boolean;
 };
 
@@ -91,6 +93,8 @@ const NavegarMap = forwardRef(function NavegarMap(
     onRouteInfo,
     onUserLocationChange,
     onAreaSelectionChange,
+    savedDrawingFeature = null,
+    savedDrawingName = null,
     disableDrawing = false,
   }: NavegarMapProps & {
     onUserLocationChange?: (loc: { lat: number; lng: number } | null) => void;
@@ -114,6 +118,10 @@ const NavegarMap = forwardRef(function NavegarMap(
   const isHandlingDrawEventRef = useRef(false);
   const autoPolygonLayerId = "clients-polygon";
   const autoPolygonSourceId = "clients-polygon-source";
+  const savedPolygonLayerId = "saved-drawing-polygon";
+  const savedPolygonSourceId = "saved-drawing-polygon-source";
+  const savedPolygonOutlineLayerId = "saved-drawing-polygon-outline";
+  const savedPolygonLabelMarkerRef = useRef<mapboxgl.Marker | null>(null);
 
   const emitClientsInArea = useCallback(
     (
@@ -191,6 +199,43 @@ const NavegarMap = forwardRef(function NavegarMap(
       map.current.removeSource(autoPolygonSourceId);
     }
   }, []);
+
+  const removeSavedPolygon = useCallback(() => {
+    if (!map.current) return;
+
+    if (savedPolygonLabelMarkerRef.current) {
+      savedPolygonLabelMarkerRef.current.remove();
+      savedPolygonLabelMarkerRef.current = null;
+    }
+
+    if (map.current.getLayer(savedPolygonLayerId)) {
+      map.current.removeLayer(savedPolygonLayerId);
+    }
+    if (map.current.getLayer(savedPolygonOutlineLayerId)) {
+      map.current.removeLayer(savedPolygonOutlineLayerId);
+    }
+    if (map.current.getSource(savedPolygonSourceId)) {
+      map.current.removeSource(savedPolygonSourceId);
+    }
+  }, []);
+
+  const computeFeatureCenter = useCallback(
+    (feature: PolygonFeature): [number, number] | null => {
+      const polygons = extractPolygonsFromFeature(feature);
+      const allPoints = polygons.flatMap((polygon) => polygon.flat());
+      if (!allPoints.length) return null;
+
+      const lngs = allPoints.map((point) => point[0]);
+      const lats = allPoints.map((point) => point[1]);
+      const minLng = Math.min(...lngs);
+      const maxLng = Math.max(...lngs);
+      const minLat = Math.min(...lats);
+      const maxLat = Math.max(...lats);
+
+      return [(minLng + maxLng) / 2, (minLat + maxLat) / 2];
+    },
+    [],
+  );
 
   // Try to get user location on mount
   useEffect(() => {
@@ -556,6 +601,67 @@ const NavegarMap = forwardRef(function NavegarMap(
       removeAutoPolygon();
     };
   }, [showDibujo, isManualDibujo, clients, removeAutoPolygon]);
+
+  useEffect(() => {
+    if (!map.current) return;
+
+    if (!savedDrawingFeature) {
+      removeSavedPolygon();
+      return;
+    }
+
+    removeSavedPolygon();
+
+    map.current.addSource(savedPolygonSourceId, {
+      type: "geojson",
+      data: savedDrawingFeature,
+    });
+
+    map.current.addLayer({
+      id: savedPolygonLayerId,
+      type: "fill",
+      source: savedPolygonSourceId,
+      paint: {
+        "fill-color": "#2563EB",
+        "fill-opacity": 0.12,
+      },
+    });
+
+    map.current.addLayer({
+      id: savedPolygonOutlineLayerId,
+      type: "line",
+      source: savedPolygonSourceId,
+      paint: {
+        "line-color": "#1D4ED8",
+        "line-width": 2,
+        "line-dasharray": [3, 2],
+      },
+    });
+
+    const labelCenter = computeFeatureCenter(savedDrawingFeature);
+    if (labelCenter && savedDrawingName) {
+      const label = document.createElement("div");
+      label.className =
+        "rounded-md border border-blue-200 bg-white/90 px-2 py-1 text-[11px] font-medium text-blue-700 shadow-sm";
+      label.textContent = savedDrawingName;
+
+      savedPolygonLabelMarkerRef.current = new mapboxgl.Marker({
+        element: label,
+        anchor: "center",
+      })
+        .setLngLat(labelCenter)
+        .addTo(map.current);
+    }
+
+    return () => {
+      removeSavedPolygon();
+    };
+  }, [
+    savedDrawingFeature,
+    savedDrawingName,
+    removeSavedPolygon,
+    computeFeatureCenter,
+  ]);
 
   useEffect(() => {
     if (!map.current || !drawControlRef.current) return;
