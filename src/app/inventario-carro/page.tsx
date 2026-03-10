@@ -55,6 +55,7 @@ import {
   createProductTotals,
   getWeekKey,
   isOnOrAfterWeekKey,
+  normalizeDateString,
   sumLedgerTotals,
   sumSalesTotals,
 } from "@/utils/inventarioCarroReset";
@@ -155,6 +156,7 @@ type ProductTraceRow = {
 };
 
 type ProductTraceTimelineRow = ProductTraceRow & {
+  isResetNuke?: boolean;
   quantityDelta: number;
   sortDate: string;
   sortPriority: number;
@@ -1431,6 +1433,35 @@ export default function InventarioCarroPage() {
     () => salesRows.filter((row) => matchesSeller(row.sellerEmail)),
     [salesRows, matchesSeller],
   );
+  const selectedWeekResetRow = useMemo(() => {
+    const resetRows = ledgerForSeller.filter(
+      (row) =>
+        row.weekCode === selectedWeekCode &&
+        row.notes === "Reset saldo a 0 (nuke)",
+    );
+
+    if (resetRows.length === 0) return null;
+
+    return [...resetRows].sort((a, b) => {
+      const dateComparison = (normalizeDateString(b.date) || "").localeCompare(
+        normalizeDateString(a.date) || "",
+      );
+      if (dateComparison !== 0) return dateComparison;
+      return b.rowNumber - a.rowNumber;
+    })[0];
+  }, [ledgerForSeller, selectedWeekCode]);
+  const selectedWeekResetDate = selectedWeekResetRow
+    ? normalizeDateString(selectedWeekResetRow.date)
+    : null;
+  const isAfterSelectedWeekReset = useCallback(
+    (value: string) => {
+      if (!selectedWeekResetDate) return true;
+      const normalizedDate = normalizeDateString(value);
+      if (!normalizedDate) return false;
+      return normalizedDate > selectedWeekResetDate;
+    },
+    [selectedWeekResetDate],
+  );
 
   const ledgerBefore = useMemo(
     () =>
@@ -1452,6 +1483,10 @@ export default function InventarioCarroPage() {
       ),
     [ledgerForSeller, selectedWeekCode],
   );
+  const effectiveLedgerInWeek = useMemo(() => {
+    if (!selectedWeekResetDate) return ledgerInWeek;
+    return ledgerInWeek.filter((row) => isAfterSelectedWeekReset(row.date));
+  }, [isAfterSelectedWeekReset, ledgerInWeek, selectedWeekResetDate]);
 
   const salesBefore = useMemo(
     () =>
@@ -1473,32 +1508,45 @@ export default function InventarioCarroPage() {
       ),
     [salesForSeller, selectedWeekCode],
   );
+  const effectiveSalesInWeek = useMemo(() => {
+    if (!selectedWeekResetDate) return salesInWeek;
+    return salesInWeek.filter((row) => isAfterSelectedWeekReset(row.date));
+  }, [isAfterSelectedWeekReset, salesInWeek, selectedWeekResetDate]);
 
   const ledgerBeforeTotals = useMemo(
     () => sumLedgerTotals(ledgerBefore, productList),
     [ledgerBefore, productList],
   );
   const ledgerWeekTotals = useMemo(
-    () => sumLedgerTotals(ledgerInWeek, productList),
-    [ledgerInWeek, productList],
+    () => sumLedgerTotals(effectiveLedgerInWeek, productList),
+    [effectiveLedgerInWeek, productList],
   );
   const salesBeforeTotals = useMemo(
     () => sumSalesTotals(salesBefore, productList),
     [salesBefore, productList],
   );
   const salesWeekTotals = useMemo(
-    () => sumSalesTotals(salesInWeek, productList),
-    [salesInWeek, productList],
+    () => sumSalesTotals(effectiveSalesInWeek, productList),
+    [effectiveSalesInWeek, productList],
   );
 
   const saldoInicial = useMemo(() => {
+    if (selectedWeekResetDate) {
+      return createProductTotals(productList);
+    }
+
     const totals = createProductTotals(productList);
     productList.forEach((product) => {
       totals[product] =
         (ledgerBeforeTotals[product] || 0) - (salesBeforeTotals[product] || 0);
     });
     return totals;
-  }, [ledgerBeforeTotals, salesBeforeTotals, productList]);
+  }, [
+    ledgerBeforeTotals,
+    productList,
+    salesBeforeTotals,
+    selectedWeekResetDate,
+  ]);
 
   const saldoFinal = useMemo(() => {
     const totals = createProductTotals(productList);
@@ -1565,6 +1613,7 @@ export default function InventarioCarroPage() {
         notes: row.notes || "-",
         weekCode: row.weekCode,
         isSelectedWeek: row.weekCode === selectedWeekCode,
+        isResetNuke: row.notes === "Reset saldo a 0 (nuke)",
         ledgerRow: row,
         quantityDelta: row.quantity,
         sortDate: row.date || BASELINE_DATE,
@@ -1607,7 +1656,11 @@ export default function InventarioCarroPage() {
 
     return timeline
       .map((row) => {
-        runningSaldo += row.quantityDelta;
+        if (row.isResetNuke) {
+          runningSaldo = 0;
+        } else {
+          runningSaldo += row.quantityDelta;
+        }
         return {
           ...row,
           saldo: runningSaldo,
@@ -1838,7 +1891,9 @@ export default function InventarioCarroPage() {
                     Detalle por producto
                   </h3>
                   <p className="text-xs text-slate-500">
-                    Entradas incluyen inventario inicial y ajustes.
+                    {selectedWeekResetDate
+                      ? `Mostrando saldo desde el nuke del ${selectedWeekResetRow?.date}.`
+                      : "Entradas incluyen inventario inicial y ajustes."}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">

@@ -34,7 +34,7 @@ export const isOnOrAfterWeekKey = (code: string, minWeekKey: number) => {
   return key !== null && key >= minWeekKey;
 };
 
-const normalizeDateString = (value?: string) => {
+export const normalizeDateString = (value?: string) => {
   const trimmed = (value || "").trim();
   if (!trimmed) return null;
 
