@@ -78,16 +78,19 @@ describe("inventarioCarroReset", () => {
       productList,
       ledgerRows: [
         {
+          date: "2026-02-01",
           product: "Chiltepin Molido 50 g",
           quantity: 10,
           weekCode: "P20S1",
         },
         {
+          date: "2026-02-08",
           product: "Chiltepin Molido 50 g",
           quantity: 5,
           weekCode: "P20S2",
         },
         {
+          date: "2026-02-15",
           product: "Chiltepin Entero 30 g",
           quantity: 8,
           weekCode: "P20S3",
@@ -95,12 +98,14 @@ describe("inventarioCarroReset", () => {
       ],
       salesRows: [
         {
+          date: "2026-02-09",
           weekCode: "P20S2",
           products: {
             "Chiltepin Molido 50 g": 4,
           },
         },
         {
+          date: "2026-02-23",
           weekCode: "P20S4",
           products: {
             "Chiltepin Entero 30 g": 3,
@@ -132,5 +137,56 @@ describe("inventarioCarroReset", () => {
         quantity: -5,
       },
     ]);
+  });
+
+  it("limits saldo to rows on or before a historical nuke cutoff date", () => {
+    const saldoTotals = buildLiveSaldoTotals({
+      baselineWeekKey: 201,
+      cutoffDate: "2026-02-17",
+      cutoffWeekKey: 203,
+      productList,
+      ledgerRows: [
+        {
+          date: "2026-02-01",
+          product: "Chiltepin Molido 50 g",
+          quantity: 10,
+          weekCode: "P20S1",
+        },
+        {
+          date: "2026-02-16",
+          product: "Chiltepin Entero 30 g",
+          quantity: 8,
+          weekCode: "P20S3",
+        },
+        {
+          date: "2026-02-19",
+          product: "Chiltepin Entero 30 g",
+          quantity: 5,
+          weekCode: "P20S3",
+        },
+      ],
+      salesRows: [
+        {
+          date: "2026-02-17",
+          weekCode: "P20S3",
+          products: {
+            "Chiltepin Entero 30 g": 3,
+          },
+        },
+        {
+          date: "2026-02-20",
+          weekCode: "P20S3",
+          products: {
+            "Chiltepin Entero 30 g": 2,
+          },
+        },
+      ],
+    });
+
+    expect(saldoTotals).toEqual({
+      "Chiltepin Molido 50 g": 10,
+      "Chiltepin Entero 30 g": 5,
+      "Salsa Reina El rey 195 ml": 0,
+    });
   });
 });

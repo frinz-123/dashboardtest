@@ -1,10 +1,12 @@
 export type InventoryCarroLedgerLike = {
+  date?: string;
   product: string;
   quantity: number;
   weekCode: string;
 };
 
 export type InventoryCarroSalesLike = {
+  date?: string;
   products: Record<string, number>;
   weekCode: string;
 };
@@ -30,6 +32,30 @@ export const getWeekKey = (code: string) => {
 export const isOnOrAfterWeekKey = (code: string, minWeekKey: number) => {
   const key = getWeekKey(code);
   return key !== null && key >= minWeekKey;
+};
+
+const isOnOrBeforeCutoff = ({
+  cutoffDate,
+  cutoffWeekKey,
+  rowDate,
+  rowWeekCode,
+}: {
+  cutoffDate?: string;
+  cutoffWeekKey?: number;
+  rowDate?: string;
+  rowWeekCode: string;
+}) => {
+  if (!cutoffDate || cutoffWeekKey === undefined) {
+    return true;
+  }
+
+  const rowWeekKey = getWeekKey(rowWeekCode);
+  if (rowWeekKey === null) return false;
+  if (rowWeekKey < cutoffWeekKey) return true;
+  if (rowWeekKey > cutoffWeekKey) return false;
+  if (!rowDate) return true;
+
+  return rowDate <= cutoffDate;
 };
 
 export const createProductTotals = (productList: string[]) => {
@@ -73,20 +99,38 @@ export const sumSalesTotals = (
 
 export const buildLiveSaldoTotals = ({
   baselineWeekKey,
+  cutoffDate,
+  cutoffWeekKey,
   ledgerRows,
   productList,
   salesRows,
 }: {
   baselineWeekKey: number;
+  cutoffDate?: string;
+  cutoffWeekKey?: number;
   ledgerRows: InventoryCarroLedgerLike[];
   productList: string[];
   salesRows: InventoryCarroSalesLike[];
 }) => {
-  const relevantLedgerRows = ledgerRows.filter((row) =>
-    isOnOrAfterWeekKey(row.weekCode, baselineWeekKey),
+  const relevantLedgerRows = ledgerRows.filter(
+    (row) =>
+      isOnOrAfterWeekKey(row.weekCode, baselineWeekKey) &&
+      isOnOrBeforeCutoff({
+        cutoffDate,
+        cutoffWeekKey,
+        rowDate: row.date,
+        rowWeekCode: row.weekCode,
+      }),
   );
-  const relevantSalesRows = salesRows.filter((row) =>
-    isOnOrAfterWeekKey(row.weekCode, baselineWeekKey),
+  const relevantSalesRows = salesRows.filter(
+    (row) =>
+      isOnOrAfterWeekKey(row.weekCode, baselineWeekKey) &&
+      isOnOrBeforeCutoff({
+        cutoffDate,
+        cutoffWeekKey,
+        rowDate: row.date,
+        rowWeekCode: row.weekCode,
+      }),
   );
 
   const ledgerTotals = sumLedgerTotals(relevantLedgerRows, productList);

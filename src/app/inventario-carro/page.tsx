@@ -198,6 +198,40 @@ const formatNumber = (value: number) =>
 const formatSignedNumber = (value: number) =>
   `${value > 0 ? "+" : ""}${formatNumber(value)}`;
 
+const formatDateInput = (date: Date) =>
+  [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
+
+const parseDateAtNoon = (value: string) => {
+  if (!value) return null;
+  const [year, month, day] = value.split("-").map((part) => Number(part));
+  if (
+    Number.isNaN(year) ||
+    Number.isNaN(month) ||
+    Number.isNaN(day) ||
+    !year ||
+    !month ||
+    !day
+  ) {
+    return null;
+  }
+  return new Date(year, month - 1, day, 12, 0, 0);
+};
+
+const formatDateLabel = (value: string) => {
+  const parsedDate = parseDateAtNoon(value);
+  if (!parsedDate) return value;
+
+  return parsedDate.toLocaleDateString("es-MX", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+};
+
 const compareProductTraceRows = (
   a: ProductTraceTimelineRow,
   b: ProductTraceTimelineRow,
@@ -211,7 +245,7 @@ const compareProductTraceRows = (
   return a.sortSequence - b.sortSequence;
 };
 
-const getDefaultDate = () => new Date().toISOString().split("T")[0] || "";
+const getDefaultDate = () => formatDateInput(new Date());
 
 const createEmptyItem = (): LedgerFormItem => ({
   id: crypto.randomUUID(),
@@ -726,6 +760,8 @@ export default function InventarioCarroPage() {
   const [warnings, setWarnings] = useState<InventoryWarning[]>([]);
   const [showAllHistory, setShowAllHistory] = useState(false);
   const [traceProduct, setTraceProduct] = useState<string | null>(null);
+  const [isNukeOpen, setIsNukeOpen] = useState(false);
+  const [nukeDate, setNukeDate] = useState(getDefaultDate());
 
   const [printContainer, setPrintContainer] = useState<HTMLDivElement | null>(
     null,
@@ -770,9 +806,30 @@ export default function InventarioCarroPage() {
     () => getPeriodWeeks(selectedPeriod),
     [selectedPeriod],
   );
+  const selectedWeekRange = useMemo(
+    () => periodWeeks.find((week) => week.weekNumber === selectedWeek) ?? null,
+    [periodWeeks, selectedWeek],
+  );
+  const suggestedNukeDate = useMemo(() => {
+    if (!selectedWeekRange) return getDefaultDate();
+    const weekEndDate = formatDateInput(selectedWeekRange.weekEnd);
+    const today = getDefaultDate();
+    return weekEndDate > today ? today : weekEndDate;
+  }, [selectedWeekRange]);
 
   const selectedWeekCode = `P${selectedPeriod}S${selectedWeek}`;
   const selectedWeekKey = selectedPeriod * 10 + selectedWeek;
+  const nukeDateInfo = useMemo(() => {
+    const parsedDate = parseDateAtNoon(nukeDate);
+    if (!parsedDate) return null;
+
+    const { periodNumber, weekInPeriod } = getCurrentPeriodInfo(parsedDate);
+    return {
+      periodNumber,
+      weekInPeriod,
+      weekCode: `P${periodNumber}S${weekInPeriod}`,
+    };
+  }, [nukeDate]);
 
   const vendorOptions = useMemo(
     () => Object.entries(EMAIL_TO_VENDOR_LABELS),
@@ -859,6 +916,14 @@ export default function InventarioCarroPage() {
     setNotice(null);
     setWarnings([]);
     await Promise.all([fetchLedger(), fetchSales()]).catch(() => {});
+  };
+
+  const handleOpenNuke = () => {
+    if (!selectedSeller) return;
+    setNotice(null);
+    setWarnings([]);
+    setNukeDate(suggestedNukeDate);
+    setIsNukeOpen(true);
   };
 
   const handleOpenAdd = () => {
@@ -1120,7 +1185,7 @@ export default function InventarioCarroPage() {
     }
   };
 
-  const handleNuke = async () => {
+  const _handleNukeLegacy = async () => {
     if (!selectedSeller) return;
 
     setIsSaving(true);
@@ -1206,6 +1271,128 @@ export default function InventarioCarroPage() {
 
       setWarnings(parseWarnings(payload));
       await Promise.all([fetchLedger(), fetchSales()]);
+      setNotice(`Saldo reseteado a 0 para ${selectedSellerDisplayName}`);
+    } catch (err) {
+      setNotice(err instanceof Error ? err.message : "Error al resetear saldo");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleNuke = async () => {
+    if (!selectedSeller) return;
+
+    if (!nukeDate) {
+      setNotice("Selecciona la fecha del nuke");
+      return;
+    }
+
+    if (nukeDate > getDefaultDate()) {
+      setNotice("La fecha del nuke no puede estar en el futuro");
+      return;
+    }
+
+    const parsedResetDate = parseDateAtNoon(nukeDate);
+    if (!parsedResetDate) {
+      setNotice("Fecha de nuke invalida");
+      return;
+    }
+
+    const { periodNumber: resetPeriodNumber, weekInPeriod: resetWeekInPeriod } =
+      getCurrentPeriodInfo(parsedResetDate);
+    const resetWeekKey = resetPeriodNumber * 10 + resetWeekInPeriod;
+
+    if (resetWeekKey < BASELINE_WEEK_KEY) {
+      setNotice(`La fecha del nuke debe ser ${BASELINE_DATE} o posterior`);
+      return;
+    }
+
+    setIsSaving(true);
+    setNotice(null);
+    setWarnings([]);
+
+    try {
+      const resetDate = nukeDate;
+      const [latestLedgerRows, latestSalesRows] = await Promise.all([
+        fetchLedger(),
+        fetchSales(),
+      ]);
+
+      const resetProductList = Array.from(
+        new Set(
+          [
+            ...PRODUCT_NAMES,
+            ...latestLedgerRows.map((row) => row.product),
+          ].filter(Boolean),
+        ),
+      );
+
+      const sellerIdentifiers = getVendorIdentifiers(selectedSeller);
+      const normalizedSellerLedgerRows = latestLedgerRows.filter((row) =>
+        sellerIdentifiers.has(normalizeVendorValue(row.sellerEmail)),
+      );
+      const normalizedSellerSalesRows = latestSalesRows.filter((row) =>
+        sellerIdentifiers.has(normalizeVendorValue(row.sellerEmail)),
+      );
+
+      const saldoAtResetDate = buildLiveSaldoTotals({
+        baselineWeekKey: BASELINE_WEEK_KEY,
+        cutoffDate: resetDate,
+        cutoffWeekKey: resetWeekKey,
+        ledgerRows: normalizedSellerLedgerRows,
+        productList: resetProductList,
+        salesRows: normalizedSellerSalesRows,
+      });
+
+      const adjustments = buildResetAdjustments({
+        productList: resetProductList,
+        saldoTotals: saldoAtResetDate,
+      });
+
+      if (adjustments.length === 0) {
+        setNotice("El vendedor ya esta en 0 para esa fecha");
+        return;
+      }
+
+      const summaryLines = adjustments.map(
+        ({ currentSaldo, product, quantity }) =>
+          `${product}: ${formatSignedNumber(currentSaldo)} -> ${formatSignedNumber(quantity)} -> 0`,
+      );
+      const shouldContinue = window.confirm(
+        [
+          `Resetear saldo de ${selectedSellerDisplayName}?`,
+          "",
+          `Se crearan ${adjustments.length} ajustes con fecha ${resetDate} (P${resetPeriodNumber}S${resetWeekInPeriod}).`,
+          ...summaryLines,
+        ].join("\n"),
+      );
+
+      if (!shouldContinue) {
+        return;
+      }
+
+      const response = await fetch("/api/inventario-carros", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          entries: adjustments.map(({ product, quantity }) => ({
+            date: resetDate,
+            sellerEmail: selectedSeller,
+            product,
+            quantity,
+            movementType: "Ajuste",
+            notes: "Reset saldo a 0 (nuke)",
+          })),
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.error || "No se pudo resetear el saldo");
+      }
+
+      setWarnings(parseWarnings(payload));
+      await Promise.all([fetchLedger(), fetchSales()]);
+      setIsNukeOpen(false);
       setNotice(`Saldo reseteado a 0 para ${selectedSellerDisplayName}`);
     } catch (err) {
       setNotice(err instanceof Error ? err.message : "Error al resetear saldo");
@@ -1474,7 +1661,7 @@ export default function InventarioCarroPage() {
               </button>
               <button
                 type="button"
-                onClick={handleNuke}
+                onClick={handleOpenNuke}
                 disabled={
                   !selectedSeller ||
                   isSaving ||
@@ -1812,6 +1999,91 @@ export default function InventarioCarroPage() {
         )}
       </main>
 
+      <Dialog open={isNukeOpen} onOpenChange={setIsNukeOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Resetear saldo con fecha manual</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+              Este nuke creara ajustes para dejar el saldo del vendedor en cero
+              exactamente en la fecha elegida.
+            </div>
+
+            <div className="space-y-1">
+              <p className="text-xs font-semibold text-slate-600">Vendedor</p>
+              <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900">
+                {selectedSellerDisplayName}
+              </p>
+            </div>
+
+            <div className="space-y-1">
+              <label
+                htmlFor="nuke-date"
+                className="text-xs font-semibold text-slate-600"
+              >
+                Fecha del nuke
+              </label>
+              <DatePicker
+                id="nuke-date"
+                value={nukeDate}
+                onChange={setNukeDate}
+              />
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+                <span>
+                  Sugerido para {selectedWeekCode}:{" "}
+                  {selectedWeekRange?.label || "Semana seleccionada"}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setNukeDate(suggestedNukeDate)}
+                  className="font-medium text-slate-700 transition-colors [@media(hover:hover)]:hover:text-slate-900"
+                >
+                  Usar cierre de semana
+                </button>
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+              <p>
+                Fecha elegida:{" "}
+                <span className="font-medium text-slate-900">
+                  {formatDateLabel(nukeDate)}
+                </span>
+              </p>
+              <p>
+                El ajuste caera en{" "}
+                <span className="font-medium text-slate-900">
+                  {nukeDateInfo?.weekCode || "-"}
+                </span>
+              </p>
+              <p className="text-xs text-slate-500">
+                Usa esto para cerrar una semana pasada y arrancar desde cero a
+                partir de ahi.
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setIsNukeOpen(false)}
+                className="min-h-[44px] px-4 rounded-lg border border-slate-200 text-sm text-slate-700 transition-colors [@media(hover:hover)]:hover:bg-slate-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleNuke}
+                disabled={isSaving || !nukeDate}
+                className="min-h-[44px] px-4 rounded-lg bg-red-600 text-white text-sm transition-colors [@media(hover:hover)]:hover:bg-red-500 disabled:opacity-60"
+              >
+                Crear nuke
+              </button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog
         open={Boolean(traceProduct)}
         onOpenChange={(open) => {
@@ -1821,8 +2093,12 @@ export default function InventarioCarroPage() {
         <DialogContent className="w-[94vw] max-w-4xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
           <DialogHeader>
             <DialogTitle className="flex flex-col gap-0.5">
-              <span className="text-sm font-medium text-slate-500">Trazabilidad de producto</span>
-              <span className="text-[28px] font-bold leading-tight tracking-tight text-slate-900">{traceProduct}</span>
+              <span className="text-sm font-medium text-slate-500">
+                Trazabilidad de producto
+              </span>
+              <span className="text-[28px] font-bold leading-tight tracking-tight text-slate-900">
+                {traceProduct}
+              </span>
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
