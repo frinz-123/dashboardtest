@@ -1600,26 +1600,29 @@ export default function InventarioCarroPage() {
           row.product === traceProduct &&
           isOnOrAfterWeekKey(row.weekCode, BASELINE_WEEK_KEY),
       )
-      .map((row) => ({
-        id: `ledger-${row.rowNumber}`,
-        date: row.date,
-        kind: "Entrada",
-        movementType:
-          MOVEMENT_TYPE_CONFIG[
-            row.movementType as (typeof MOVEMENT_TYPES)[number]
-          ]?.label || row.movementType,
-        quantity: row.quantity,
-        saldo: 0,
-        notes: row.notes || "-",
-        weekCode: row.weekCode,
-        isSelectedWeek: row.weekCode === selectedWeekCode,
-        isResetNuke: row.notes === "Reset saldo a 0 (nuke)",
-        ledgerRow: row,
-        quantityDelta: row.quantity,
-        sortDate: row.date || BASELINE_DATE,
-        sortPriority: 0,
-        sortSequence: row.rowNumber,
-      }));
+      .map((row) => {
+        const isResetNuke = row.notes === "Reset saldo a 0 (nuke)";
+        return {
+          id: `ledger-${row.rowNumber}`,
+          date: row.date,
+          kind: "Entrada",
+          movementType:
+            MOVEMENT_TYPE_CONFIG[
+              row.movementType as (typeof MOVEMENT_TYPES)[number]
+            ]?.label || row.movementType,
+          quantity: row.quantity,
+          saldo: 0,
+          notes: row.notes || "-",
+          weekCode: row.weekCode,
+          isSelectedWeek: row.weekCode === selectedWeekCode,
+          isResetNuke,
+          ledgerRow: row,
+          quantityDelta: row.quantity,
+          sortDate: row.date || BASELINE_DATE,
+          sortPriority: isResetNuke ? 2 : 0,
+          sortSequence: row.rowNumber,
+        };
+      });
 
     const salesEntries: ProductTraceTimelineRow[] = salesForSeller.flatMap(
       (row, index) => {
