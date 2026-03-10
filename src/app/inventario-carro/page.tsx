@@ -234,6 +234,17 @@ const formatDateLabel = (value: string) => {
   });
 };
 
+const formatTraceDateLabel = (value: string) => {
+  const normalizedDate = normalizeDateString(value);
+  if (!normalizedDate) return value;
+
+  return new Date(`${normalizedDate}T12:00:00`).toLocaleDateString("es-MX", {
+    day: "numeric",
+    month: "numeric",
+    year: "numeric",
+  });
+};
+
 const compareProductTraceRows = (
   a: ProductTraceTimelineRow,
   b: ProductTraceTimelineRow,
@@ -1618,7 +1629,7 @@ export default function InventarioCarroPage() {
           isResetNuke,
           ledgerRow: row,
           quantityDelta: row.quantity,
-          sortDate: row.date || BASELINE_DATE,
+          sortDate: normalizeDateString(row.date) || BASELINE_DATE,
           sortPriority: isResetNuke ? 2 : 0,
           sortSequence: row.rowNumber,
         };
@@ -1643,7 +1654,7 @@ export default function InventarioCarroPage() {
             weekCode: row.weekCode,
             isSelectedWeek: row.weekCode === selectedWeekCode,
             quantityDelta: -quantity,
-            sortDate: row.date || BASELINE_DATE,
+            sortDate: normalizeDateString(row.date) || BASELINE_DATE,
             sortPriority: 1,
             sortSequence: index,
           },
@@ -1657,19 +1668,17 @@ export default function InventarioCarroPage() {
 
     let runningSaldo = 0;
 
-    return timeline
-      .map((row) => {
-        if (row.isResetNuke) {
-          runningSaldo = 0;
-        } else {
-          runningSaldo += row.quantityDelta;
-        }
-        return {
-          ...row,
-          saldo: runningSaldo,
-        };
-      })
-      .toReversed();
+    return timeline.map((row) => {
+      if (row.isResetNuke) {
+        runningSaldo = 0;
+      } else {
+        runningSaldo += row.quantityDelta;
+      }
+      return {
+        ...row,
+        saldo: runningSaldo,
+      };
+    });
   }, [ledgerForSeller, salesForSeller, selectedWeekCode, traceProduct]);
 
   if (status === "unauthenticated") {
@@ -2160,10 +2169,15 @@ export default function InventarioCarroPage() {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 px-2 py-1 text-xs text-sky-700 ring-1 ring-inset ring-sky-100">
-              <span className="h-1.5 w-1.5 rounded-full bg-sky-500/70" />
-              Semana seleccionada {selectedWeekCode}
-            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 px-2 py-1 text-xs text-sky-700 ring-1 ring-inset ring-sky-100">
+                <span className="h-1.5 w-1.5 rounded-full bg-sky-500/70" />
+                Semana seleccionada {selectedWeekCode}
+              </span>
+              <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-600 ring-1 ring-inset ring-slate-200">
+                Cronologia ascendente
+              </span>
+            </div>
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead className="text-xs text-slate-500">
@@ -2194,19 +2208,30 @@ export default function InventarioCarroPage() {
                       key={row.id}
                       className={cn(
                         "border-b last:border-b-0",
-                        row.isSelectedWeek
-                          ? "border-sky-100 bg-sky-50/60"
-                          : "border-slate-100",
+                        row.isResetNuke
+                          ? "border-rose-100 bg-rose-50/80"
+                          : row.isSelectedWeek
+                            ? "border-sky-100 bg-sky-50/60"
+                            : "border-slate-100",
                       )}
                     >
-                      <td className="py-2 pr-3 text-slate-700">{row.date}</td>
+                      <td className="py-2 pr-3 text-slate-700">
+                        {formatTraceDateLabel(row.date)}
+                      </td>
                       <td className="py-2 pr-3">
-                        <span className="inline-flex px-2 py-0.5 rounded-full text-xs bg-slate-100 text-slate-700">
+                        <span
+                          className={cn(
+                            "inline-flex px-2 py-0.5 rounded-full text-xs",
+                            row.isResetNuke
+                              ? "bg-rose-100 text-rose-700"
+                              : "bg-slate-100 text-slate-700",
+                          )}
+                        >
                           {row.kind}
                         </span>
                       </td>
                       <td className="py-2 pr-3 text-slate-700">
-                        {row.movementType}
+                        {row.isResetNuke ? "Reset a 0" : row.movementType}
                       </td>
                       <td className="py-2 pr-3 text-right tabular-nums">
                         {formatNumber(row.quantity)}
@@ -2214,7 +2239,16 @@ export default function InventarioCarroPage() {
                       <td className="py-2 pr-3 text-right tabular-nums font-medium text-slate-900">
                         {formatNumber(row.saldo)}
                       </td>
-                      <td className="py-2 pr-3 text-slate-500">{row.notes}</td>
+                      <td
+                        className={cn(
+                          "py-2 pr-3",
+                          row.isResetNuke
+                            ? "font-medium text-rose-700"
+                            : "text-slate-500",
+                        )}
+                      >
+                        {row.notes}
+                      </td>
                       <td className="py-2 pr-3">
                         <span
                           className={cn(
