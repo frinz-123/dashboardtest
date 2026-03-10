@@ -9,6 +9,22 @@ type GeoMockOptions = {
   asyncError?: boolean;
 };
 
+function mockNavigatorPermissions(state: PermissionState) {
+  const permissionStatus = {
+    state,
+    onchange: null,
+  };
+
+  Object.defineProperty(global.navigator, "permissions", {
+    configurable: true,
+    value: {
+      query: jest.fn().mockResolvedValue(permissionStatus),
+    },
+  });
+
+  return permissionStatus;
+}
+
 function mockNavigatorGeolocation(options?: GeoMockOptions) {
   const watchPosition = jest.fn((success, error) => {
     if (options?.errorCode) {
@@ -113,5 +129,29 @@ describe("MapView", () => {
     fireEvent.click(screen.getByText("Reintentar"));
 
     expect(watchPosition).toHaveBeenCalledTimes(2);
+  });
+
+  it("still attempts geolocation when the permissions api reports denied", async () => {
+    const { watchPosition } = mockNavigatorGeolocation({ errorCode: 1 });
+    const permissionStatus = mockNavigatorPermissions("denied");
+
+    render(<MapView />);
+
+    expect(permissionStatus.onchange).toEqual(expect.any(Function));
+    expect(watchPosition).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Reintentar")).toBeInTheDocument();
+  });
+
+  it("centers the map on the client reference when gps is unavailable", () => {
+    mockNavigatorGeolocation({ errorCode: 1 });
+
+    render(<MapView clientLocation={{ lat: 24.8091, lng: -107.394 }} />);
+
+    const mapMock = mapboxgl.Map as unknown as jest.Mock;
+    expect(mapMock.mock.calls[0][0].center).toEqual([-107.394, 24.8091]);
+    expect(screen.getByText("GPS no disponible")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Mostrando la ubicacion del cliente como referencia\./i),
+    ).toBeInTheDocument();
   });
 });

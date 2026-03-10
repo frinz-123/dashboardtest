@@ -18,6 +18,13 @@ type MapProps = {
 };
 
 type Location = { lat: number; lng: number };
+type LocationIssue =
+  | "none"
+  | "unsupported"
+  | "permission-denied"
+  | "position-unavailable"
+  | "timeout"
+  | "error";
 
 const FALLBACK_CENTER: Location = {
   lat: 29.0729673,
@@ -117,6 +124,10 @@ export default function MapView({
   const [locationAccuracy, setLocationAccuracy] = useState<number | null>(null);
   const [mapInitError, setMapInitError] = useState<string>("");
   const [isMapLoaded, setIsMapLoaded] = useState(false);
+  const [locationIssue, setLocationIssue] = useState<LocationIssue>("none");
+  const [permissionState, setPermissionState] = useState<
+    PermissionState | "unknown"
+  >("unknown");
 
   const userMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const clientMarkerRef = useRef<mapboxgl.Marker | null>(null);
@@ -135,11 +146,11 @@ export default function MapView({
 
   const staticMapUrl = useMemo(() => {
     if (!mapboxgl.accessToken) return null;
-    const center = location ?? FALLBACK_CENTER;
+    const center = location ?? clientLocation ?? FALLBACK_CENTER;
     return `https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/${center.lng},${center.lat},14/1200x600?access_token=${encodeURIComponent(
       mapboxgl.accessToken,
     )}`;
-  }, [location]);
+  }, [clientLocation, location]);
 
   const stopWatchingLocation = useCallback(() => {
     if (locationWatchId.current !== null) {
@@ -202,7 +213,10 @@ export default function MapView({
       }
 
       if (!navigator.geolocation) {
-        setLocationError("Geolocation is not supported by your browser");
+        setLocationIssue("unsupported");
+        setLocationError(
+          "Tu navegador no soporta la ubicacion del dispositivo.",
+        );
         setIsRefreshing(false);
         return;
       }
@@ -211,6 +225,7 @@ export default function MapView({
       setIsRefreshing(true);
       setLocationError("");
       setLocationAccuracy(null);
+      setLocationIssue("none");
       bestEffortPosition.current = null;
 
       const geolocationOptions = {
@@ -245,6 +260,7 @@ export default function MapView({
         setLocation(newLocation);
         setLocationError("");
         setLocationAccuracy(position.coords.accuracy);
+        setLocationIssue("none");
         onLocationUpdateRef.current?.({
           ...newLocation,
           accuracy: position.coords.accuracy,
@@ -352,6 +368,18 @@ export default function MapView({
           errorMessage = "La información de ubicación no está disponible.";
         }
 
+        if (code === GEOLOCATION_PERMISSION_DENIED) {
+          setLocationIssue("permission-denied");
+        } else if (code === GEOLOCATION_POSITION_UNAVAILABLE) {
+          setLocationIssue("position-unavailable");
+        } else if (
+          code === GEOLOCATION_TIMEOUT ||
+          message.toLowerCase().includes("timed out")
+        ) {
+          setLocationIssue("timeout");
+        } else {
+          setLocationIssue("error");
+        }
         setLocationError(errorMessage);
         setIsRefreshing(false);
       };
@@ -385,7 +413,7 @@ export default function MapView({
     }
 
     try {
-      const initialCenter = locationRef.current ?? FALLBACK_CENTER;
+      const initialCenter = location ?? clientLocation ?? FALLBACK_CENTER;
       map.current = new mapboxgl.Map({
         container: mapContainer.current,
         style: MAP_STYLE,
@@ -422,7 +450,7 @@ export default function MapView({
         map.current = null;
       }
     };
-  }, []);
+  }, [clientLocation, location]);
 
   useEffect(() => {
     locationRef.current = location;
@@ -439,6 +467,7 @@ export default function MapView({
   useEffect(() => {
     isComponentUnmounted.current = false;
     let isCancelled = false;
+    let permissionStatus: PermissionStatus | null = null;
 
     const requestLocation = () => {
       if (!isCancelled) {
@@ -456,22 +485,27 @@ export default function MapView({
         .then((result) => {
           if (isCancelled) return;
 
-          if (result.state === "granted" || result.state === "prompt") {
-            requestLocation();
-          } else {
-            setLocationError("Location permission denied");
-            setIsRefreshing(false);
-          }
+          permissionStatus = result;
+          setPermissionState(result.state);
+          result.onchange = () => {
+            if (isCancelled) return;
+            setPermissionState(result.state);
+          };
+          requestLocation();
         })
         .catch(() => {
           requestLocation();
         });
     } else {
+      setPermissionState("unknown");
       requestLocation();
     }
 
     return () => {
       isCancelled = true;
+      if (permissionStatus) {
+        permissionStatus.onchange = null;
+      }
       isComponentUnmounted.current = true;
       stopWatchingLocation();
     };
@@ -492,6 +526,10 @@ export default function MapView({
     })
       .setLngLat([clientLocation.lng, clientLocation.lat])
       .addTo(map.current);
+
+    if (!location) {
+      map.current.setCenter([clientLocation.lng, clientLocation.lat]);
+    }
 
     if (location && hasSignificantMovement(location, clientLocation)) {
       const bounds = new mapboxgl.LngLatBounds();
@@ -523,6 +561,22 @@ export default function MapView({
     };
   }, [isAutoUpdating, isRefreshing, getCurrentLocation, location]);
 
+  const isPermissionDenied =
+    locationIssue === "permission-denied" || permissionState === "denied";
+  const showLocationOverlay =
+    !mapInitError &&
+    !location &&
+    (Boolean(locationError) || Boolean(clientLocation));
+  const overlayTitle = isPermissionDenied
+    ? "GPS no disponible"
+    : "Esperando ubicacion";
+  const overlayDescription = isPermissionDenied
+    ? "No estamos recibiendo tu GPS real en este momento. Toca Reintentar. Si sigue igual, revisa el permiso de ubicacion del navegador y la ubicacion del telefono."
+    : locationError || "Todavia no hay una lectura confiable del GPS.";
+  const overlayReference = clientLocation
+    ? "Mostrando la ubicacion del cliente como referencia."
+    : "El mapa esta mostrando una referencia general mientras llega el GPS.";
+
   return (
     <div className="relative">
       {mapInitError ? (
@@ -546,6 +600,21 @@ export default function MapView({
             ref={mapContainer}
             style={{ height: "300px", borderRadius: "0.5rem" }}
           />
+          {showLocationOverlay && (
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-lg bg-white/72 p-4">
+              <div className="max-w-[18rem] rounded-xl border border-amber-200 bg-amber-50/95 p-4 text-left shadow-sm">
+                <p className="text-sm font-semibold text-amber-950">
+                  {overlayTitle}
+                </p>
+                <p className="mt-1 text-xs leading-5 text-amber-900">
+                  {overlayDescription}
+                </p>
+                <p className="mt-2 text-[11px] leading-4 text-amber-800">
+                  {overlayReference}
+                </p>
+              </div>
+            </div>
+          )}
           {!isMapLoaded && (
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-lg bg-white/70 text-xs text-gray-500">
               Cargando mapa...
@@ -553,14 +622,14 @@ export default function MapView({
           )}
         </div>
       )}
-      <div className="mt-2 flex items-center justify-between">
-        <div className="flex items-center gap-2">
+      <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex min-w-0 flex-1 items-start gap-2">
           {mapInitError ? (
             <div className="rounded bg-yellow-100 px-2 py-1 text-xs text-yellow-800">
               {mapInitError}
             </div>
           ) : locationError ? (
-            <div className="rounded bg-yellow-100 px-2 py-1 text-xs text-yellow-800">
+            <div className="max-w-full rounded bg-yellow-100 px-2 py-1 text-xs leading-5 text-yellow-800">
               {locationError}
             </div>
           ) : (
@@ -582,7 +651,7 @@ export default function MapView({
             <span className="text-xs text-blue-500">Actualizando...</span>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {locationError && (
             <button
               onClick={() => getCurrentLocation({ resetRetryCount: true })}
@@ -611,6 +680,7 @@ export default function MapView({
             type="button"
             className="text-xs px-2 py-1 rounded bg-red-100 text-red-600 hover:bg-red-200"
             disabled={isRefreshing}
+            aria-label="Reiniciar ubicacion"
           >
             Reset
           </button>
@@ -619,6 +689,7 @@ export default function MapView({
             type="button"
             className="p-2 rounded-full hover:bg-gray-100 transition-colors duration-200"
             disabled={isRefreshing}
+            aria-label="Actualizar ubicacion"
           >
             <RefreshCw
               className={`h-4 w-4 text-gray-600 ${isRefreshing ? "animate-spin" : ""}`}
