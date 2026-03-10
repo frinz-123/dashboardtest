@@ -114,7 +114,9 @@ const PRODUCTS: string[] = [
 ];
 
 const MIN_MOVEMENT_THRESHOLD = 5; // Align with map for precise updates
+const MAX_LOCATION_ACCURACY = 100; // Match live submit validation
 const MAX_CLIENT_DISTANCE = 450; // Maximum allowed distance to client in meters
+const GPS_STALE_WARNING_MS = 90_000;
 const ARCHIVE_MARKER = "archivado no usar";
 
 type SearchableClient = {
@@ -124,6 +126,11 @@ type SearchableClient = {
 
 const SEARCH_DEBOUNCE_MS = 220;
 const MAX_SEARCH_RESULTS = 20;
+
+function formatElapsedMs(ms: number): string {
+  if (ms < 60_000) return `${Math.max(1, Math.round(ms / 1000))} s`;
+  return `${Math.max(1, Math.round(ms / 60_000))} min`;
+}
 
 function normalizeText(value: string): string {
   if (!value) return "";
@@ -1057,7 +1064,7 @@ export default function FormPage() {
     accuracy?: number;
     timestamp?: number;
   } | null>(null);
-  const [locationAlert, setLocationAlert] = useState<string | null>(null);
+  const [gpsClock, setGpsClock] = useState(() => Date.now());
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [key, setKey] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -1629,37 +1636,157 @@ export default function FormPage() {
   ]);
 
   useEffect(() => {
-    if (selectedClient && currentLocation && clientLocations[selectedClient]) {
-      const distance = calculateDistance(
-        currentLocation.lat,
-        currentLocation.lng,
-        clientLocations[selectedClient].lat,
-        clientLocations[selectedClient].lng,
-      );
+    if (!currentLocation?.timestamp) return;
 
-      if (distance > MAX_CLIENT_DISTANCE) {
-        setLocationAlert("Estas lejos del cliente");
-      } else {
-        setLocationAlert(null);
-      }
-    }
-  }, [selectedClient, currentLocation, clientLocations]);
+    setGpsClock(Date.now());
+    const intervalId = window.setInterval(() => {
+      setGpsClock(Date.now());
+    }, 15_000);
+
+    return () => window.clearInterval(intervalId);
+  }, [currentLocation?.timestamp]);
+
+  const selectedClientLocation = selectedClient
+    ? clientLocations[selectedClient] || null
+    : null;
 
   const distanceToClient = useMemo(() => {
-    if (!selectedClient || !currentLocation || !clientLocations[selectedClient])
-      return null;
+    if (!selectedClientLocation || !currentLocation) return null;
     return calculateDistance(
       currentLocation.lat,
       currentLocation.lng,
-      clientLocations[selectedClient].lat,
-      clientLocations[selectedClient].lng,
+      selectedClientLocation.lat,
+      selectedClientLocation.lng,
     );
-  }, [selectedClient, currentLocation, clientLocations]);
+  }, [selectedClientLocation, currentLocation]);
 
-  const formatDistance = (meters: number) => {
+  const formatDistance = useCallback((meters: number) => {
     if (meters >= 1000) return `${(meters / 1000).toFixed(1)} km`;
     return `${Math.round(meters)} m`;
-  };
+  }, []);
+
+  const currentLocationAgeMs =
+    currentLocation?.timestamp !== undefined
+      ? Math.max(0, gpsClock - currentLocation.timestamp)
+      : null;
+
+  const gpsReadiness = useMemo(() => {
+    if (!selectedClient) {
+      return {
+        label: "Selecciona un cliente",
+        detail: "La validacion GPS se activa al elegir un cliente.",
+        tone: "gray" as const,
+        blocking: false,
+        validationMessage: null as string | null,
+      };
+    }
+
+    if (!currentLocation) {
+      return {
+        label: "Esperando GPS",
+        detail: "Necesitamos una lectura de ubicacion real antes de enviar.",
+        tone: "amber" as const,
+        blocking: true,
+        validationMessage: "No se pudo obtener la ubicacion.",
+      };
+    }
+
+    if (
+      typeof currentLocation.accuracy === "number" &&
+      currentLocation.accuracy > MAX_LOCATION_ACCURACY
+    ) {
+      return {
+        label: "GPS debil",
+        detail: `La precision actual es +/-${Math.round(currentLocation.accuracy)} m. Espera una mejor lectura antes de enviar.`,
+        tone: "red" as const,
+        blocking: true,
+        validationMessage: `La precision del GPS es insuficiente (+/-${Math.round(currentLocation.accuracy)} m). Espera unos segundos para obtener una mejor senal.`,
+      };
+    }
+
+    if (
+      distanceToClient !== null &&
+      distanceToClient > MAX_CLIENT_DISTANCE &&
+      selectedClientLocation
+    ) {
+      return {
+        label: "Muy lejos del cliente",
+        detail: `Estas a ${formatDistance(distanceToClient)} del punto del cliente.`,
+        tone: "red" as const,
+        blocking: true,
+        validationMessage: `Estas demasiado lejos del cliente (${Math.round(distanceToClient)} m). Acercate a la ubicacion registrada para continuar.`,
+      };
+    }
+
+    if (!selectedClientLocation) {
+      return {
+        label: "Cliente sin pin",
+        detail:
+          "No hay coordenadas guardadas para este cliente. Se enviara sin validar distancia.",
+        tone: "amber" as const,
+        blocking: false,
+        validationMessage: null,
+      };
+    }
+
+    if (
+      currentLocationAgeMs !== null &&
+      currentLocationAgeMs > GPS_STALE_WARNING_MS
+    ) {
+      return {
+        label: "GPS desactualizado",
+        detail: `La ultima lectura tiene ${formatElapsedMs(currentLocationAgeMs)}. Recomendado: refrescar antes de enviar.`,
+        tone: "amber" as const,
+        blocking: false,
+        validationMessage: null,
+      };
+    }
+
+    return {
+      label: "Listo para enviar",
+      detail:
+        distanceToClient !== null
+          ? `GPS dentro de rango. Distancia actual: ${formatDistance(distanceToClient)}.`
+          : "GPS listo. La distancia se podra validar cuando exista pin del cliente.",
+      tone: "green" as const,
+      blocking: false,
+      validationMessage: null,
+    };
+  }, [
+    selectedClient,
+    currentLocation,
+    selectedClientLocation,
+    distanceToClient,
+    currentLocationAgeMs,
+    formatDistance,
+  ]);
+
+  const isLocationSubmitBlocked = gpsReadiness.blocking && !isAdminCandidate;
+  const gpsStatusClasses = {
+    gray: "border-gray-200 bg-gray-50 text-gray-700",
+    amber: "border-amber-200 bg-amber-50 text-amber-900",
+    red: "border-red-200 bg-red-50 text-red-700",
+    green: "border-green-200 bg-green-50 text-green-700",
+  } as const;
+  const currentAccuracyLabel =
+    typeof currentLocation?.accuracy === "number"
+      ? `+/-${Math.round(currentLocation.accuracy)} m`
+      : "Sin dato";
+  const currentAgeLabel =
+    currentLocationAgeMs !== null
+      ? formatElapsedMs(currentLocationAgeMs)
+      : "Sin dato";
+
+  useEffect(() => {
+    if (!validationErrors.location) return;
+    if (!currentLocation) return;
+    if (!isLocationSubmitBlocked) {
+      setValidationErrors((prev) => ({
+        ...prev,
+        location: undefined,
+      }));
+    }
+  }, [currentLocation, isLocationSubmitBlocked, validationErrors.location]);
 
   // Products list moved to top-level constant PRODUCTS
 
@@ -1832,6 +1959,15 @@ export default function FormPage() {
           ...prev,
           submit:
             "El modo admin requiere una sesion valida de administrador para aplicar overrides.",
+        }));
+        isSubmittingRef.current = false;
+        return;
+      }
+
+      if (!isAdmin && gpsReadiness.blocking && gpsReadiness.validationMessage) {
+        setValidationErrors((prev) => ({
+          ...prev,
+          location: gpsReadiness.validationMessage,
         }));
         isSubmittingRef.current = false;
         return;
@@ -2048,11 +2184,66 @@ export default function FormPage() {
             )}
           </div>
         )}
-        {locationAlert && (
-          <p role="alert" className="text-sm text-red-600 mb-3 font-medium">
-            ⚠️ {locationAlert}
-          </p>
-        )}
+
+        <div
+          className={`mb-3 rounded-lg border p-3 ${gpsStatusClasses[gpsReadiness.tone]}`}
+        >
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold uppercase tracking-wide">
+                  GPS
+                </span>
+                <span className="rounded-full bg-white/70 px-2 py-0.5 text-[11px] font-medium">
+                  {gpsReadiness.label}
+                </span>
+              </div>
+              <p className="mt-2 text-sm leading-5">{gpsReadiness.detail}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs sm:min-w-52">
+              <div className="rounded-md bg-white/70 px-2 py-2">
+                <p className="text-[11px] uppercase tracking-wide text-gray-500">
+                  Precision
+                </p>
+                <p className="mt-1 font-semibold text-gray-900">
+                  {currentAccuracyLabel}
+                </p>
+              </div>
+              <div className="rounded-md bg-white/70 px-2 py-2">
+                <p className="text-[11px] uppercase tracking-wide text-gray-500">
+                  Lectura
+                </p>
+                <p className="mt-1 font-semibold text-gray-900">
+                  {currentAgeLabel}
+                </p>
+              </div>
+              <div className="rounded-md bg-white/70 px-2 py-2">
+                <p className="text-[11px] uppercase tracking-wide text-gray-500">
+                  Distancia
+                </p>
+                <p className="mt-1 font-semibold text-gray-900">
+                  {distanceToClient !== null
+                    ? formatDistance(distanceToClient)
+                    : "Sin validar"}
+                </p>
+              </div>
+              <div className="rounded-md bg-white/70 px-2 py-2">
+                <p className="text-[11px] uppercase tracking-wide text-gray-500">
+                  Pin cliente
+                </p>
+                <p className="mt-1 font-semibold text-gray-900">
+                  {selectedClientLocation ? "Disponible" : "Sin coordenadas"}
+                </p>
+              </div>
+            </div>
+          </div>
+          {isAdminCandidate && gpsReadiness.blocking && (
+            <p className="mt-3 text-xs text-purple-700">
+              Modo admin: puedes enviar aun con este bloqueo, pero el vendedor
+              normal no.
+            </p>
+          )}
+        </div>
 
         {/* Admin Override Section - Only visible for admin users */}
         {isAdminCandidate && (
@@ -2252,9 +2443,7 @@ export default function FormPage() {
           </h2>
           <ClientMap
             onLocationUpdate={handleLocationUpdate}
-            clientLocation={
-              selectedClient ? clientLocations[selectedClient] : null
-            }
+            clientLocation={selectedClientLocation}
           />
           {validationErrors.location && (
             <p role="alert" className="text-red-500 text-xs mt-2">
@@ -2381,7 +2570,7 @@ export default function FormPage() {
               isSubmitting ||
               isCompressingPhotos ||
               (!session?.user?.email && !cachedEmail) ||
-              (locationAlert !== null && !isAdminCandidate)
+              isLocationSubmitBlocked
             }
           >
             {isSubmitting ? (
@@ -2397,8 +2586,8 @@ export default function FormPage() {
               "Esperando ubicacion..."
             ) : isCompressingPhotos ? (
               "Comprimiendo fotos..."
-            ) : locationAlert !== null && !isAdminCandidate ? (
-              "Estas lejos del cliente"
+            ) : isLocationSubmitBlocked ? (
+              gpsReadiness.label
             ) : (
               "Enviar Pedido"
             )}
