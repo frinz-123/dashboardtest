@@ -1762,20 +1762,7 @@ export default function FormPage() {
   ]);
 
   const isLocationSubmitBlocked = gpsReadiness.blocking && !isAdminCandidate;
-  const gpsStatusClasses = {
-    gray: "border-gray-200 bg-gray-50 text-gray-700",
-    amber: "border-amber-200 bg-amber-50 text-amber-900",
-    red: "border-red-200 bg-red-50 text-red-700",
-    green: "border-green-200 bg-green-50 text-green-700",
-  } as const;
-  const currentAccuracyLabel =
-    typeof currentLocation?.accuracy === "number"
-      ? `+/-${Math.round(currentLocation.accuracy)} m`
-      : "Sin dato";
-  const currentAgeLabel =
-    currentLocationAgeMs !== null
-      ? formatElapsedMs(currentLocationAgeMs)
-      : "Sin dato";
+  const showGpsFailureAlert = Boolean(selectedClient) && gpsReadiness.blocking;
 
   useEffect(() => {
     if (!validationErrors.location) return;
@@ -2185,65 +2172,24 @@ export default function FormPage() {
           </div>
         )}
 
-        <div
-          className={`mb-3 rounded-lg border p-3 ${gpsStatusClasses[gpsReadiness.tone]}`}
-        >
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold uppercase tracking-wide">
-                  GPS
-                </span>
-                <span className="rounded-full bg-white/70 px-2 py-0.5 text-[11px] font-medium">
-                  {gpsReadiness.label}
-                </span>
-              </div>
-              <p className="mt-2 text-sm leading-5">{gpsReadiness.detail}</p>
+        {showGpsFailureAlert && (
+          <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-amber-950">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wide">
+                GPS
+              </span>
+              <span className="rounded-full bg-white/80 px-2 py-0.5 text-[11px] font-medium">
+                {gpsReadiness.label}
+              </span>
             </div>
-            <div className="grid grid-cols-2 gap-2 text-xs sm:min-w-52">
-              <div className="rounded-md bg-white/70 px-2 py-2">
-                <p className="text-[11px] uppercase tracking-wide text-gray-500">
-                  Precision
-                </p>
-                <p className="mt-1 font-semibold text-gray-900">
-                  {currentAccuracyLabel}
-                </p>
-              </div>
-              <div className="rounded-md bg-white/70 px-2 py-2">
-                <p className="text-[11px] uppercase tracking-wide text-gray-500">
-                  Lectura
-                </p>
-                <p className="mt-1 font-semibold text-gray-900">
-                  {currentAgeLabel}
-                </p>
-              </div>
-              <div className="rounded-md bg-white/70 px-2 py-2">
-                <p className="text-[11px] uppercase tracking-wide text-gray-500">
-                  Distancia
-                </p>
-                <p className="mt-1 font-semibold text-gray-900">
-                  {distanceToClient !== null
-                    ? formatDistance(distanceToClient)
-                    : "Sin validar"}
-                </p>
-              </div>
-              <div className="rounded-md bg-white/70 px-2 py-2">
-                <p className="text-[11px] uppercase tracking-wide text-gray-500">
-                  Pin cliente
-                </p>
-                <p className="mt-1 font-semibold text-gray-900">
-                  {selectedClientLocation ? "Disponible" : "Sin coordenadas"}
-                </p>
-              </div>
-            </div>
+            <p className="mt-1 text-sm leading-5">{gpsReadiness.detail}</p>
+            {isAdminCandidate && (
+              <p className="mt-2 text-xs text-purple-700">
+                Modo admin: puedes enviar aun con este bloqueo.
+              </p>
+            )}
           </div>
-          {isAdminCandidate && gpsReadiness.blocking && (
-            <p className="mt-3 text-xs text-purple-700">
-              Modo admin: puedes enviar aun con este bloqueo, pero el vendedor
-              normal no.
-            </p>
-          )}
-        </div>
+        )}
 
         {/* Admin Override Section - Only visible for admin users */}
         {isAdminCandidate && (
