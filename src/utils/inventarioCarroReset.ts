@@ -34,6 +34,32 @@ export const isOnOrAfterWeekKey = (code: string, minWeekKey: number) => {
   return key !== null && key >= minWeekKey;
 };
 
+const normalizeDateString = (value?: string) => {
+  const trimmed = (value || "").trim();
+  if (!trimmed) return null;
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return trimmed;
+  }
+
+  const usMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (usMatch) {
+    const [, month, day, year] = usMatch;
+    return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  }
+
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  return [
+    parsed.getFullYear(),
+    String(parsed.getMonth() + 1).padStart(2, "0"),
+    String(parsed.getDate()).padStart(2, "0"),
+  ].join("-");
+};
+
 const isOnOrBeforeCutoff = ({
   cutoffDate,
   cutoffWeekKey,
@@ -49,13 +75,23 @@ const isOnOrBeforeCutoff = ({
     return true;
   }
 
+  const normalizedCutoffDate = normalizeDateString(cutoffDate);
+  if (!normalizedCutoffDate) {
+    return true;
+  }
+
   const rowWeekKey = getWeekKey(rowWeekCode);
   if (rowWeekKey === null) return false;
   if (rowWeekKey < cutoffWeekKey) return true;
   if (rowWeekKey > cutoffWeekKey) return false;
   if (!rowDate) return true;
 
-  return rowDate <= cutoffDate;
+  const normalizedRowDate = normalizeDateString(rowDate);
+  if (!normalizedRowDate) {
+    return true;
+  }
+
+  return normalizedRowDate <= normalizedCutoffDate;
 };
 
 export const createProductTotals = (productList: string[]) => {

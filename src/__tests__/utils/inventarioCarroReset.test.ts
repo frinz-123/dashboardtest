@@ -189,4 +189,43 @@ describe("inventarioCarroReset", () => {
       "Salsa Reina El rey 195 ml": 0,
     });
   });
+
+  it("accepts M/D/YYYY sales dates when computing a past-week nuke cutoff", () => {
+    const saldoTotals = buildLiveSaldoTotals({
+      baselineWeekKey: 291,
+      cutoffDate: "2026-03-06",
+      cutoffWeekKey: 292,
+      productList,
+      ledgerRows: [
+        {
+          date: "2026-03-03",
+          product: "Chiltepin Molido 50 g",
+          quantity: 300,
+          weekCode: "P29S2",
+        },
+      ],
+      salesRows: [
+        {
+          date: "3/3/2026",
+          weekCode: "P29S2",
+          products: {
+            "Chiltepin Molido 50 g": 15,
+          },
+        },
+        {
+          date: "3/6/2026",
+          weekCode: "P29S2",
+          products: {
+            "Chiltepin Molido 50 g": 14,
+          },
+        },
+      ],
+    });
+
+    expect(saldoTotals).toEqual({
+      "Chiltepin Molido 50 g": 271,
+      "Chiltepin Entero 30 g": 0,
+      "Salsa Reina El rey 195 ml": 0,
+    });
+  });
 });
