@@ -138,6 +138,9 @@ export default function MapView({
   const accuracyFallbackTimeout = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
+  const initialClientLocationRef = useRef<Location | null>(
+    clientLocation ?? null,
+  );
   const locationRef = useRef<Location | null>(null);
   const clientLocationRef = useRef<Location | null>(null);
   const onLocationUpdateRef =
@@ -268,15 +271,6 @@ export default function MapView({
         });
 
         if (map.current && shouldUpdateMap) {
-          if (userMarkerRef.current) {
-            userMarkerRef.current.remove();
-          }
-          userMarkerRef.current = new mapboxgl.Marker({
-            element: createLabeledMarker("TU", "#2563EB"),
-          })
-            .setLngLat([newLocation.lng, newLocation.lat])
-            .addTo(map.current);
-
           if (!clientLocationRef.current) {
             map.current.setCenter([newLocation.lng, newLocation.lat]);
           }
@@ -394,7 +388,7 @@ export default function MapView({
         geolocationOptions,
       );
     },
-    [createLabeledMarker, stopWatchingLocation],
+    [stopWatchingLocation],
   );
 
   useEffect(() => {
@@ -413,7 +407,7 @@ export default function MapView({
     }
 
     try {
-      const initialCenter = location ?? clientLocation ?? FALLBACK_CENTER;
+      const initialCenter = initialClientLocationRef.current ?? FALLBACK_CENTER;
       map.current = new mapboxgl.Map({
         container: mapContainer.current,
         style: MAP_STYLE,
@@ -445,12 +439,20 @@ export default function MapView({
     }
 
     return () => {
+      if (userMarkerRef.current) {
+        userMarkerRef.current.remove();
+        userMarkerRef.current = null;
+      }
+      if (clientMarkerRef.current) {
+        clientMarkerRef.current.remove();
+        clientMarkerRef.current = null;
+      }
       if (map.current) {
         map.current.remove();
         map.current = null;
       }
     };
-  }, [clientLocation, location]);
+  }, []);
 
   useEffect(() => {
     locationRef.current = location;
@@ -463,6 +465,24 @@ export default function MapView({
   useEffect(() => {
     onLocationUpdateRef.current = onLocationUpdate;
   }, [onLocationUpdate]);
+
+  useEffect(() => {
+    if (!map.current || !location) {
+      if (userMarkerRef.current) {
+        userMarkerRef.current.remove();
+        userMarkerRef.current = null;
+      }
+      return;
+    }
+
+    if (!userMarkerRef.current) {
+      userMarkerRef.current = new mapboxgl.Marker({
+        element: createLabeledMarker("TU", "#2563EB"),
+      }).addTo(map.current);
+    }
+
+    userMarkerRef.current.setLngLat([location.lng, location.lat]);
+  }, [createLabeledMarker, location]);
 
   useEffect(() => {
     isComponentUnmounted.current = false;

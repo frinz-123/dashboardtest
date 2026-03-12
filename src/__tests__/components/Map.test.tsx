@@ -1,12 +1,20 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import mapboxgl from "mapbox-gl";
 import { act } from "react";
 
 import MapView from "@/components/ui/Map";
 
+type MockPosition = {
+  accuracy?: number;
+  latitude: number;
+  longitude: number;
+  timestamp?: number;
+};
+
 type GeoMockOptions = {
-  errorCode?: number;
   asyncError?: boolean;
+  errorCode?: number;
+  positions?: MockPosition[];
 };
 
 function mockNavigatorPermissions(state: PermissionState) {
@@ -26,6 +34,17 @@ function mockNavigatorPermissions(state: PermissionState) {
 }
 
 function mockNavigatorGeolocation(options?: GeoMockOptions) {
+  const defaultPosition: MockPosition = {
+    accuracy: 10,
+    latitude: 29.0729673,
+    longitude: -110.9559192,
+  };
+  const queuedPositions =
+    options?.positions && options.positions.length > 0
+      ? [...options.positions]
+      : [defaultPosition];
+  const fallbackPosition = queuedPositions[queuedPositions.length - 1];
+
   const watchPosition = jest.fn((success, error) => {
     if (options?.errorCode) {
       const sendError = () =>
@@ -40,13 +59,14 @@ function mockNavigatorGeolocation(options?: GeoMockOptions) {
         sendError();
       }
     } else {
+      const nextPosition = queuedPositions.shift() ?? fallbackPosition;
       success({
         coords: {
-          latitude: 29.0729673,
-          longitude: -110.9559192,
-          accuracy: 10,
+          accuracy: nextPosition.accuracy ?? defaultPosition.accuracy,
+          latitude: nextPosition.latitude,
+          longitude: nextPosition.longitude,
         },
-        timestamp: Date.now(),
+        timestamp: nextPosition.timestamp ?? Date.now(),
       } as GeolocationPosition);
     }
 
@@ -58,8 +78,8 @@ function mockNavigatorGeolocation(options?: GeoMockOptions) {
   Object.defineProperty(global.navigator, "geolocation", {
     configurable: true,
     value: {
-      watchPosition,
       clearWatch,
+      watchPosition,
     },
   });
 
@@ -68,13 +88,40 @@ function mockNavigatorGeolocation(options?: GeoMockOptions) {
     value: undefined,
   });
 
-  return { watchPosition, clearWatch };
+  return { clearWatch, watchPosition };
+}
+
+function getMapboxMock() {
+  return mapboxgl as unknown as {
+    Map: jest.Mock;
+    __mockData: {
+      mapInstances: Array<{
+        fitBounds: jest.Mock;
+        setCenter: jest.Mock;
+      }>;
+      markerInstances: Array<{
+        addTo: jest.Mock;
+        options: { element?: HTMLElement };
+        remove: jest.Mock;
+        setLngLat: jest.Mock;
+      }>;
+      reset: () => void;
+    };
+  };
+}
+
+function getMarkersByLabel(label: string) {
+  return getMapboxMock().__mockData.markerInstances.filter((marker) =>
+    marker.options.element?.textContent?.includes(label),
+  );
 }
 
 describe("MapView", () => {
   beforeEach(() => {
+    getMapboxMock().__mockData.reset();
     jest.spyOn(console, "error").mockImplementation(() => {});
     jest.spyOn(console, "debug").mockImplementation(() => {});
+    jest.spyOn(console, "warn").mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -96,16 +143,14 @@ describe("MapView", () => {
     const mapOptions = mapMock.mock.calls[0][0];
     expect(mapOptions.style).toContain("optimize=true");
     expect(mapOptions.refreshExpiredTiles).toBe(false);
-    expect(
-      screen.getByText(/Geolocation is not supported/i),
-    ).toBeInTheDocument();
+    expect(screen.getAllByText(/no soporta la ubicacion/i)).toHaveLength(2);
   });
 
   it("stops auto-retrying geolocation after the max retry count", () => {
     jest.useFakeTimers();
     const { watchPosition } = mockNavigatorGeolocation({
-      errorCode: 3,
       asyncError: true,
+      errorCode: 3,
     });
 
     render(<MapView />);
@@ -115,9 +160,7 @@ describe("MapView", () => {
     });
 
     expect(watchPosition).toHaveBeenCalledTimes(4);
-    expect(
-      screen.getByText(/No se pudo obtener ubicación\. Revisa GPS/i),
-    ).toBeInTheDocument();
+    expect(screen.getAllByText(/No se pudo obtener ubicaci/i)).toHaveLength(2);
   });
 
   it("allows manual retry after a geolocation failure", () => {
@@ -137,7 +180,9 @@ describe("MapView", () => {
 
     render(<MapView />);
 
-    expect(permissionStatus.onchange).toEqual(expect.any(Function));
+    await waitFor(() => {
+      expect(permissionStatus.onchange).toEqual(expect.any(Function));
+    });
     expect(watchPosition).toHaveBeenCalledTimes(1);
     expect(screen.getByText("Reintentar")).toBeInTheDocument();
   });
@@ -153,5 +198,71 @@ describe("MapView", () => {
     expect(
       screen.getByText(/Mostrando la ubicacion del cliente como referencia\./i),
     ).toBeInTheDocument();
+  });
+
+  it("does not recreate the map during auto refreshes with the same location", () => {
+    jest.useFakeTimers();
+    const repeatedPosition = {
+      latitude: 29.0729673,
+      longitude: -110.9559192,
+    };
+    const { watchPosition } = mockNavigatorGeolocation({
+      positions: [
+        repeatedPosition,
+        repeatedPosition,
+        repeatedPosition,
+        repeatedPosition,
+      ],
+    });
+
+    render(<MapView />);
+
+    act(() => {
+      jest.advanceTimersByTime(16_000);
+    });
+
+    expect(watchPosition.mock.calls.length).toBeGreaterThan(1);
+    expect(getMapboxMock().Map).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the user marker attached across same-location refreshes", () => {
+    jest.useFakeTimers();
+    const repeatedPosition = {
+      latitude: 29.0729673,
+      longitude: -110.9559192,
+    };
+    mockNavigatorGeolocation({
+      positions: [repeatedPosition, repeatedPosition, repeatedPosition],
+    });
+
+    render(<MapView />);
+
+    const [userMarker] = getMarkersByLabel("TU");
+    expect(userMarker).toBeDefined();
+    expect(getMarkersByLabel("TU")).toHaveLength(1);
+    expect(userMarker.addTo).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      jest.advanceTimersByTime(6_000);
+    });
+
+    expect(getMarkersByLabel("TU")).toHaveLength(1);
+    expect(userMarker.remove).not.toHaveBeenCalled();
+    expect(userMarker.setLngLat.mock.calls.length).toBeGreaterThan(1);
+  });
+
+  it("reuses the same map instance when a client location is added later", () => {
+    mockNavigatorGeolocation();
+
+    const { rerender } = render(<MapView />);
+
+    const mapboxMock = getMapboxMock();
+    const [initialMapInstance] = mapboxMock.__mockData.mapInstances;
+
+    rerender(<MapView clientLocation={{ lat: 24.8091, lng: -107.394 }} />);
+
+    expect(mapboxMock.Map).toHaveBeenCalledTimes(1);
+    expect(getMarkersByLabel("Cliente")).toHaveLength(1);
+    expect(initialMapInstance.fitBounds).toHaveBeenCalledTimes(1);
   });
 });

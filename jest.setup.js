@@ -46,43 +46,83 @@ process.env.NEXT_PUBLIC_MAPBOX_TOKEN = "test-mapbox-token";
 
 // Mock Mapbox GL
 jest.mock("mapbox-gl", () => {
-  const mapInstance = {
-    on: jest.fn((event, handler) => {
-      if (event === "load" && typeof handler === "function") {
-        handler();
-      }
-      return mapInstance;
-    }),
-    remove: jest.fn(),
-    addSource: jest.fn(),
-    addLayer: jest.fn(),
-    setStyle: jest.fn(),
-    flyTo: jest.fn(),
-    setCenter: jest.fn(),
-    fitBounds: jest.fn(),
-    addControl: jest.fn(),
-    getContainer: jest.fn(() => ({
-      style: {},
-    })),
+  const mapInstances = [];
+  const markerInstances = [];
+  const boundsInstances = [];
+
+  const createMapInstance = () => {
+    const mapInstance = {
+      on: jest.fn((event, handler) => {
+        if (event === "load" && typeof handler === "function") {
+          handler();
+        }
+        return mapInstance;
+      }),
+      remove: jest.fn(),
+      addSource: jest.fn(),
+      addLayer: jest.fn(),
+      setStyle: jest.fn(),
+      flyTo: jest.fn(),
+      setCenter: jest.fn(),
+      fitBounds: jest.fn(),
+      addControl: jest.fn(),
+      getContainer: jest.fn(() => ({
+        style: {},
+      })),
+    };
+
+    mapInstances.push(mapInstance);
+    return mapInstance;
   };
 
-  const Marker = jest.fn(() => ({
-    setLngLat: jest.fn().mockReturnThis(),
-    addTo: jest.fn().mockReturnThis(),
-    remove: jest.fn(),
-  }));
+  const MapMock = jest.fn(() => createMapInstance());
 
-  const LngLatBounds = jest.fn(() => ({
-    extend: jest.fn().mockReturnThis(),
-  }));
+  const Marker = jest.fn((options = {}) => {
+    const markerInstance = {
+      options,
+      setLngLat: jest.fn().mockReturnThis(),
+      addTo: jest.fn().mockReturnThis(),
+      remove: jest.fn(),
+    };
+
+    markerInstances.push(markerInstance);
+    return markerInstance;
+  });
+
+  const LngLatBounds = jest.fn(() => {
+    const boundsInstance = {
+      extend: jest.fn().mockReturnThis(),
+    };
+
+    boundsInstances.push(boundsInstance);
+    return boundsInstance;
+  });
+
+  const NavigationControl = jest.fn();
+
+  const reset = () => {
+    mapInstances.length = 0;
+    markerInstances.length = 0;
+    boundsInstances.length = 0;
+    MapMock.mockClear();
+    Marker.mockClear();
+    LngLatBounds.mockClear();
+    NavigationControl.mockClear();
+  };
 
   const mapbox = {
-    Map: jest.fn(() => mapInstance),
+    Map: MapMock,
     Marker,
     LngLatBounds,
-    NavigationControl: jest.fn(),
+    NavigationControl,
     supported: jest.fn(() => true),
     accessToken: "",
+    __mockData: {
+      boundsInstances,
+      mapInstances,
+      markerInstances,
+      reset,
+    },
   };
 
   return {
