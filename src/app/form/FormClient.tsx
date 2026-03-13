@@ -2193,7 +2193,7 @@ export default function FormPage() {
 
         {/* Admin Override Section - Only visible for admin users */}
         {isAdminCandidate && (
-          <div className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg mb-3 p-4 border-2 border-purple-200">
+          <div className="mb-3 rounded-lg bg-gradient-to-r from-purple-50/80 to-blue-50/80 p-4 shadow-[inset_0_0_0_1px_rgba(107,114,128,0.10)]">
             <div className="flex items-center mb-3">
               <div className="w-2 h-2 bg-purple-600 rounded-full mr-2 animate-pulse"></div>
               <h2 className="text-purple-900 font-bold text-sm">
@@ -2234,7 +2234,7 @@ export default function FormPage() {
             </div>
 
             {/* Date Picker */}
-            <div className="mb-3">
+            <div className="mb-3 min-w-0 overflow-hidden">
               <label
                 htmlFor="override-date"
                 className="block text-gray-700 font-semibold text-xs mb-2"
@@ -2249,7 +2249,7 @@ export default function FormPage() {
                   haptics.light();
                   setOverrideDate(e.target.value);
                 }}
-                className="w-full min-w-0 max-w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white"
+                className="block w-full min-w-0 max-w-full appearance-none px-3 py-2 text-base sm:text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white"
               />
               {overrideDate && (
                 <div className="mt-2 p-2 bg-purple-100 rounded-md">

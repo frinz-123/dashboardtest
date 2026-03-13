@@ -240,6 +240,9 @@ describe("MapView", () => {
     const [userMarker] = getMarkersByLabel("TU");
     expect(userMarker).toBeDefined();
     expect(getMarkersByLabel("TU")).toHaveLength(1);
+    expect(userMarker.setLngLat.mock.invocationCallOrder[0]).toBeLessThan(
+      userMarker.addTo.mock.invocationCallOrder[0],
+    );
     expect(userMarker.addTo).toHaveBeenCalledTimes(1);
 
     act(() => {

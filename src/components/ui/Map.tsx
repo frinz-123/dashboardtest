@@ -478,7 +478,10 @@ export default function MapView({
     if (!userMarkerRef.current) {
       userMarkerRef.current = new mapboxgl.Marker({
         element: createLabeledMarker("TU", "#2563EB"),
-      }).addTo(map.current);
+      })
+        .setLngLat([location.lng, location.lat])
+        .addTo(map.current);
+      return;
     }
 
     userMarkerRef.current.setLngLat([location.lng, location.lat]);

@@ -78,10 +78,21 @@ jest.mock("mapbox-gl", () => {
   const MapMock = jest.fn(() => createMapInstance());
 
   const Marker = jest.fn((options = {}) => {
+    let hasLngLat = false;
     const markerInstance = {
       options,
-      setLngLat: jest.fn().mockReturnThis(),
-      addTo: jest.fn().mockReturnThis(),
+      setLngLat: jest.fn().mockImplementation(function setLngLat() {
+        hasLngLat = true;
+        return this;
+      }),
+      addTo: jest.fn().mockImplementation(function addTo() {
+        if (!hasLngLat) {
+          throw new TypeError(
+            "Marker.addTo() called before Marker.setLngLat()",
+          );
+        }
+        return this;
+      }),
       remove: jest.fn(),
     };
 
