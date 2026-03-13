@@ -39,6 +39,18 @@ const GEOLOCATION_PERMISSION_DENIED = 1;
 const GEOLOCATION_POSITION_UNAVAILABLE = 2;
 const GEOLOCATION_TIMEOUT = 3;
 
+const isValidLocation = (value: unknown): value is Location => {
+  if (!value || typeof value !== "object") return false;
+
+  const candidate = value as { lat?: unknown; lng?: unknown };
+  return (
+    typeof candidate.lat === "number" &&
+    Number.isFinite(candidate.lat) &&
+    typeof candidate.lng === "number" &&
+    Number.isFinite(candidate.lng)
+  );
+};
+
 function parseGeolocationError(error: GeolocationPositionError | Error): {
   code: number | null;
   message: string;
@@ -114,6 +126,9 @@ export default function MapView({
   onLocationUpdate,
   clientLocation,
 }: MapProps) {
+  const normalizedClientLocation = isValidLocation(clientLocation)
+    ? clientLocation
+    : null;
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
 
@@ -139,7 +154,7 @@ export default function MapView({
     null,
   );
   const initialClientLocationRef = useRef<Location | null>(
-    clientLocation ?? null,
+    normalizedClientLocation,
   );
   const locationRef = useRef<Location | null>(null);
   const clientLocationRef = useRef<Location | null>(null);
@@ -149,11 +164,11 @@ export default function MapView({
 
   const staticMapUrl = useMemo(() => {
     if (!mapboxgl.accessToken) return null;
-    const center = location ?? clientLocation ?? FALLBACK_CENTER;
+    const center = location ?? normalizedClientLocation ?? FALLBACK_CENTER;
     return `https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/${center.lng},${center.lat},14/1200x600?access_token=${encodeURIComponent(
       mapboxgl.accessToken,
     )}`;
-  }, [clientLocation, location]);
+  }, [normalizedClientLocation, location]);
 
   const stopWatchingLocation = useCallback(() => {
     if (locationWatchId.current !== null) {
@@ -459,8 +474,8 @@ export default function MapView({
   }, [location]);
 
   useEffect(() => {
-    clientLocationRef.current = clientLocation ?? null;
-  }, [clientLocation]);
+    clientLocationRef.current = normalizedClientLocation;
+  }, [normalizedClientLocation]);
 
   useEffect(() => {
     onLocationUpdateRef.current = onLocationUpdate;
@@ -532,7 +547,7 @@ export default function MapView({
   }, [getCurrentLocation, stopWatchingLocation]);
 
   useEffect(() => {
-    if (!map.current || !clientLocation) {
+    if (!map.current || !normalizedClientLocation) {
       if (clientMarkerRef.current) {
         clientMarkerRef.current.remove();
         clientMarkerRef.current = null;
@@ -544,17 +559,26 @@ export default function MapView({
     clientMarkerRef.current = new mapboxgl.Marker({
       element: createLabeledMarker("Cliente", "#DC2626"),
     })
-      .setLngLat([clientLocation.lng, clientLocation.lat])
+      .setLngLat([normalizedClientLocation.lng, normalizedClientLocation.lat])
       .addTo(map.current);
 
     if (!location) {
-      map.current.setCenter([clientLocation.lng, clientLocation.lat]);
+      map.current.setCenter([
+        normalizedClientLocation.lng,
+        normalizedClientLocation.lat,
+      ]);
     }
 
-    if (location && hasSignificantMovement(location, clientLocation)) {
+    if (
+      location &&
+      hasSignificantMovement(location, normalizedClientLocation)
+    ) {
       const bounds = new mapboxgl.LngLatBounds();
       bounds.extend([location.lng, location.lat]);
-      bounds.extend([clientLocation.lng, clientLocation.lat]);
+      bounds.extend([
+        normalizedClientLocation.lng,
+        normalizedClientLocation.lat,
+      ]);
 
       map.current.fitBounds(bounds, {
         padding: 50,
@@ -562,7 +586,7 @@ export default function MapView({
         duration: 500,
       });
     }
-  }, [clientLocation, location, createLabeledMarker]);
+  }, [normalizedClientLocation, location, createLabeledMarker]);
 
   useEffect(() => {
     if (!isAutoUpdating) return;
@@ -586,14 +610,14 @@ export default function MapView({
   const showLocationOverlay =
     !mapInitError &&
     !location &&
-    (Boolean(locationError) || Boolean(clientLocation));
+    (Boolean(locationError) || Boolean(normalizedClientLocation));
   const overlayTitle = isPermissionDenied
     ? "GPS no disponible"
     : "Esperando ubicacion";
   const overlayDescription = isPermissionDenied
     ? "No estamos recibiendo tu GPS real en este momento. Toca Reintentar. Si sigue igual, revisa el permiso de ubicacion del navegador y la ubicacion del telefono."
     : locationError || "Todavia no hay una lectura confiable del GPS.";
-  const overlayReference = clientLocation
+  const overlayReference = normalizedClientLocation
     ? "Mostrando la ubicacion del cliente como referencia."
     : "El mapa esta mostrando una referencia general mientras llega el GPS.";
 
