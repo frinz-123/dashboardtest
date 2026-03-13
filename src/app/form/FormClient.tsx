@@ -2173,7 +2173,7 @@ export default function FormPage() {
         )}
 
         {showGpsFailureAlert && (
-          <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-amber-950">
+          <div className="mb-3 rounded-lg bg-gray-50 px-3 py-2.5 text-gray-700 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.06)]">
             <div className="flex items-center gap-2">
               <span className="text-xs font-semibold uppercase tracking-wide">
                 GPS
@@ -2383,7 +2383,7 @@ export default function FormPage() {
           </div>
         )}
 
-        <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
+        <div className="bg-white rounded-lg mb-3 p-3 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.06)]">
           <h2 className="text-gray-700 font-semibold text-xs mb-3">
             Ubicación Actual
           </h2>
@@ -2398,7 +2398,7 @@ export default function FormPage() {
           )}
         </div>
 
-        <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9] space-y-4">
+        <div className="bg-white rounded-lg mb-3 p-3 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.06)] space-y-4">
           {PRODUCTS.map((product) => (
             <div key={`${product}-${key}`}>
               <LabelNumbers
@@ -2411,7 +2411,7 @@ export default function FormPage() {
         </div>
 
         {isPhotoRequiredClient && (
-          <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
+          <div className="bg-white rounded-lg mb-3 p-3 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.06)]">
             <CleyPhotoCapture
               photos={cleyPhotos}
               maxPhotos={PHOTO_MAX}
@@ -2432,7 +2432,7 @@ export default function FormPage() {
         )}
 
         {isCleyClient && (
-          <div className="bg-white rounded-lg mb-3 p-3 border border-[#E2E4E9]">
+          <div className="bg-white rounded-lg mb-3 p-3 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.06)]">
             <CleyOrderQuestion
               key={`cley-question-${key}`}
               onChange={(value) => {
