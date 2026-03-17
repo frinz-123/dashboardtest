@@ -254,6 +254,21 @@ describe("MapView", () => {
     expect(userMarker.setLngLat.mock.calls.length).toBeGreaterThan(1);
   });
 
+  it("ignores malformed client locations without crashing", () => {
+    mockNavigatorGeolocation({ errorCode: 1 });
+
+    const mapMock = getMapboxMock();
+
+    expect(() => {
+      render(<MapView clientLocation={{ lat: 24.8091 } as never} />);
+    }).not.toThrow();
+
+    expect(getMarkersByLabel("Cliente")).toHaveLength(0);
+    expect(
+      mapMock.__mockData.mapInstances[0]?.setCenter,
+    ).not.toHaveBeenCalled();
+  });
+
   it("reuses the same map instance when a client location is added later", () => {
     mockNavigatorGeolocation();
 
