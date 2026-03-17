@@ -12,26 +12,28 @@ import {
   Users,
 } from "lucide-react";
 import { m } from "motion/react";
+import dynamic from "next/dynamic";
 import { useSession } from "next-auth/react";
 import React, { useEffect, useState } from "react";
 import { Area, AreaChart, ResponsiveContainer, Tooltip } from "recharts";
-import {
-  getCurrentPeriodInfo,
-  getWeekDates,
-  isDateInPeriod,
-} from "@/utils/dateUtils";
 import {
   getDashboardSnapshot,
   getSellerSelection,
   setDashboardSnapshot,
   setSellerSelection,
 } from "@/utils/dashboardSessionCache";
+import {
+  getCurrentPeriodInfo,
+  getWeekDates,
+  isDateInPeriod,
+} from "@/utils/dateUtils";
 import { getSellerGoal } from "@/utils/sellerGoals";
 import AppHeader from "./AppHeader";
-import dynamic from "next/dynamic";
+
 const GoalDetailsDialog = dynamic(() => import("./goal-details-dialog"), {
   ssr: false,
 });
+
 import SaleDetailsPopup from "./SaleDetailsPopup";
 import StatisticCard11 from "./statistic-card-11";
 import { CountingNumber } from "./ui/counting-number";
@@ -241,7 +243,6 @@ export default function Dashboard() {
   const [selectedEmail, setSelectedEmail] = useState<string>("");
   const [salesData, setSalesData] = useState<Sale[]>([]);
   const [liveSalesData, setLiveSalesData] = useState<Sale[]>([]);
-  const [isLiveRefreshing, setIsLiveRefreshing] = useState(false);
   const [showAllSales, setShowAllSales] = useState(false);
   const [selectedClient, setSelectedClient] = useState<string>("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -477,7 +478,6 @@ export default function Dashboard() {
         return;
       }
       isLiveRefreshInFlightRef.current = true;
-      setIsLiveRefreshing(true);
 
       try {
         const liveSales = await fetchSalesFromSheets({
@@ -500,7 +500,6 @@ export default function Dashboard() {
         const message = error instanceof Error ? error.message : String(error);
         console.warn(`[Dashboard] Live refresh failed (${reason}): ${message}`);
       } finally {
-        setIsLiveRefreshing(false);
         isLiveRefreshInFlightRef.current = false;
       }
     },
@@ -1281,11 +1280,6 @@ export default function Dashboard() {
                 {periodInfo.weekInPeriod}
               </p>
             )}
-            {isLiveRefreshing ? (
-              <p className="text-[10px] text-gray-400 mt-1">
-                Actualizando datos en vivo...
-              </p>
-            ) : null}
           </div>
           <div className="mt-3 h-[180px] w-full">
             <ResponsiveContainer width="100%" height="100%">
