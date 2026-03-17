@@ -23,6 +23,13 @@ import {
 } from "react";
 import AppHeader from "@/components/AppHeader";
 import {
+  Select,
+  SelectItem,
+  SelectPopup,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/coss-select";
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -67,6 +74,11 @@ type FormItem = {
   id: string;
   product: string;
   quantity: string;
+};
+
+type SelectOption = {
+  label: string;
+  value: string;
 };
 
 type EditForm = {
@@ -189,6 +201,55 @@ const QuantityStepper = ({
   );
 };
 
+type InventorySelectProps = {
+  items: readonly SelectOption[];
+  value: string;
+  onValueChange: (value: string) => void;
+  placeholder?: string;
+  label?: string;
+  labelId?: string;
+  size?: "sm" | "default" | "lg";
+  disabled?: boolean;
+  wrapperClassName?: string;
+};
+
+const InventorySelect = ({
+  items,
+  value,
+  onValueChange,
+  placeholder,
+  label,
+  labelId,
+  size = "default",
+  disabled = false,
+  wrapperClassName,
+}: InventorySelectProps) => (
+  <div className={cn(label ? "space-y-1" : undefined, wrapperClassName)}>
+    {label && labelId ? (
+      <span id={labelId} className="text-sm font-medium text-slate-600">
+        {label}
+      </span>
+    ) : null}
+    <Select
+      disabled={disabled}
+      items={items}
+      value={value}
+      onValueChange={(nextValue) => onValueChange(nextValue ?? "")}
+    >
+      <SelectTrigger aria-labelledby={labelId} size={size}>
+        <SelectValue placeholder={placeholder} />
+      </SelectTrigger>
+      <SelectPopup>
+        {items.map((item) => (
+          <SelectItem key={item.value} value={item.value}>
+            {item.label}
+          </SelectItem>
+        ))}
+      </SelectPopup>
+    </Select>
+  </div>
+);
+
 const defaultDate = () => new Date().toISOString().split("T")[0] || "";
 
 const parseWarnings = (payload: unknown): InventoryWarning[] => {
@@ -262,9 +323,9 @@ export default function InventarioBodegaPage() {
   const [manualDirection, setManualDirection] = useState<"Entrada" | "Salida">(
     "Entrada",
   );
-  const [manualMovementType, setManualMovementType] = useState("Ajuste");
-  const [manualProduct, setManualProduct] = useState("");
-  const [manualQuantity, setManualQuantity] = useState("");
+  const [manualMovementType, setManualMovementType] =
+    useState<(typeof BODEGA_MOVEMENT_TYPES)[number]>("Ajuste");
+  const [manualItems, setManualItems] = useState<FormItem[]>([createItem()]);
   const [manualNotes, setManualNotes] = useState("");
 
   const periodWeeks = useMemo(
@@ -278,12 +339,66 @@ export default function InventarioBodegaPage() {
     [],
   );
   const productOptions = useMemo(() => {
-    const names = new Set(PRODUCT_NAMES);
+    const names = new Set<string>(PRODUCT_NAMES);
     rows.forEach((row) => {
       if (row.product) names.add(row.product);
     });
     return Array.from(names);
   }, [rows]);
+  const periodSelectItems = useMemo<SelectOption[]>(
+    () =>
+      availablePeriods.map((period) => ({
+        label: `P${period.periodNumber} (${period.label})`,
+        value: String(period.periodNumber),
+      })),
+    [availablePeriods],
+  );
+  const weekSelectItems = useMemo<SelectOption[]>(
+    () =>
+      periodWeeks.map((week) => ({
+        label: week.label,
+        value: String(week.weekNumber),
+      })),
+    [periodWeeks],
+  );
+  const sellerSelectItems = useMemo<SelectOption[]>(
+    () => [
+      { label: "Selecciona vendedor", value: "" },
+      ...sellerOptions.map(([email, label]) => ({ label, value: email })),
+    ],
+    [sellerOptions],
+  );
+  const productSelectItems = useMemo<SelectOption[]>(
+    () => [
+      { label: "Producto", value: "" },
+      ...productOptions.map((product) => ({ label: product, value: product })),
+    ],
+    [productOptions],
+  );
+  const editProductSelectItems = useMemo<SelectOption[]>(
+    () =>
+      productOptions.map((product) => ({
+        label: product,
+        value: product,
+      })),
+    [productOptions],
+  );
+  const manualDirectionSelectItems = useMemo<SelectOption[]>(
+    () =>
+      MANUAL_DIRECTION_OPTIONS.map((option) => ({
+        label: option.label,
+        value: option.value,
+      })),
+    [],
+  );
+  const manualMovementTypeSelectItems = useMemo<SelectOption[]>(
+    () =>
+      BODEGA_MOVEMENT_TYPES.map((type) => ({
+        label: type,
+        value: type,
+      })),
+    [],
+  );
 
   const fetchRows = useCallback(async () => {
     setIsLoading(true);
@@ -440,26 +555,20 @@ export default function InventarioBodegaPage() {
     setNotice(null);
     setIsSaving(true);
     try {
-      const quantity = Number(manualQuantity || 0);
-      if (!manualProduct) throw new Error("Selecciona un producto");
-      if (!Number.isFinite(quantity) || quantity <= 0) {
-        throw new Error("Cantidad inválida");
-      }
+      const normalized = buildEntries(manualItems);
 
       const response = await fetch("/api/inventario-bodega", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          entries: [
-            {
-              date: manualDate,
-              product: manualProduct,
-              quantity,
-              direction: manualDirection,
-              movementType: manualMovementType,
-              notes: manualNotes,
-            },
-          ],
+          entries: normalized.map((item) => ({
+            date: manualDate,
+            product: item.product,
+            quantity: item.quantity,
+            direction: manualDirection,
+            movementType: manualMovementType,
+            notes: manualNotes,
+          })),
         }),
       });
       const payload = await response.json();
@@ -468,7 +577,7 @@ export default function InventarioBodegaPage() {
       }
       applyWarnings(payload);
       await fetchRows();
-      setManualQuantity("");
+      setManualItems([createItem()]);
       setManualNotes("");
       setNotice("Movimiento manual registrado");
       return true;
@@ -714,53 +823,28 @@ export default function InventarioBodegaPage() {
           <div className="grid grid-cols-1 gap-3">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="space-y-1">
-                <label
-                  htmlFor="bodega-filter-period"
-                  className="text-xs font-semibold text-slate-600"
-                >
-                  Periodo
-                </label>
-                <select
-                  id="bodega-filter-period"
-                  value={selectedPeriod}
-                  onChange={(event) => {
-                    const next = Number(event.target.value);
+                <InventorySelect
+                  label="Periodo"
+                  labelId="bodega-filter-period-label"
+                  items={periodSelectItems}
+                  value={String(selectedPeriod)}
+                  onValueChange={(value) => {
+                    const next = Number(value);
                     setSelectedPeriod(next);
                     setSelectedWeek(1);
                   }}
-                  className="w-full border border-slate-200 rounded-lg pl-3 pr-10 py-2 text-sm"
-                >
-                  {availablePeriods.map((period) => (
-                    <option
-                      key={period.periodNumber}
-                      value={period.periodNumber}
-                    >
-                      Periodo {period.periodNumber}
-                    </option>
-                  ))}
-                </select>
+                  size="lg"
+                />
               </div>
               <div className="space-y-1">
-                <label
-                  htmlFor="bodega-filter-week"
-                  className="text-xs font-semibold text-slate-600"
-                >
-                  Semana
-                </label>
-                <select
-                  id="bodega-filter-week"
-                  value={selectedWeek}
-                  onChange={(event) =>
-                    setSelectedWeek(Number(event.target.value))
-                  }
-                  className="w-full border border-slate-200 rounded-lg pl-3 pr-10 py-2 text-sm"
-                >
-                  {periodWeeks.map((week) => (
-                    <option key={week.weekNumber} value={week.weekNumber}>
-                      {week.label}
-                    </option>
-                  ))}
-                </select>
+                <InventorySelect
+                  label="Semana"
+                  labelId="bodega-filter-week-label"
+                  items={weekSelectItems}
+                  value={String(selectedWeek)}
+                  onValueChange={(value) => setSelectedWeek(Number(value))}
+                  size="lg"
+                />
               </div>
             </div>
             <div className="space-y-3">
@@ -975,26 +1059,22 @@ export default function InventarioBodegaPage() {
                         }}
                         className="flex flex-col gap-2 sm:flex-row sm:items-end"
                       >
-                        <select
+                        <InventorySelect
+                          items={productSelectItems}
                           value={item.product}
-                          onChange={(event) =>
+                          onValueChange={(value) =>
                             updateListItem(
                               productionItems,
                               setProductionItems,
                               item.id,
                               "product",
-                              event.target.value,
+                              value,
                             )
                           }
-                          className="flex-1 border border-slate-200 rounded-lg pl-3 pr-10 py-2 text-sm"
-                        >
-                          <option value="">Producto</option>
-                          {productOptions.map((product) => (
-                            <option key={product} value={product}>
-                              {product}
-                            </option>
-                          ))}
-                        </select>
+                          placeholder="Producto"
+                          size="sm"
+                          wrapperClassName="flex-1"
+                        />
                         <div className="sm:w-36">
                           <QuantityStepper
                             value={item.quantity}
@@ -1113,25 +1193,14 @@ export default function InventarioBodegaPage() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <label
-                    htmlFor="carga-seller"
-                    className="text-xs font-semibold text-slate-600"
-                  >
-                    Vendedor
-                  </label>
-                  <select
-                    id="carga-seller"
+                  <InventorySelect
+                    label="Vendedor"
+                    labelId="carga-seller-label"
+                    items={sellerSelectItems}
                     value={cargaSeller}
-                    onChange={(event) => setCargaSeller(event.target.value)}
-                    className="w-full border border-slate-200 rounded-lg pl-3 pr-10 py-2 text-sm"
-                  >
-                    <option value="">Selecciona vendedor</option>
-                    {sellerOptions.map(([email, label]) => (
-                      <option key={email} value={email}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
+                    onValueChange={setCargaSeller}
+                    placeholder="Selecciona vendedor"
+                  />
                 </div>
                 <m.div
                   layout
@@ -1153,26 +1222,22 @@ export default function InventarioBodegaPage() {
                         }}
                         className="flex flex-col gap-2 sm:flex-row sm:items-end"
                       >
-                        <select
+                        <InventorySelect
+                          items={productSelectItems}
                           value={item.product}
-                          onChange={(event) =>
+                          onValueChange={(value) =>
                             updateListItem(
                               cargaItems,
                               setCargaItems,
                               item.id,
                               "product",
-                              event.target.value,
+                              value,
                             )
                           }
-                          className="flex-1 border border-slate-200 rounded-lg pl-3 pr-10 py-2 text-sm"
-                        >
-                          <option value="">Producto</option>
-                          {productOptions.map((product) => (
-                            <option key={product} value={product}>
-                              {product}
-                            </option>
-                          ))}
-                        </select>
+                          placeholder="Producto"
+                          size="sm"
+                          wrapperClassName="flex-1"
+                        />
                         <div className="sm:w-36">
                           <QuantityStepper
                             value={item.quantity}
@@ -1408,43 +1473,82 @@ export default function InventarioBodegaPage() {
                 </m.div>
                 <m.div
                   layout
-                  className="space-y-3"
+                  className="space-y-2"
                   transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
                 >
-                  <div className="space-y-1">
-                    <label
-                      htmlFor="manual-product"
-                      className="text-xs font-semibold text-slate-600"
-                    >
-                      Producto
-                    </label>
-                    <select
-                      id="manual-product"
-                      value={manualProduct}
-                      onChange={(event) => setManualProduct(event.target.value)}
-                      className="w-full border border-slate-200 rounded-lg pl-3 pr-10 py-2 text-sm"
-                    >
-                      <option value="">Producto</option>
-                      {productOptions.map((product) => (
-                        <option key={product} value={product}>
-                          {product}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <label
-                      htmlFor="manual-quantity"
-                      className="text-xs font-semibold text-slate-600"
-                    >
-                      Cantidad
-                    </label>
-                    <QuantityStepper
-                      id="manual-quantity"
-                      value={manualQuantity}
-                      onChange={setManualQuantity}
-                    />
-                  </div>
+                  <p className="text-xs font-semibold text-slate-600">
+                    Productos
+                  </p>
+                  <AnimatePresence initial={false}>
+                    {manualItems.map((item) => (
+                      <m.div
+                        key={item.id}
+                        layout
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{
+                          duration: 0.25,
+                          ease: [0.4, 0, 0.2, 1],
+                          layout: { duration: 0.25, ease: [0.4, 0, 0.2, 1] },
+                        }}
+                        className="flex flex-col gap-2 sm:flex-row sm:items-end"
+                      >
+                        <InventorySelect
+                          items={productSelectItems}
+                          value={item.product}
+                          onValueChange={(value) =>
+                            updateListItem(
+                              manualItems,
+                              setManualItems,
+                              item.id,
+                              "product",
+                              value,
+                            )
+                          }
+                          placeholder="Producto"
+                          size="sm"
+                          wrapperClassName="flex-1"
+                        />
+                        <div className="sm:w-36">
+                          <QuantityStepper
+                            value={item.quantity}
+                            onChange={(value) =>
+                              updateListItem(
+                                manualItems,
+                                setManualItems,
+                                item.id,
+                                "quantity",
+                                value,
+                              )
+                            }
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            removeListItem(manualItems, setManualItems, item.id)
+                          }
+                          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-700"
+                          aria-label="Quitar producto"
+                        >
+                          <Minus className="h-5 w-5" />
+                        </button>
+                      </m.div>
+                    ))}
+                  </AnimatePresence>
+                  <m.button
+                    layout
+                    type="button"
+                    onClick={() =>
+                      setManualItems((prev) => [...prev, createItem()])
+                    }
+                    className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 text-base font-semibold text-white hover:bg-slate-800"
+                    transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Agregar producto
+                  </m.button>
                 </m.div>
                 <m.div
                   layout
@@ -1532,28 +1636,17 @@ export default function InventarioBodegaPage() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <label
-                    htmlFor="edit-bodega-product"
-                    className="text-xs font-semibold text-slate-600"
-                  >
-                    Producto
-                  </label>
-                  <select
-                    id="edit-bodega-product"
+                  <InventorySelect
+                    label="Producto"
+                    labelId="edit-bodega-product-label"
+                    items={editProductSelectItems}
                     value={editForm.product}
-                    onChange={(event) =>
+                    onValueChange={(value) =>
                       setEditForm((prev) =>
-                        prev ? { ...prev, product: event.target.value } : prev,
+                        prev ? { ...prev, product: value } : prev,
                       )
                     }
-                    className="w-full border border-slate-200 rounded-lg pl-3 pr-10 py-2 text-sm"
-                  >
-                    {productOptions.map((product) => (
-                      <option key={product} value={product}>
-                        {product}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
@@ -1578,61 +1671,38 @@ export default function InventarioBodegaPage() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <label
-                      htmlFor="edit-bodega-direction"
-                      className="text-xs font-semibold text-slate-600"
-                    >
-                      Dirección
-                    </label>
-                    <select
-                      id="edit-bodega-direction"
+                    <InventorySelect
+                      label="Dirección"
+                      labelId="edit-bodega-direction-label"
+                      items={manualDirectionSelectItems}
                       value={editForm.direction}
-                      onChange={(event) =>
+                      onValueChange={(value) =>
                         setEditForm((prev) =>
                           prev
                             ? {
                                 ...prev,
-                                direction: event.target.value as
-                                  | "Entrada"
-                                  | "Salida",
+                                direction: value as "Entrada" | "Salida",
                               }
                             : prev,
                         )
                       }
-                      className="w-full border border-slate-200 rounded-lg pl-3 pr-10 py-2 text-sm"
                       disabled={editForm.linkStatus === "linked"}
-                    >
-                      <option value="Entrada">Entrada</option>
-                      <option value="Salida">Salida</option>
-                    </select>
+                    />
                   </div>
                 </div>
                 <div className="space-y-1">
-                  <label
-                    htmlFor="edit-bodega-type"
-                    className="text-xs font-semibold text-slate-600"
-                  >
-                    Tipo
-                  </label>
-                  <select
-                    id="edit-bodega-type"
+                  <InventorySelect
+                    label="Tipo"
+                    labelId="edit-bodega-type-label"
+                    items={manualMovementTypeSelectItems}
                     value={editForm.movementType}
-                    onChange={(event) =>
+                    onValueChange={(value) =>
                       setEditForm((prev) =>
-                        prev
-                          ? { ...prev, movementType: event.target.value }
-                          : prev,
+                        prev ? { ...prev, movementType: value } : prev,
                       )
                     }
-                    className="w-full border border-slate-200 rounded-lg pl-3 pr-10 py-2 text-sm"
                     disabled={editForm.linkStatus === "linked"}
-                  >
-                    {BODEGA_MOVEMENT_TYPES.map((type) => (
-                      <option key={type} value={type}>
-                        {type}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </div>
                 <div className="space-y-1">
                   <label
