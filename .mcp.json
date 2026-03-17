@@ -3,6 +3,10 @@
     "agentation": {
       "command": "npx",
       "args": ["agentation-mcp", "server"]
+    },
+    "netlify": {
+      "command": "npx",
+      "args": ["-y", "@netlify/mcp"]
     }
   }
 }

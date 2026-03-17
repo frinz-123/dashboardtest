@@ -1,6 +1,11 @@
 {
   "version": 1,
   "skills": {
+    "userinterface-wiki": {
+      "source": "raphaelsalaja/userinterface-wiki",
+      "sourceType": "github",
+      "computedHash": "7df58b449d2ad35ff7887a1f410d06ba871e67c0083fba52ab1ceee68aeb568e"
+    },
     "vercel-react-best-practices": {
       "source": "vercel-labs/agent-skills",
       "sourceType": "github",

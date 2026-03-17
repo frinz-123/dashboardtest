@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Dashboard El Rey — A Next.js PWA for sales and inventory management. Google Sheets is the primary database. The app is mobile-first, supports offline use, and is used by a small team of field sales reps in Mexico/Colombia.
+Dashboard El Rey — A Next.js PWA for sales and inventory management. Google Sheets is the primary database. The app is mobile-first, supports offline use, and is used by a small team of field sales reps in Mexico
 
 ## Essential Commands
 
