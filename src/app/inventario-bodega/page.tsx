@@ -46,6 +46,7 @@ import {
   getCurrentPeriodInfo,
   getPeriodWeeks,
 } from "@/utils/dateUtils";
+import { getBodegaStockByProduct } from "@/utils/inventoryLedger";
 import { PRODUCT_NAMES } from "@/utils/productCatalog";
 
 type InventoryWarning = {
@@ -72,12 +73,15 @@ type BodegaLedgerRow = {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
+  isNonStock: boolean;
 };
 
 type FormItem = {
   id: string;
   product: string;
   quantity: string;
+  isCustom: boolean;
+  customProduct: string;
 };
 
 type SelectOption = {
@@ -100,6 +104,7 @@ type EditForm = {
   overrideReason: string;
   createdBy: string;
   createdAt: string;
+  isNonStock: boolean;
 };
 
 type HistoryBatch = {
@@ -157,11 +162,18 @@ const PRINT_DISPLAY_MODE_ITEMS: readonly SelectOption[] = [
   },
 ];
 
+const CUSTOM_PRODUCT_VALUE = "__manual_custom__";
+
 const createItem = (): FormItem => ({
   id: crypto.randomUUID(),
   product: "",
   quantity: "",
+  isCustom: false,
+  customProduct: "",
 });
+
+const getItemProductName = (item: FormItem) =>
+  item.isCustom ? item.customProduct.trim() : item.product.trim();
 
 type QuantityStepperProps = {
   value: string;
@@ -432,7 +444,7 @@ export default function InventarioBodegaPage() {
   const productOptions = useMemo(() => {
     const names = new Set<string>(PRODUCT_NAMES);
     rows.forEach((row) => {
-      if (row.product) names.add(row.product);
+      if (row.product && !row.isNonStock) names.add(row.product);
     });
     return Array.from(names);
   }, [rows]);
@@ -466,13 +478,22 @@ export default function InventarioBodegaPage() {
     ],
     [productOptions],
   );
-  const editProductSelectItems = useMemo<SelectOption[]>(
-    () =>
-      productOptions.map((product) => ({
-        label: product,
-        value: product,
-      })),
-    [productOptions],
+  const editProductSelectItems = useMemo<SelectOption[]>(() => {
+    const names = new Set(productOptions);
+    if (editForm?.product) {
+      names.add(editForm.product);
+    }
+    return Array.from(names).map((product) => ({
+      label: product,
+      value: product,
+    }));
+  }, [editForm?.product, productOptions]);
+  const manualProductSelectItems = useMemo<SelectOption[]>(
+    () => [
+      ...productSelectItems,
+      { label: "Manual / Personalizado", value: CUSTOM_PRODUCT_VALUE },
+    ],
+    [productSelectItems],
   );
   const manualDirectionSelectItems = useMemo<SelectOption[]>(
     () =>
@@ -553,10 +574,15 @@ export default function InventarioBodegaPage() {
   };
 
   const buildEntries = (items: FormItem[]) => {
+    if (items.some((item) => item.isCustom && !getItemProductName(item))) {
+      throw new Error("Escribe el nombre de la linea manual");
+    }
+
     const normalized = items
       .map((item) => ({
-        product: item.product.trim(),
+        product: getItemProductName(item),
         quantity: Number(item.quantity || 0),
+        isNonStock: item.isCustom,
       }))
       .filter((item) => item.product && Number.isFinite(item.quantity));
 
@@ -574,13 +600,34 @@ export default function InventarioBodegaPage() {
     items: FormItem[],
     setItems: (value: FormItem[]) => void,
     id: string,
-    field: "product" | "quantity",
+    field: "product" | "quantity" | "customProduct",
     value: string,
   ) => {
     setItems(
       items.map((item) =>
         item.id === id ? { ...item, [field]: value } : item,
       ),
+    );
+  };
+
+  const updateManualItemProduct = (id: string, value: string) => {
+    setManualItems((items) =>
+      items.map((item) => {
+        if (item.id !== id) return item;
+        if (value === CUSTOM_PRODUCT_VALUE) {
+          return {
+            ...item,
+            product: "",
+            isCustom: true,
+          };
+        }
+        return {
+          ...item,
+          product: value,
+          isCustom: false,
+          customProduct: "",
+        };
+      }),
     );
   };
 
@@ -693,6 +740,7 @@ export default function InventarioBodegaPage() {
             direction: manualDirection,
             movementType: manualMovementType,
             notes: manualNotes,
+            isNonStock: item.isNonStock,
           })),
         }),
       });
@@ -732,6 +780,7 @@ export default function InventarioBodegaPage() {
       overrideReason: row.overrideReason,
       createdBy: row.createdBy,
       createdAt: row.createdAt,
+      isNonStock: row.isNonStock,
     });
     setIsEditOpen(true);
   };
@@ -765,6 +814,7 @@ export default function InventarioBodegaPage() {
             overrideReason: editForm.overrideReason,
             createdBy: editForm.createdBy,
             createdAt: editForm.createdAt,
+            isNonStock: editForm.isNonStock,
           },
         }),
       });
@@ -816,13 +866,7 @@ export default function InventarioBodegaPage() {
   };
 
   const stockByProduct = useMemo(() => {
-    const totals = new Map<string, number>();
-    rows.forEach((row) => {
-      const current = totals.get(row.product) || 0;
-      const delta = row.direction === "Salida" ? -row.quantity : row.quantity;
-      totals.set(row.product, current + delta);
-    });
-    return Array.from(totals.entries())
+    return Array.from(getBodegaStockByProduct(rows).entries())
       .map(([product, stock]) => ({ product, stock }))
       .sort((a, b) => a.product.localeCompare(b.product));
   }, [rows]);
@@ -835,6 +879,7 @@ export default function InventarioBodegaPage() {
     let entradas = 0;
     let salidas = 0;
     weekRows.forEach((row) => {
+      if (row.isNonStock) return;
       if (row.direction === "Salida") {
         salidas += row.quantity;
       } else {
@@ -1466,7 +1511,14 @@ export default function InventarioBodegaPage() {
                                           className="border-b border-slate-100 last:border-b-0"
                                         >
                                           <td className="py-2 pr-3 pl-3 text-slate-800">
-                                            {row.product}
+                                            <div className="flex flex-wrap items-center gap-2">
+                                              <span>{row.product}</span>
+                                              {row.isNonStock ? (
+                                                <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500">
+                                                  Manual
+                                                </span>
+                                              ) : null}
+                                            </div>
                                           </td>
                                           <td className="py-2 pr-3 tabular-nums text-slate-700">
                                             {row.quantity}
@@ -2096,6 +2148,10 @@ export default function InventarioBodegaPage() {
                   <p className="text-xs font-semibold text-slate-600">
                     Productos
                   </p>
+                  <p className="text-xs text-slate-500">
+                    Usa "Manual / Personalizado" para agregar una linea extra
+                    imprimible sin afectar inventario.
+                  </p>
                   <AnimatePresence initial={false}>
                     {manualItems.map((item) => (
                       <m.div
@@ -2111,22 +2167,38 @@ export default function InventarioBodegaPage() {
                         }}
                         className="flex flex-col gap-2 sm:flex-row sm:items-end"
                       >
-                        <InventorySelect
-                          items={productSelectItems}
-                          value={item.product}
-                          onValueChange={(value) =>
-                            updateListItem(
-                              manualItems,
-                              setManualItems,
-                              item.id,
-                              "product",
-                              value,
-                            )
-                          }
-                          placeholder="Producto"
-                          size="sm"
-                          wrapperClassName="flex-1"
-                        />
+                        <div className="flex-1 space-y-2">
+                          <InventorySelect
+                            items={manualProductSelectItems}
+                            value={
+                              item.isCustom
+                                ? CUSTOM_PRODUCT_VALUE
+                                : item.product
+                            }
+                            onValueChange={(value) =>
+                              updateManualItemProduct(item.id, value)
+                            }
+                            placeholder="Producto"
+                            size="sm"
+                          />
+                          {item.isCustom ? (
+                            <input
+                              type="text"
+                              value={item.customProduct}
+                              onChange={(event) =>
+                                updateListItem(
+                                  manualItems,
+                                  setManualItems,
+                                  item.id,
+                                  "customProduct",
+                                  event.target.value,
+                                )
+                              }
+                              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-slate-400"
+                              placeholder="Escribe la linea manual a imprimir"
+                            />
+                          ) : null}
+                        </div>
                         <div className="sm:w-36">
                           <QuantityStepper
                             value={item.quantity}
@@ -2252,17 +2324,41 @@ export default function InventarioBodegaPage() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <InventorySelect
-                    label="Producto"
-                    labelId="edit-bodega-product-label"
-                    items={editProductSelectItems}
-                    value={editForm.product}
-                    onValueChange={(value) =>
-                      setEditForm((prev) =>
-                        prev ? { ...prev, product: value } : prev,
-                      )
-                    }
-                  />
+                  {editForm.isNonStock ? (
+                    <>
+                      <label
+                        htmlFor="edit-bodega-custom-product"
+                        className="text-xs font-semibold text-slate-600"
+                      >
+                        Linea manual
+                      </label>
+                      <input
+                        id="edit-bodega-custom-product"
+                        type="text"
+                        value={editForm.product}
+                        onChange={(event) =>
+                          setEditForm((prev) =>
+                            prev
+                              ? { ...prev, product: event.target.value }
+                              : prev,
+                          )
+                        }
+                        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
+                      />
+                    </>
+                  ) : (
+                    <InventorySelect
+                      label="Producto"
+                      labelId="edit-bodega-product-label"
+                      items={editProductSelectItems}
+                      value={editForm.product}
+                      onValueChange={(value) =>
+                        setEditForm((prev) =>
+                          prev ? { ...prev, product: value } : prev,
+                        )
+                      }
+                    />
+                  )}
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
@@ -2345,6 +2441,12 @@ export default function InventarioBodegaPage() {
                     se sincronizan automáticamente.
                   </p>
                 )}
+                {editForm.isNonStock ? (
+                  <p className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                    Esta linea se guarda solo para historial e impresion. No
+                    afecta el inventario de bodega.
+                  </p>
+                ) : null}
                 <div className="flex justify-end gap-2">
                   <button
                     type="button"

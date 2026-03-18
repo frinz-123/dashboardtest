@@ -10,7 +10,7 @@ export const INVENTARIO_BODEGA_SHEET_NAME =
   process.env.SHEET_NAME_BODEGA || "Bodega";
 
 export const CAR_LEDGER_LAST_COLUMN = "O";
-export const BODEGA_LEDGER_LAST_COLUMN = "P";
+export const BODEGA_LEDGER_LAST_COLUMN = "Q";
 
 const MAZATLAN_TZ = "America/Mazatlan";
 
@@ -58,6 +58,7 @@ export const BODEGA_LEDGER_HEADER_ROW = [
   "createdBy",
   "createdAt",
   "updatedAt",
+  "isNonStock",
 ] as const;
 
 export type CarLedgerRow = {
@@ -97,6 +98,7 @@ export type BodegaLedgerRow = {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
+  isNonStock: boolean;
 };
 
 export type CarLedgerInput = {
@@ -130,6 +132,7 @@ export type BodegaLedgerInput = {
   createdBy?: string;
   createdAt?: string;
   updatedAt?: string;
+  isNonStock?: boolean;
 };
 
 export const normalizeEmail = (value: string | undefined) =>
@@ -151,6 +154,11 @@ export const normalizeDirection = (
 
 const parseNumber = (value: string | undefined) =>
   Number.parseFloat(value || "0") || 0;
+
+const parseBoolean = (value: string | undefined) => {
+  const normalized = (value || "").trim().toLowerCase();
+  return normalized === "true" || normalized === "1" || normalized === "yes";
+};
 
 export const parseDateInput = (value?: string): Date => {
   if (!value) return new Date();
@@ -253,6 +261,7 @@ export const toBodegaLedgerValues = (
     entry.createdBy || actorEmail,
     entry.createdAt || now,
     entry.updatedAt || now,
+    entry.isNonStock ? "true" : "false",
   ];
 };
 
@@ -299,6 +308,7 @@ export const parseBodegaLedgerRow = (
   createdBy: row[13] || "",
   createdAt: row[14] || "",
   updatedAt: row[15] || "",
+  isNonStock: parseBoolean(row[16]),
 });
 
 type SheetRowsResult = {
@@ -409,6 +419,7 @@ export const getBodegaStockByProduct = (rows: BodegaLedgerRow[]) => {
   const totals = new Map<string, number>();
 
   rows.forEach((row) => {
+    if (row.isNonStock) return;
     const current = totals.get(row.product) || 0;
     const delta = row.direction === "Salida" ? -row.quantity : row.quantity;
     totals.set(row.product, current + delta);

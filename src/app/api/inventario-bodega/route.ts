@@ -243,7 +243,7 @@ export async function POST(req: Request) {
 
     const response = await sheets.spreadsheets.values.append({
       spreadsheetId: SPREADSHEET_ID,
-      range: `${INVENTARIO_BODEGA_SHEET_NAME}!A:P`,
+      range: `${INVENTARIO_BODEGA_SHEET_NAME}!A:Q`,
       valueInputOption: "RAW",
       insertDataOption: "INSERT_ROWS",
       requestBody: { values },
@@ -330,12 +330,13 @@ export async function PATCH(req: Request) {
       createdBy: existing.createdBy || authCheck.email,
       createdAt: existing.createdAt || now,
       updatedAt: now,
+      isNonStock: entry.isNonStock ?? existing.isNonStock,
     };
 
     const values = toBodegaLedgerValues(normalizedEntry, authCheck.email, now);
     await sheets.spreadsheets.values.update({
       spreadsheetId: SPREADSHEET_ID,
-      range: `${INVENTARIO_BODEGA_SHEET_NAME}!A${rowNumber}:P${rowNumber}`,
+      range: `${INVENTARIO_BODEGA_SHEET_NAME}!A${rowNumber}:Q${rowNumber}`,
       valueInputOption: "RAW",
       requestBody: { values: [values] },
     });
@@ -403,7 +404,7 @@ export async function DELETE(req: Request) {
 
     await sheets.spreadsheets.values.update({
       spreadsheetId: SPREADSHEET_ID,
-      range: `${INVENTARIO_BODEGA_SHEET_NAME}!A${targetRow.rowNumber}:P${targetRow.rowNumber}`,
+      range: `${INVENTARIO_BODEGA_SHEET_NAME}!A${targetRow.rowNumber}:Q${targetRow.rowNumber}`,
       valueInputOption: "RAW",
       requestBody: {
         values: [clearRowValues(BODEGA_LEDGER_HEADER_ROW.length)],
