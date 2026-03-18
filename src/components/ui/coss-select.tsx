@@ -3,6 +3,7 @@
 import { Select as SelectPrimitive } from "@base-ui/react/select";
 import { CheckIcon, ChevronDownIcon } from "lucide-react";
 import * as React from "react";
+import { useDialogContentContainer } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
 const Select = SelectPrimitive.Root;
@@ -83,6 +84,9 @@ SelectTrigger.displayName = "SelectTrigger";
 type SelectPopupProps = SelectPrimitive.Popup.Props & {
   sideOffset?: number;
   alignItemWithTrigger?: boolean;
+  portalContainer?: React.ComponentPropsWithoutRef<
+    typeof SelectPrimitive.Portal
+  >["container"];
 };
 
 const SelectPopup = React.forwardRef<HTMLDivElement, SelectPopupProps>(
@@ -92,41 +96,53 @@ const SelectPopup = React.forwardRef<HTMLDivElement, SelectPopupProps>(
       children,
       sideOffset = 4,
       alignItemWithTrigger = false,
+      portalContainer,
       ...props
     },
     ref,
-  ) => (
-    <SelectPrimitive.Portal>
-      <SelectPrimitive.Positioner
-        align="start"
-        alignItemWithTrigger={alignItemWithTrigger}
-        className="z-[200]"
-        data-slot="select-positioner"
-        sideOffset={sideOffset}
+  ) => {
+    const dialogContentContainer = useDialogContentContainer();
+
+    return (
+      <SelectPrimitive.Portal
+        container={portalContainer ?? dialogContentContainer ?? undefined}
       >
-        <SelectPrimitive.Popup
-          ref={ref}
-          className={cn(
-            "min-w-[var(--anchor-width)] max-w-[min(var(--available-width),24rem)] [transform-origin:var(--transform-origin)] overflow-hidden rounded-xl border border-slate-200 bg-white text-slate-900 shadow-[0_18px_40px_-20px_rgba(15,23,42,0.45)] outline-none [will-change:transform,opacity] transition-[opacity,transform] duration-180 [transition-timing-function:cubic-bezier(0.215,0.61,0.355,1)] data-[starting-style]:translate-y-1.5 data-[starting-style]:scale-[0.985] data-[starting-style]:opacity-0 data-[ending-style]:translate-y-1 data-[ending-style]:scale-[0.985] data-[ending-style]:opacity-0 motion-reduce:transition-none",
-            !alignItemWithTrigger && "origin-top-left",
-            className,
-          )}
-          data-slot="select-popup"
-          {...props}
+        <SelectPrimitive.Positioner
+          align="start"
+          alignItemWithTrigger={alignItemWithTrigger}
+          className="z-[9999]"
+          style={{ pointerEvents: "auto" }}
+          data-slot="select-positioner"
+          sideOffset={sideOffset}
         >
-          <SelectPrimitive.ScrollUpArrow className="flex h-8 items-center justify-center bg-white text-slate-400">
-            <ChevronDownIcon className="size-4 rotate-180" />
-          </SelectPrimitive.ScrollUpArrow>
-          <SelectPrimitive.List className="max-h-[min(var(--available-height),20rem)] overflow-y-auto p-1.5">
-            {children}
-          </SelectPrimitive.List>
-          <SelectPrimitive.ScrollDownArrow className="flex h-8 items-center justify-center bg-white text-slate-400">
-            <ChevronDownIcon className="size-4" />
-          </SelectPrimitive.ScrollDownArrow>
-        </SelectPrimitive.Popup>
-      </SelectPrimitive.Positioner>
-    </SelectPrimitive.Portal>
-  ),
+          <SelectPrimitive.Popup
+            ref={ref}
+            style={{ pointerEvents: "auto" }}
+            className={cn(
+              "min-w-[var(--anchor-width)] max-w-[min(var(--available-width),24rem)] [transform-origin:var(--transform-origin)] overflow-hidden rounded-xl border border-slate-200 bg-white text-slate-900 shadow-[0_18px_40px_-20px_rgba(15,23,42,0.45)] outline-none [will-change:transform,opacity] transition-[opacity,transform] duration-180 [transition-timing-function:cubic-bezier(0.215,0.61,0.355,1)] data-[starting-style]:translate-y-1.5 data-[starting-style]:scale-[0.985] data-[starting-style]:opacity-0 data-[ending-style]:translate-y-1 data-[ending-style]:scale-[0.985] data-[ending-style]:opacity-0 motion-reduce:transition-none",
+              !alignItemWithTrigger && "origin-top-left",
+              className,
+            )}
+            data-slot="select-popup"
+            {...props}
+          >
+            <SelectPrimitive.ScrollUpArrow className="flex h-8 items-center justify-center bg-white text-slate-400">
+              <ChevronDownIcon className="size-4 rotate-180" />
+            </SelectPrimitive.ScrollUpArrow>
+            <SelectPrimitive.List
+              className="max-h-[min(var(--available-height),20rem)] overflow-y-auto p-1.5 pointer-events-auto"
+              style={{ pointerEvents: "auto" }}
+            >
+              {children}
+            </SelectPrimitive.List>
+            <SelectPrimitive.ScrollDownArrow className="flex h-8 items-center justify-center bg-white text-slate-400">
+              <ChevronDownIcon className="size-4" />
+            </SelectPrimitive.ScrollDownArrow>
+          </SelectPrimitive.Popup>
+        </SelectPrimitive.Positioner>
+      </SelectPrimitive.Portal>
+    );
+  },
 );
 SelectPopup.displayName = "SelectPopup";
 
@@ -135,10 +151,11 @@ const SelectItem = React.forwardRef<HTMLElement, SelectPrimitive.Item.Props>(
     <SelectPrimitive.Item
       ref={ref}
       className={cn(
-        "grid min-h-11 cursor-default grid-cols-[1rem_minmax(0,1fr)] items-center gap-3 rounded-lg px-3 py-2 text-base outline-none transition-[background-color,color] duration-150 [transition-timing-function:cubic-bezier(0.215,0.61,0.355,1)] data-[highlighted]:bg-slate-100 data-[highlighted]:text-slate-900 data-[selected]:text-slate-950 data-[disabled]:pointer-events-none data-[disabled]:opacity-50 motion-reduce:transition-none",
+        "grid min-h-11 cursor-pointer grid-cols-[1rem_minmax(0,1fr)] items-center gap-3 rounded-lg px-3 py-2 text-base outline-none transition-[background-color,color] duration-150 [transition-timing-function:cubic-bezier(0.215,0.61,0.355,1)] data-[highlighted]:bg-slate-100 data-[highlighted]:text-slate-900 data-[selected]:text-slate-950 data-[disabled]:pointer-events-none data-[disabled]:opacity-50 motion-reduce:transition-none pointer-events-auto",
         className,
       )}
       data-slot="select-item"
+      style={{ pointerEvents: "auto" }}
       {...props}
     >
       <SelectPrimitive.ItemIndicator className="flex items-center justify-center text-slate-700">

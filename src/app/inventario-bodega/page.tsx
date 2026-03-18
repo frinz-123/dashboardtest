@@ -912,6 +912,118 @@ export default function InventarioBodegaPage() {
   const resolvedPrintHeader = batchToPrint
     ? printHeader.trim() || getBatchReferenceLabel(batchToPrint.notes)
     : "";
+  const printPortal =
+    printContainer && batchToPrint
+      ? createPortal(
+          <div className="print-page">
+            <div style={{ marginBottom: 12 }}>
+              <p
+                className="print-muted"
+                style={{
+                  fontSize: 10,
+                  margin: 0,
+                  letterSpacing: "0.08em",
+                  textTransform: "uppercase",
+                }}
+              >
+                Inventario Bodega
+              </p>
+              <h1 style={{ fontSize: 16, fontWeight: 700, margin: "4px 0 0" }}>
+                Movimiento de Inventario Bodega
+              </h1>
+              <p
+                style={{
+                  fontSize: 15,
+                  fontWeight: 600,
+                  margin: "6px 0 0",
+                }}
+              >
+                {resolvedPrintHeader}
+              </p>
+              <p
+                className="print-muted"
+                style={{ fontSize: 11, margin: "4px 0 0" }}
+              >
+                {batchToPrint.direction} &middot; {batchToPrint.movementType}{" "}
+                &middot; {batchToPrint.date}
+              </p>
+              {batchToPrint.sellerEmail ? (
+                <p
+                  className="print-muted"
+                  style={{ fontSize: 10, margin: "2px 0 0" }}
+                >
+                  Vendedor:{" "}
+                  {EMAIL_TO_VENDOR_LABELS[batchToPrint.sellerEmail] ||
+                    batchToPrint.sellerEmail}
+                </p>
+              ) : null}
+              <p
+                className="print-muted"
+                style={{ fontSize: 10, margin: "2px 0 0" }}
+              >
+                Generado:{" "}
+                {new Date().toLocaleString("es-MX", {
+                  dateStyle: "medium",
+                  timeStyle: "short",
+                })}{" "}
+                &middot; {batchToPrint.productCount} producto
+                {batchToPrint.productCount === 1 ? "" : "s"} &middot;{" "}
+                {batchToPrint.totalQuantity} unidades
+              </p>
+            </div>
+            <table className="print-table" style={{ fontSize: 11 }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: "left" }}>Producto</th>
+                  <th
+                    style={{
+                      textAlign: "right",
+                      fontVariantNumeric: "tabular-nums",
+                    }}
+                  >
+                    Cantidad
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {batchToPrint.items.map((item) => (
+                  <tr key={item.id} className="print-row">
+                    <td>{item.product}</td>
+                    <td
+                      style={{
+                        textAlign: "right",
+                        fontVariantNumeric: "tabular-nums",
+                      }}
+                    >
+                      {item.quantity}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr
+                  className="print-row"
+                  style={{
+                    fontWeight: 700,
+                    borderTop: "2px solid #111827",
+                  }}
+                >
+                  <td>Total</td>
+                  <td
+                    style={{
+                      textAlign: "right",
+                      fontVariantNumeric: "tabular-nums",
+                    }}
+                  >
+                    {batchToPrint.totalQuantity}
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>,
+          printContainer,
+        )
+      : null;
 
   const actionTapSpring = {
     type: "spring" as const,
@@ -943,10 +1055,10 @@ export default function InventarioBodegaPage() {
     <div className="min-h-screen bg-white">
       <AppHeader title="Inventario Bodega" icon={Warehouse} />
       <main className="px-4 py-5 max-w-6xl mx-auto space-y-4">
-        <section className="bg-white rounded-2xl p-4 space-y-3">
+        <section className="rounded-2xl bg-white p-5 shadow-[0_1px_3px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.03)]">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <h2 className="text-lg font-semibold text-slate-900">
+              <h2 className="text-lg font-semibold text-slate-900 [text-wrap:balance]">
                 Control central de bodega
               </h2>
               <p className="text-xs text-slate-500">
@@ -955,17 +1067,17 @@ export default function InventarioBodegaPage() {
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <m.div whileTap={{ scale: 0.8 }} transition={actionTapSpring}>
+              <m.div whileTap={{ scale: 0.96 }} transition={actionTapSpring}>
                 <button
                   type="button"
                   onClick={fetchRows}
-                  className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 text-sm font-medium text-slate-700 hover:bg-slate-100"
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200/80 text-sm font-medium text-slate-700 hover:bg-slate-50 active:bg-slate-100 transition-colors duration-150"
                 >
                   <RefreshCcw className="h-4 w-4" />
                   Actualizar
                 </button>
               </m.div>
-              <m.div whileTap={{ scale: 0.8 }} transition={actionTapSpring}>
+              <m.div whileTap={{ scale: 0.96 }} transition={actionTapSpring}>
                 <button
                   type="button"
                   onClick={() => {
@@ -973,13 +1085,13 @@ export default function InventarioBodegaPage() {
                     setError(null);
                     setIsProductionOpen(true);
                   }}
-                  className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 text-white text-sm font-medium hover:bg-slate-800"
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 text-white text-sm font-medium shadow-sm shadow-slate-900/20 hover:bg-slate-800 hover:shadow-md hover:shadow-slate-900/25 transition-all duration-150"
                 >
                   <PackagePlus className="h-4 w-4" />
                   Producción
                 </button>
               </m.div>
-              <m.div whileTap={{ scale: 0.8 }} transition={actionTapSpring}>
+              <m.div whileTap={{ scale: 0.96 }} transition={actionTapSpring}>
                 <button
                   type="button"
                   onClick={() => {
@@ -987,13 +1099,13 @@ export default function InventarioBodegaPage() {
                     setError(null);
                     setIsCargaOpen(true);
                   }}
-                  className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 text-white text-sm font-medium hover:bg-slate-800"
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 text-white text-sm font-medium shadow-sm shadow-slate-900/20 hover:bg-slate-800 hover:shadow-md hover:shadow-slate-900/25 transition-all duration-150"
                 >
                   <Package className="h-4 w-4" />
                   Salida a Carro
                 </button>
               </m.div>
-              <m.div whileTap={{ scale: 0.8 }} transition={actionTapSpring}>
+              <m.div whileTap={{ scale: 0.96 }} transition={actionTapSpring}>
                 <button
                   type="button"
                   onClick={() => {
@@ -1064,23 +1176,42 @@ export default function InventarioBodegaPage() {
             </div>
           )}
           {warnings.length > 0 && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700 space-y-1">
-              <p className="font-semibold">Advertencia de stock negativo:</p>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
               {warnings.map((warning) => (
-                <p key={`${warning.product}-${warning.resultingStock}`}>
-                  {warning.product}: {warning.resultingStock}
-                </p>
+                <div
+                  key={`${warning.product}-${warning.resultingStock}`}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-amber-100/70 px-2.5 py-1 text-amber-800"
+                >
+                  <svg
+                    className="h-3 w-3 text-amber-600"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2.5}
+                    aria-hidden="true"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"
+                    />
+                  </svg>
+                  <span className="font-medium">{warning.product}</span>
+                  <span className="tabular-nums text-amber-600">
+                    {warning.resultingStock}
+                  </span>
+                </div>
               ))}
             </div>
           )}
         </section>
 
-        <section className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <section className="grid grid-cols-1 gap-4">
           <div className="rounded-2xl border border-slate-200 p-4 shadow-sm">
             <h3 className="text-sm font-semibold text-slate-900 mb-3">
               Stock actual
             </h3>
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto rounded-xl border border-slate-100">
               <table className="min-w-full text-sm">
                 <thead className="text-xs text-slate-500">
                   <tr className="text-left border-b border-slate-200">
@@ -1130,7 +1261,7 @@ export default function InventarioBodegaPage() {
                 completas sin perder el detalle por producto.
               </p>
             </div>
-            <div className="overflow-x-auto max-h-[420px]">
+            <div className="overflow-x-auto max-h-[420px] rounded-xl border border-slate-100">
               <table className="min-w-full text-sm">
                 <thead className="text-xs text-slate-500">
                   <tr className="text-left border-b border-slate-200">
@@ -1332,7 +1463,6 @@ export default function InventarioBodegaPage() {
           </div>
         </section>
       </main>
-
       <Dialog open={isPrintDialogOpen} onOpenChange={handlePrintDialogChange}>
         <DialogContent className="w-[92vw] max-w-lg">
           <DialogHeader>
@@ -1420,121 +1550,7 @@ export default function InventarioBodegaPage() {
           ) : null}
         </DialogContent>
       </Dialog>
-
-      {printContainer && batchToPrint
-        ? createPortal(
-            <div className="print-page">
-              <div style={{ marginBottom: 12 }}>
-                <p
-                  className="print-muted"
-                  style={{
-                    fontSize: 10,
-                    margin: 0,
-                    letterSpacing: "0.08em",
-                    textTransform: "uppercase",
-                  }}
-                >
-                  Inventario Bodega
-                </p>
-                <h1
-                  style={{ fontSize: 16, fontWeight: 700, margin: "4px 0 0" }}
-                >
-                  Movimiento de Inventario Bodega
-                </h1>
-                <p
-                  style={{
-                    fontSize: 15,
-                    fontWeight: 600,
-                    margin: "6px 0 0",
-                  }}
-                >
-                  {resolvedPrintHeader}
-                </p>
-                <p
-                  className="print-muted"
-                  style={{ fontSize: 11, margin: "4px 0 0" }}
-                >
-                  {batchToPrint.direction} &middot; {batchToPrint.movementType}{" "}
-                  &middot; {batchToPrint.date}
-                </p>
-                {batchToPrint.sellerEmail ? (
-                  <p
-                    className="print-muted"
-                    style={{ fontSize: 10, margin: "2px 0 0" }}
-                  >
-                    Vendedor:{" "}
-                    {EMAIL_TO_VENDOR_LABELS[batchToPrint.sellerEmail] ||
-                      batchToPrint.sellerEmail}
-                  </p>
-                ) : null}
-                <p
-                  className="print-muted"
-                  style={{ fontSize: 10, margin: "2px 0 0" }}
-                >
-                  Generado:{" "}
-                  {new Date().toLocaleString("es-MX", {
-                    dateStyle: "medium",
-                    timeStyle: "short",
-                  })}{" "}
-                  &middot; {batchToPrint.productCount} producto
-                  {batchToPrint.productCount === 1 ? "" : "s"} &middot;{" "}
-                  {batchToPrint.totalQuantity} unidades
-                </p>
-              </div>
-              <table className="print-table" style={{ fontSize: 11 }}>
-                <thead>
-                  <tr>
-                    <th style={{ textAlign: "left" }}>Producto</th>
-                    <th
-                      style={{
-                        textAlign: "right",
-                        fontVariantNumeric: "tabular-nums",
-                      }}
-                    >
-                      Cantidad
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {batchToPrint.items.map((item) => (
-                    <tr key={item.id} className="print-row">
-                      <td>{item.product}</td>
-                      <td
-                        style={{
-                          textAlign: "right",
-                          fontVariantNumeric: "tabular-nums",
-                        }}
-                      >
-                        {item.quantity}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr
-                    className="print-row"
-                    style={{
-                      fontWeight: 700,
-                      borderTop: "2px solid #111827",
-                    }}
-                  >
-                    <td>Total</td>
-                    <td
-                      style={{
-                        textAlign: "right",
-                        fontVariantNumeric: "tabular-nums",
-                      }}
-                    >
-                      {batchToPrint.totalQuantity}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>,
-            printContainer,
-          )
-        : null}
-
+      {printPortal}
       <Dialog open={isProductionOpen} onOpenChange={setIsProductionOpen}>
         <DialogContent className="w-[92vw] max-w-2xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
           <DialogHeader>
@@ -1687,7 +1703,6 @@ export default function InventarioBodegaPage() {
           </AnimatePresence>
         </DialogContent>
       </Dialog>
-
       <Dialog open={isCargaOpen} onOpenChange={setIsCargaOpen}>
         <DialogContent className="w-[92vw] max-w-2xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
           <DialogHeader>
@@ -1846,7 +1861,6 @@ export default function InventarioBodegaPage() {
           </AnimatePresence>
         </DialogContent>
       </Dialog>
-
       <Dialog open={isManualOpen} onOpenChange={setIsManualOpen}>
         <DialogContent className="w-[92vw] max-w-2xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
           <DialogHeader>
@@ -2126,7 +2140,6 @@ export default function InventarioBodegaPage() {
           </AnimatePresence>
         </DialogContent>
       </Dialog>
-
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
