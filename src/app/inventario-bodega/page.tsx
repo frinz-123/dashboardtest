@@ -5,6 +5,7 @@ import {
   Package,
   PackagePlus,
   Plus,
+  Printer,
   RefreshCcw,
   Save,
   Settings2,
@@ -16,11 +17,13 @@ import { redirect } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
   type ChangeEvent,
+  Fragment,
   useCallback,
   useEffect,
   useMemo,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import AppHeader from "@/components/AppHeader";
 import {
   Select,
@@ -96,6 +99,22 @@ type EditForm = {
   overrideReason: string;
   createdBy: string;
   createdAt: string;
+};
+
+type HistoryBatch = {
+  id: string;
+  createdAt: string;
+  date: string;
+  direction: "Entrada" | "Salida";
+  movementType: string;
+  sellerEmail: string;
+  notes: string;
+  productCount: number;
+  totalQuantity: number;
+  productSummary: string;
+  hasLinkedEntries: boolean;
+  allLinkedEntries: boolean;
+  items: BodegaLedgerRow[];
 };
 
 const BODEGA_MOVEMENT_TYPES = [
@@ -250,6 +269,54 @@ const InventorySelect = ({
   </div>
 );
 
+const getHistoryBatchKey = (row: BodegaLedgerRow) => {
+  if (!row.createdAt) return `single:${row.id}`;
+
+  return [
+    row.createdAt,
+    row.date,
+    row.direction,
+    row.movementType,
+    row.sellerEmail,
+    row.notes,
+    row.linkStatus,
+    row.overrideReason,
+  ].join("::");
+};
+
+const summarizeBatchProducts = (items: BodegaLedgerRow[]) => {
+  const uniqueProducts = Array.from(new Set(items.map((item) => item.product)));
+
+  if (uniqueProducts.length <= 3) {
+    return uniqueProducts.join(", ");
+  }
+
+  return `${uniqueProducts.slice(0, 3).join(", ")} +${uniqueProducts.length - 3}`;
+};
+
+const getBatchSortTime = (batch: HistoryBatch) => {
+  const createdAtTime = Date.parse(batch.createdAt);
+  if (Number.isFinite(createdAtTime)) return createdAtTime;
+
+  const dateTime = Date.parse(`${batch.date}T12:00:00`);
+  return Number.isFinite(dateTime) ? dateTime : 0;
+};
+
+const formatTimestampLabel = (value: string) => {
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) return "";
+
+  return new Date(parsed).toLocaleString("es-MX", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+};
+
+const getBatchReferenceLabel = (notes: string) => {
+  const trimmed = notes.trim();
+  return trimmed || "Movimiento sin referencia";
+};
+
 const defaultDate = () => new Date().toISOString().split("T")[0] || "";
 
 const parseWarnings = (payload: unknown): InventoryWarning[] => {
@@ -307,6 +374,14 @@ export default function InventarioBodegaPage() {
   const [isCargaOpen, setIsCargaOpen] = useState(false);
   const [isManualOpen, setIsManualOpen] = useState(false);
   const [editForm, setEditForm] = useState<EditForm | null>(null);
+  const [expandedBatchId, setExpandedBatchId] = useState<string | null>(null);
+  const [isPrintDialogOpen, setIsPrintDialogOpen] = useState(false);
+  const [batchToPrint, setBatchToPrint] = useState<HistoryBatch | null>(null);
+  const [printHeader, setPrintHeader] = useState("");
+  const [isPrintPending, setIsPrintPending] = useState(false);
+  const [printContainer, setPrintContainer] = useState<HTMLDivElement | null>(
+    null,
+  );
 
   const [productionDate, setProductionDate] = useState(defaultDate());
   const [productionNotes, setProductionNotes] = useState("");
@@ -422,6 +497,39 @@ export default function InventarioBodegaPage() {
     if (status !== "authenticated" || !isAdmin) return;
     void fetchRows();
   }, [status, isAdmin, fetchRows]);
+
+  useEffect(() => {
+    const container = document.createElement("div");
+    container.className = "print-root";
+    document.body.appendChild(container);
+    setPrintContainer(container);
+
+    return () => {
+      document.body.removeChild(container);
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleAfterPrint = () => {
+      document.body.classList.remove("print-mode");
+      setIsPrintDialogOpen(false);
+      setIsPrintPending(false);
+      setBatchToPrint(null);
+      setPrintHeader("");
+    };
+
+    window.addEventListener("afterprint", handleAfterPrint);
+    return () => window.removeEventListener("afterprint", handleAfterPrint);
+  }, []);
+
+  useEffect(() => {
+    if (!batchToPrint || !isPrintPending || !printContainer) return;
+
+    document.body.classList.add("print-mode");
+    const timeoutId = window.setTimeout(() => window.print(), 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [batchToPrint, isPrintPending, printContainer]);
 
   const applyWarnings = (payload: unknown) => {
     setWarnings(parseWarnings(payload));
@@ -719,10 +827,92 @@ export default function InventarioBodegaPage() {
     return { entradas, salidas };
   }, [weekRows]);
 
-  const sortedRows = useMemo(
-    () => [...rows].sort((a, b) => b.date.localeCompare(a.date)),
-    [rows],
+  const historyBatches = useMemo<HistoryBatch[]>(() => {
+    const grouped = new Map<string, BodegaLedgerRow[]>();
+
+    rows.forEach((row) => {
+      const key = getHistoryBatchKey(row);
+      const existing = grouped.get(key);
+
+      if (existing) {
+        existing.push(row);
+        return;
+      }
+
+      grouped.set(key, [row]);
+    });
+
+    return Array.from(grouped.entries())
+      .map(([id, batchRows]) => {
+        const items = [...batchRows].sort((a, b) => a.rowNumber - b.rowNumber);
+        const latestRowNumber = Math.max(
+          ...items.map((item) => item.rowNumber),
+        );
+        const firstItem = items[0];
+        const hasLinkedEntries = items.some(
+          (item) => item.linkStatus === "linked",
+        );
+        const allLinkedEntries = items.every(
+          (item) => item.linkStatus === "linked",
+        );
+
+        return {
+          id,
+          createdAt: firstItem?.createdAt || "",
+          date: firstItem?.date || "",
+          direction: firstItem?.direction || "Entrada",
+          movementType: firstItem?.movementType || "",
+          sellerEmail: firstItem?.sellerEmail || "",
+          notes: firstItem?.notes || "",
+          productCount: items.length,
+          totalQuantity: items.reduce((sum, item) => sum + item.quantity, 0),
+          productSummary: summarizeBatchProducts(items),
+          hasLinkedEntries,
+          allLinkedEntries,
+          items,
+          latestRowNumber,
+        };
+      })
+      .sort((a, b) => {
+        const timeDifference = getBatchSortTime(b) - getBatchSortTime(a);
+        if (timeDifference !== 0) return timeDifference;
+
+        return b.latestRowNumber - a.latestRowNumber;
+      })
+      .map(({ latestRowNumber: _latestRowNumber, ...batch }) => batch);
+  }, [rows]);
+
+  const handlePrintBatch = useCallback(
+    (batch: HistoryBatch) => {
+      if (!printContainer) return;
+      setBatchToPrint(batch);
+      setPrintHeader(getBatchReferenceLabel(batch.notes));
+      setIsPrintPending(false);
+      setIsPrintDialogOpen(true);
+    },
+    [printContainer],
   );
+  const handlePrintDialogChange = useCallback(
+    (open: boolean) => {
+      setIsPrintDialogOpen(open);
+
+      if (!open && !isPrintPending) {
+        setBatchToPrint(null);
+        setPrintHeader("");
+      }
+    },
+    [isPrintPending],
+  );
+  const handleConfirmBatchPrint = useCallback(() => {
+    if (!batchToPrint || !printContainer) return;
+
+    setIsPrintDialogOpen(false);
+    setIsPrintPending(true);
+  }, [batchToPrint, printContainer]);
+  const resolvedPrintHeader = batchToPrint
+    ? printHeader.trim() || getBatchReferenceLabel(batchToPrint.notes)
+    : "";
+
   const actionTapSpring = {
     type: "spring" as const,
     duration: 0.5,
@@ -931,16 +1121,23 @@ export default function InventarioBodegaPage() {
           </div>
 
           <div className="rounded-2xl border border-slate-200 p-4 shadow-sm">
-            <h3 className="text-sm font-semibold text-slate-900 mb-3">
-              Historial de movimientos
-            </h3>
+            <div className="mb-3">
+              <h3 className="text-sm font-semibold text-slate-900">
+                Historial de movimientos
+              </h3>
+              <p className="text-xs text-slate-500">
+                Agrupado por lote para revisar e imprimir entradas o salidas
+                completas sin perder el detalle por producto.
+              </p>
+            </div>
             <div className="overflow-x-auto max-h-[420px]">
               <table className="min-w-full text-sm">
                 <thead className="text-xs text-slate-500">
                   <tr className="text-left border-b border-slate-200">
                     <th className="py-2 pr-3">Fecha</th>
-                    <th className="py-2 pr-3">Producto</th>
+                    <th className="py-2 pr-3">Cliente / referencia</th>
                     <th className="py-2 pr-3">Tipo</th>
+                    <th className="py-2 pr-3">Productos</th>
                     <th className="py-2 pr-3">Cant.</th>
                     <th className="py-2 pr-3">Ligado</th>
                     <th className="py-2"></th>
@@ -950,64 +1147,393 @@ export default function InventarioBodegaPage() {
                   {isLoading && (
                     <tr>
                       <td
-                        colSpan={6}
+                        colSpan={7}
                         className="py-4 text-center text-slate-400"
                       >
                         Cargando...
                       </td>
                     </tr>
                   )}
-                  {!isLoading &&
-                    sortedRows.map((row) => (
-                      <tr
-                        key={row.id}
-                        className="border-b border-slate-100 last:border-b-0"
+                  {!isLoading && historyBatches.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={7}
+                        className="py-4 text-center text-slate-400"
                       >
-                        <td className="py-2 pr-3 text-slate-700">{row.date}</td>
-                        <td className="py-2 pr-3">{row.product}</td>
-                        <td className="py-2 pr-3">
-                          <span className="inline-flex px-2 py-0.5 rounded-full text-xs bg-slate-100 text-slate-700">
-                            {row.direction} · {row.movementType}
-                          </span>
-                        </td>
-                        <td className="py-2 pr-3">{row.quantity}</td>
-                        <td className="py-2 pr-3">
-                          {row.linkStatus === "linked" ? (
-                            <span className="inline-flex px-2 py-0.5 rounded-full text-xs bg-emerald-100 text-emerald-700">
-                              Sí
-                            </span>
-                          ) : (
-                            <span className="inline-flex px-2 py-0.5 rounded-full text-xs bg-slate-100 text-slate-500">
-                              No
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-2 text-right">
-                          <div className="inline-flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => handleEditOpen(row)}
-                              className="text-xs text-slate-600 hover:text-slate-900"
-                            >
-                              Editar
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDelete(row)}
-                              className="inline-flex items-center text-xs text-red-600 hover:text-red-700"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                        Sin movimientos
+                      </td>
+                    </tr>
+                  )}
+                  {!isLoading &&
+                    historyBatches.map((batch) => {
+                      const isExpanded = expandedBatchId === batch.id;
+
+                      return (
+                        <Fragment key={batch.id}>
+                          <tr className="border-b border-slate-100 align-top">
+                            <td className="py-3 pr-3 text-slate-700">
+                              <div>{batch.date}</div>
+                              {batch.createdAt ? (
+                                <div className="text-xs text-slate-400">
+                                  {formatTimestampLabel(batch.createdAt)}
+                                </div>
+                              ) : null}
+                            </td>
+                            <td className="py-3 pr-3">
+                              <div className="font-medium text-slate-900">
+                                {getBatchReferenceLabel(batch.notes)}
+                              </div>
+                              {batch.sellerEmail ? (
+                                <div className="text-xs text-slate-500">
+                                  {EMAIL_TO_VENDOR_LABELS[batch.sellerEmail] ||
+                                    batch.sellerEmail}
+                                </div>
+                              ) : null}
+                            </td>
+                            <td className="py-3 pr-3">
+                              <span
+                                className={cn(
+                                  "inline-flex rounded-full px-2 py-0.5 text-xs",
+                                  batch.direction === "Salida"
+                                    ? "bg-rose-50 text-rose-700"
+                                    : "bg-emerald-50 text-emerald-700",
+                                )}
+                              >
+                                {batch.direction} · {batch.movementType}
+                              </span>
+                            </td>
+                            <td className="py-3 pr-3">
+                              <div className="font-medium text-slate-900">
+                                {batch.productCount} producto
+                                {batch.productCount === 1 ? "" : "s"}
+                              </div>
+                              <div className="text-xs text-slate-500">
+                                {batch.productSummary}
+                              </div>
+                            </td>
+                            <td className="py-3 pr-3 font-medium tabular-nums text-slate-900">
+                              {batch.totalQuantity}
+                            </td>
+                            <td className="py-3 pr-3">
+                              {batch.allLinkedEntries ? (
+                                <span className="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700">
+                                  Si
+                                </span>
+                              ) : batch.hasLinkedEntries ? (
+                                <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700">
+                                  Parcial
+                                </span>
+                              ) : (
+                                <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">
+                                  No
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-3 text-right">
+                              <div className="inline-flex flex-wrap items-center justify-end gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setExpandedBatchId((current) =>
+                                      current === batch.id ? null : batch.id,
+                                    )
+                                  }
+                                  className="text-xs text-slate-600 hover:text-slate-900"
+                                >
+                                  {isExpanded ? "Ocultar" : "Detalle"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handlePrintBatch(batch)}
+                                  className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                                >
+                                  <Printer className="h-3.5 w-3.5" />
+                                  Imprimir lote
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                          {isExpanded ? (
+                            <tr className="border-b border-slate-100 bg-slate-50/60">
+                              <td colSpan={7} className="px-3 py-3">
+                                <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+                                  <table className="min-w-full text-sm">
+                                    <thead className="text-xs text-slate-500">
+                                      <tr className="border-b border-slate-200 text-left">
+                                        <th className="py-2 pr-3 pl-3">
+                                          Producto
+                                        </th>
+                                        <th className="py-2 pr-3">Cant.</th>
+                                        <th className="py-2 pr-3">Ligado</th>
+                                        <th className="py-2 pl-3 pr-3 text-right">
+                                          Acciones
+                                        </th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {batch.items.map((row) => (
+                                        <tr
+                                          key={row.id}
+                                          className="border-b border-slate-100 last:border-b-0"
+                                        >
+                                          <td className="py-2 pr-3 pl-3 text-slate-800">
+                                            {row.product}
+                                          </td>
+                                          <td className="py-2 pr-3 tabular-nums text-slate-700">
+                                            {row.quantity}
+                                          </td>
+                                          <td className="py-2 pr-3">
+                                            {row.linkStatus === "linked" ? (
+                                              <span className="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700">
+                                                Si
+                                              </span>
+                                            ) : (
+                                              <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">
+                                                No
+                                              </span>
+                                            )}
+                                          </td>
+                                          <td className="py-2 pl-3 pr-3 text-right">
+                                            <div className="inline-flex items-center gap-2">
+                                              <button
+                                                type="button"
+                                                onClick={() =>
+                                                  handleEditOpen(row)
+                                                }
+                                                className="text-xs text-slate-600 hover:text-slate-900"
+                                              >
+                                                Editar
+                                              </button>
+                                              <button
+                                                type="button"
+                                                onClick={() =>
+                                                  handleDelete(row)
+                                                }
+                                                className="inline-flex items-center text-xs text-red-600 hover:text-red-700"
+                                              >
+                                                <Trash2 className="h-3.5 w-3.5" />
+                                              </button>
+                                            </div>
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </td>
+                            </tr>
+                          ) : null}
+                        </Fragment>
+                      );
+                    })}
                 </tbody>
               </table>
             </div>
           </div>
         </section>
       </main>
+
+      <Dialog open={isPrintDialogOpen} onOpenChange={handlePrintDialogChange}>
+        <DialogContent className="w-[92vw] max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Preparar impresión</DialogTitle>
+          </DialogHeader>
+          {batchToPrint ? (
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className={cn(
+                      "inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold",
+                      batchToPrint.direction === "Salida"
+                        ? "bg-rose-50 text-rose-700"
+                        : "bg-emerald-50 text-emerald-700",
+                    )}
+                  >
+                    {batchToPrint.direction}
+                  </span>
+                  <span className="inline-flex rounded-full bg-white px-2.5 py-1 text-[11px] font-medium text-slate-600">
+                    {batchToPrint.movementType}
+                  </span>
+                </div>
+                <p className="mt-3 text-sm font-semibold text-slate-900">
+                  {batchToPrint.date}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {batchToPrint.productCount} producto
+                  {batchToPrint.productCount === 1 ? "" : "s"} ·{" "}
+                  {batchToPrint.totalQuantity} unidades
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <label
+                  htmlFor="batch-print-header"
+                  className="text-xs font-semibold text-slate-600"
+                >
+                  Encabezado de impresión
+                </label>
+                <input
+                  id="batch-print-header"
+                  type="text"
+                  value={printHeader}
+                  onChange={(event) => setPrintHeader(event.target.value)}
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-slate-400"
+                  placeholder="Ej. Cliente Mostrador - Maria Lopez"
+                />
+                <p className="text-xs text-slate-500">
+                  Se usa como encabezado principal al imprimir este lote.
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-slate-400">
+                  Vista rápida
+                </p>
+                <p className="mt-2 text-sm font-semibold leading-5 text-slate-900 [text-wrap:balance]">
+                  {resolvedPrintHeader}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {batchToPrint.direction} · {batchToPrint.movementType} ·{" "}
+                  {batchToPrint.date}
+                </p>
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => handlePrintDialogChange(false)}
+                  className="rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmBatchPrint}
+                  className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-slate-900 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800 active:scale-[0.98]"
+                >
+                  <Printer className="h-4 w-4" />
+                  Imprimir lote
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      {printContainer && batchToPrint
+        ? createPortal(
+            <div className="print-page">
+              <div style={{ marginBottom: 12 }}>
+                <p
+                  className="print-muted"
+                  style={{
+                    fontSize: 10,
+                    margin: 0,
+                    letterSpacing: "0.08em",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  Inventario Bodega
+                </p>
+                <h1
+                  style={{ fontSize: 16, fontWeight: 700, margin: "4px 0 0" }}
+                >
+                  Movimiento de Inventario Bodega
+                </h1>
+                <p
+                  style={{
+                    fontSize: 15,
+                    fontWeight: 600,
+                    margin: "6px 0 0",
+                  }}
+                >
+                  {resolvedPrintHeader}
+                </p>
+                <p
+                  className="print-muted"
+                  style={{ fontSize: 11, margin: "4px 0 0" }}
+                >
+                  {batchToPrint.direction} &middot; {batchToPrint.movementType}{" "}
+                  &middot; {batchToPrint.date}
+                </p>
+                {batchToPrint.sellerEmail ? (
+                  <p
+                    className="print-muted"
+                    style={{ fontSize: 10, margin: "2px 0 0" }}
+                  >
+                    Vendedor:{" "}
+                    {EMAIL_TO_VENDOR_LABELS[batchToPrint.sellerEmail] ||
+                      batchToPrint.sellerEmail}
+                  </p>
+                ) : null}
+                <p
+                  className="print-muted"
+                  style={{ fontSize: 10, margin: "2px 0 0" }}
+                >
+                  Generado:{" "}
+                  {new Date().toLocaleString("es-MX", {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                  })}{" "}
+                  &middot; {batchToPrint.productCount} producto
+                  {batchToPrint.productCount === 1 ? "" : "s"} &middot;{" "}
+                  {batchToPrint.totalQuantity} unidades
+                </p>
+              </div>
+              <table className="print-table" style={{ fontSize: 11 }}>
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: "left" }}>Producto</th>
+                    <th
+                      style={{
+                        textAlign: "right",
+                        fontVariantNumeric: "tabular-nums",
+                      }}
+                    >
+                      Cantidad
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {batchToPrint.items.map((item) => (
+                    <tr key={item.id} className="print-row">
+                      <td>{item.product}</td>
+                      <td
+                        style={{
+                          textAlign: "right",
+                          fontVariantNumeric: "tabular-nums",
+                        }}
+                      >
+                        {item.quantity}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr
+                    className="print-row"
+                    style={{
+                      fontWeight: 700,
+                      borderTop: "2px solid #111827",
+                    }}
+                  >
+                    <td>Total</td>
+                    <td
+                      style={{
+                        textAlign: "right",
+                        fontVariantNumeric: "tabular-nums",
+                      }}
+                    >
+                      {batchToPrint.totalQuantity}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>,
+            printContainer,
+          )
+        : null}
 
       <Dialog open={isProductionOpen} onOpenChange={setIsProductionOpen}>
         <DialogContent className="w-[92vw] max-w-2xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
