@@ -1,4 +1,8 @@
 import type { sheets_v4 } from "googleapis";
+import {
+  FORM_DATA_LAST_COLUMN,
+  FORM_DATA_LAST_COLUMN_INDEX,
+} from "@/utils/productCatalog";
 import { SUBMISSION_STATUS_HEADERS } from "@/utils/submissionStatusLedger";
 
 const googleSheetsMock = jest.fn();
@@ -157,7 +161,7 @@ function createMockSheets(options?: {
         };
       }
 
-      if (range === "Form_Data!A:AQ") {
+      if (range === `Form_Data!A:${FORM_DATA_LAST_COLUMN}`) {
         if (options?.formAppendError) {
           throw options.formAppendError;
         }
@@ -166,7 +170,7 @@ function createMockSheets(options?: {
         return {
           data: {
             updates: {
-              updatedRange: "Form_Data!A5:AQ5",
+              updatedRange: `Form_Data!A5:${FORM_DATA_LAST_COLUMN}5`,
             },
           },
         };
@@ -226,6 +230,28 @@ describe("submit-form route idempotency ledger", () => {
     expect(body.duplicate).toBe(true);
     expect(body.submissionState).toBe("submitted");
     expect(sheets._ledgerAppends.at(-1)?.[1]).toBe("submitted");
+  });
+
+  it("writes the new pouch product into column AR", async () => {
+    const sheets = createMockSheets();
+    googleSheetsMock.mockReturnValue(sheets);
+
+    const response = await POST(
+      createRequest(
+        createPayload({
+          products: {
+            "Chiltepin Pouch 30g": 3,
+          },
+        }),
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(sheets._formAppends).toHaveLength(1);
+    expect(sheets._formAppends[0]).toHaveLength(
+      FORM_DATA_LAST_COLUMN_INDEX + 1,
+    );
+    expect(sheets._formAppends[0][43]).toBe(3);
   });
 
   it("returns 409 while a fresh processing lease is active", async () => {

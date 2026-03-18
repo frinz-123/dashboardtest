@@ -61,6 +61,11 @@ import {
   isDateInPeriod,
 } from "@/utils/dateUtils";
 import {
+  FORM_DATA_LAST_COLUMN,
+  PRODUCT_COLUMN_INDICES,
+  PRODUCT_COLUMN_NAME_BY_INDEX,
+} from "@/utils/productCatalog";
+import {
   type GoalPeriod,
   getSellerGoal,
   getSellersWithGoals,
@@ -480,9 +485,9 @@ export default function InspectorPeriodosPage() {
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      // Fetch up to column AQ (43 columns) to ensure we capture AP even with column shifts
+      // Fetch the full active Form_Data schema so product parsing stays in sync.
       const response = await fetch(
-        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:AQ?key=${googleApiKey}`,
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:${FORM_DATA_LAST_COLUMN}?key=${googleApiKey}`,
       );
       const data = await response.json();
       const headers: string[] = data.values?.[0] || [];
@@ -510,16 +515,13 @@ export default function InspectorPeriodosPage() {
 
       const sales: Sale[] = rows.map((row: string[]) => {
         const products: Record<string, number> = {};
-        for (let i = 8; i <= 29; i++) {
-          if (row[i] && row[i] !== "0") {
-            products[headers[i]] = parseInt(row[i], 10);
+        PRODUCT_COLUMN_INDICES.forEach((index) => {
+          if (row[index] && row[index] !== "0") {
+            const name =
+              headers[index] || PRODUCT_COLUMN_NAME_BY_INDEX[index] || `Col-${index}`;
+            products[name] = parseInt(row[index], 10);
           }
-        }
-        for (let i = 34; i <= 36; i++) {
-          if (row[i] && row[i] !== "0") {
-            products[headers[i]] = parseInt(row[i], 10);
-          }
-        }
+        });
 
         // Try to find photo URLs from the detected column or by scanning the row
         let photoUrls: string[] = [];

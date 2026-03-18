@@ -1,3 +1,8 @@
+import {
+  PRODUCT_COLUMN_INDICES,
+  PRODUCT_COLUMN_NAME_BY_INDEX,
+} from "@/utils/productCatalog";
+
 export type ProductEntry = {
   name: string;
   quantity: number;
@@ -64,39 +69,6 @@ export type TransactionsApiResponse = {
 const DEFAULT_PHOTO_COLUMN_INDEX = 41;
 const PHOTO_SCAN_START_INDEX = 39;
 const PHOTO_SCAN_END_INDEX = 42;
-const PRODUCT_COLUMN_INDICES = [
-  8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
-  28, 29, 34, 35, 36, 42,
-] as const;
-
-const PRODUCT_COLUMN_FALLBACKS: Record<number, string> = {
-  8: "Chiltepin Molido 50 g",
-  9: "Chiltepin Molido 20 g",
-  10: "Chiltepin Entero 30 g",
-  11: "Salsa Chiltepin El rey 195 ml",
-  12: "Salsa Especial El Rey 195 ml",
-  13: "Salsa Reina El rey 195 ml",
-  14: "Salsa Habanera El Rey 195 ml",
-  15: "Paquete El Rey",
-  16: "Molinillo El Rey 30 g",
-  17: "Tira Entero",
-  18: "Tira Molido",
-  19: "Salsa chiltepin Litro",
-  20: "Salsa Especial Litro",
-  21: "Salsa Reina Litro",
-  22: "Salsa Habanera Litro",
-  23: "Michela Mix Tamarindo",
-  24: "Michela Mix Mango",
-  25: "Michela Mix Sandia",
-  26: "Michela Mix Fuego",
-  27: "El Rey Mix Original",
-  28: "El Rey Mix Especial",
-  29: "Medio Kilo Chiltepin Entero",
-  34: "Michela Mix Picafresa",
-  35: "Habanero Molido 50 g",
-  36: "Habanero Molido 20 g",
-  42: "Molinillo Habanero 20 g",
-};
 
 const PHOTO_HEADER_PATTERNS = [
   /foto/i,
@@ -370,7 +342,7 @@ const getProductsFromRow = (
     if (quantity <= 0) continue;
 
     const header =
-      headers[index] || PRODUCT_COLUMN_FALLBACKS[index] || `Col-${index}`;
+      headers[index] || PRODUCT_COLUMN_NAME_BY_INDEX[index] || `Col-${index}`;
     products[header] = quantity;
     productEntries.push({ name: header, quantity });
     productUnits += quantity;

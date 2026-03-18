@@ -9,6 +9,11 @@ import {
 } from "@/utils/formSubmission";
 import { sheetsAuth } from "@/utils/googleAuth";
 import {
+  FORM_DATA_LAST_COLUMN,
+  FORM_DATA_LAST_COLUMN_INDEX,
+  PRODUCT_COLUMN_ENTRIES,
+} from "@/utils/productCatalog";
+import {
   appendSubmissionStatusEntry,
   decideSubmissionLedgerAction,
   ensureSubmissionStatusHeader,
@@ -679,8 +684,7 @@ export async function POST(req: Request) {
       const photoLinksValue =
         photoUrls.length > 0 ? JSON.stringify(photoUrls) : "";
 
-      // Create an array with 43 elements (A to AQ)
-      const rowData = new Array(43).fill("");
+      const rowData = new Array(FORM_DATA_LAST_COLUMN_INDEX + 1).fill("");
 
       // Set the values according to the mapping
       rowData[0] = clientName; // Column A
@@ -691,36 +695,10 @@ export async function POST(req: Request) {
       rowData[5] = location.lat.toString(); // Column F (Current lat)
       rowData[6] = location.lng.toString(); // Column G (Current lng)
       rowData[7] = userEmail; // Column H
-      rowData[8] = products["Chiltepin Molido 50 g"] || ""; // Column I
-      rowData[9] = products["Chiltepin Molido 20 g"] || ""; // Column J
-      rowData[10] = products["Chiltepin Entero 30 g"] || ""; // Column K
-      rowData[11] = products["Salsa Chiltepin El rey 195 ml"] || ""; // Column L
-      rowData[12] = products["Salsa Especial El Rey 195 ml"] || ""; // Column M
-      rowData[13] = products["Salsa Reina El rey 195 ml"] || ""; // Column N
-      rowData[14] = products["Salsa Habanera El Rey 195 ml"] || ""; // Column O
-      rowData[15] = products["Paquete El Rey"] || ""; // Column P
-      rowData[16] = products["Molinillo El Rey 30 g"] || ""; // Column Q
-      rowData[17] = products["Tira Entero"] || ""; // Column R
-      rowData[18] = products["Tira Molido"] || ""; // Column S
-      rowData[19] = products["Salsa chiltepin Litro"] || ""; // Column T
-      rowData[20] = products["Salsa Especial Litro"] || ""; // Column U
-      rowData[21] = products["Salsa Reina Litro"] || ""; // Column V
-      rowData[22] = products["Salsa Habanera Litro"] || ""; // Column W
-      rowData[23] = products["Michela Mix Tamarindo"] || ""; // Column X
-      rowData[24] = products["Michela Mix Mango"] || ""; // Column Y
-      rowData[25] = products["Michela Mix Sandia"] || ""; // Column Z
-      rowData[26] = products["Michela Mix Fuego"] || ""; // Column AA
-      rowData[27] = products["El Rey Mix Original"] || ""; // Column AB
-      rowData[28] = products["El Rey Mix Especial"] || ""; // Column AC
-      rowData[29] = products["Medio Kilo Chiltepin Entero"] || ""; // Column AD
       rowData[30] = resolvedSubmissionId; // Column AE - Idempotency key
       rowData[31] = clientCode; // Column AF
       rowData[32] = formattedDate; // Column AG
       rowData[33] = total.toString(); // Column AH
-      rowData[34] = products["Michela Mix Picafresa"] || ""; // Column AI
-      rowData[35] = products["Habanero Molido 50 g"] || ""; // Column AJ
-      rowData[36] = products["Habanero Molido 20 g"] || ""; // Column AK
-      rowData[42] = products["Molinillo Habanero 20 g"] || ""; // Column AQ
       rowData[37] = periodWeekCode; // Column AL
 
       // CLEY order value for Column AM (index 38)
@@ -732,6 +710,10 @@ export async function POST(req: Request) {
 
       rowData[40] = monthYearCode; // Column AO
       rowData[41] = photoLinksValue; // Column AP
+
+      PRODUCT_COLUMN_ENTRIES.forEach(({ index, name }) => {
+        rowData[index] = products[name] || "";
+      });
 
       console.log("Final row data:", {
         columnAL: rowData[37],
@@ -780,7 +762,7 @@ export async function POST(req: Request) {
 
       const response = await sheets.spreadsheets.values.append({
         spreadsheetId,
-        range: "Form_Data!A:AQ",
+        range: `Form_Data!A:${FORM_DATA_LAST_COLUMN}`,
         valueInputOption: "USER_ENTERED",
         insertDataOption: "INSERT_ROWS",
         requestBody: {

@@ -22,6 +22,11 @@ import {
   getWeekDates,
   isDateInPeriod,
 } from "@/utils/dateUtils";
+import {
+  FORM_DATA_LAST_COLUMN,
+  PRODUCT_COLUMN_ENTRIES,
+  PRODUCT_NAMES,
+} from "@/utils/productCatalog";
 
 const ADMIN_PASSWORD = process.env.NEXT_PUBLIC_ADMIN_PASSWORD;
 
@@ -244,43 +249,15 @@ export default function AdminPage() {
 
   const fetchData = async () => {
     const response = await fetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:AH?key=${googleApiKey}`,
+      `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:${FORM_DATA_LAST_COLUMN}?key=${googleApiKey}`,
     );
     const data = await response.json();
     const rows = data.values.slice(1);
     const sales: Sale[] = rows.map((row: string[]) => {
       const products: Record<string, number> = {};
 
-      const productMappings = [
-        { col: 8, name: "Chiltepin Molido 50 g" },
-        { col: 9, name: "Chiltepin Molido 20 g" },
-        { col: 10, name: "Chiltepin Entero 30 g" },
-        { col: 11, name: "Salsa Chiltepin El rey 195 ml" },
-        { col: 12, name: "Salsa Especial El Rey 195 ml" },
-        { col: 13, name: "Salsa Reina El rey 195 ml" },
-        { col: 14, name: "Salsa Habanera El Rey 195 ml" },
-        { col: 15, name: "Paquete El Rey" },
-        { col: 16, name: "Molinillo El Rey 30 g" },
-        { col: 17, name: "Tira Entero" },
-        { col: 18, name: "Tira Molido" },
-        { col: 19, name: "Salsa chiltepin Litro" },
-        { col: 20, name: "Salsa Especial Litro" },
-        { col: 21, name: "Salsa Reina Litro" },
-        { col: 22, name: "Salsa Habanera Litro" },
-        { col: 23, name: "Michela Mix Tamarindo" },
-        { col: 24, name: "Michela Mix Mango" },
-        { col: 25, name: "Michela Mix Sandia" },
-        { col: 26, name: "Michela Mix Fuego" },
-        { col: 34, name: "Michela Mix Picafresa" },
-        { col: 27, name: "El Rey Mix Original" },
-        { col: 28, name: "El Rey Mix Especial" },
-        { col: 29, name: "Medio Kilo Chiltepin Entero" },
-        { col: 35, name: "Habanero Molido 50 g" },
-        { col: 36, name: "Habanero Molido 20 g" },
-      ];
-
-      productMappings.forEach(({ col, name }) => {
-        const quantity = parseInt(row[col], 10) || 0;
+      PRODUCT_COLUMN_ENTRIES.forEach(({ index, name }) => {
+        const quantity = parseInt(row[index], 10) || 0;
         if (quantity > 0) {
           products[name] = quantity;
         }
@@ -301,34 +278,7 @@ export default function AdminPage() {
   };
 
   const _getProductNameFromIndex = (index: number): string => {
-    const products = [
-      "Chiltepin Molido 50 g",
-      "Chiltepin Molido 20 g",
-      "Chiltepin Entero 30 g",
-      "Salsa Chiltepin El rey 195 ml",
-      "Salsa Especial El Rey 195 ml",
-      "Salsa Reina El rey 195 ml",
-      "Salsa Habanera El Rey 195 ml",
-      "Paquete El Rey",
-      "Molinillo El Rey 30 g",
-      "Tira Entero",
-      "Tira Molido",
-      "Salsa chiltepin Litro",
-      "Salsa Especial Litro",
-      "Salsa Reina Litro",
-      "Salsa Habanera Litro",
-      "Michela Mix Tamarindo",
-      "Michela Mix Mango",
-      "Michela Mix Sandia",
-      "Michela Mix Fuego",
-      "Michela Mix Picafresa",
-      "El Rey Mix Original",
-      "El Rey Mix Especial",
-      "Medio Kilo Chiltepin Entero",
-      "Habanero Molido 50 g",
-      "Habanero Molido 20 g",
-    ];
-    return products[index - 2] || "Unknown Product";
+    return PRODUCT_NAMES[index - 2] || "Unknown Product";
   };
 
   const updateProductStats = (sales: Sale[]) => {

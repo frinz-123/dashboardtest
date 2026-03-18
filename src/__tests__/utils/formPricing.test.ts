@@ -59,4 +59,24 @@ describe("formPricing", () => {
 
     expect(price).toBe(48);
   });
+
+  it("uses the temporary global price for the new pouch product on base price lists", () => {
+    const eftPrice = getProductPrice("EFT", "Chiltepin Pouch 30g", {
+      sellerEmail: "ventas1productoselrey@gmail.com",
+    });
+    const wmPrice = getProductPrice("WM", "Chiltepin Pouch 30g", {
+      sellerEmail: "ventas1productoselrey@gmail.com",
+    });
+
+    expect(eftPrice).toBe(50);
+    expect(wmPrice).toBe(50);
+  });
+
+  it("keeps the new pouch product at the temporary global price in territory overrides", () => {
+    const price = getProductPrice("EFT", "Chiltepin Pouch 30g", {
+      sellerEmail: "ventas2productoselrey@gmail.com",
+    });
+
+    expect(price).toBe(50);
+  });
 });

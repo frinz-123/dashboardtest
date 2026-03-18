@@ -1,3 +1,5 @@
+export const FORM_DATA_LAST_COLUMN = "AR";
+
 export const PRODUCT_COLUMNS = {
   I: "Chiltepin Molido 50 g",
   J: "Chiltepin Molido 20 g",
@@ -25,6 +27,7 @@ export const PRODUCT_COLUMNS = {
   AJ: "Habanero Molido 50 g",
   AK: "Habanero Molido 20 g",
   AQ: "Molinillo Habanero 20 g",
+  AR: "Chiltepin Pouch 30g",
 } as const;
 
 export const PRODUCT_NAMES = Object.values(PRODUCT_COLUMNS);
@@ -37,10 +40,32 @@ const columnToIndex = (column: string): number => {
   return index - 1;
 };
 
-export const PRODUCT_COLUMN_INDEX = Object.entries(PRODUCT_COLUMNS).reduce(
-  (acc, [column, name]) => {
-    acc[name] = columnToIndex(column);
+export const PRODUCT_COLUMN_ENTRIES = Object.entries(PRODUCT_COLUMNS).map(
+  ([column, name]) => ({
+    column,
+    name,
+    index: columnToIndex(column),
+  }),
+);
+
+export const PRODUCT_COLUMN_INDICES = PRODUCT_COLUMN_ENTRIES.map(
+  ({ index }) => index,
+);
+
+export const PRODUCT_COLUMN_NAME_BY_INDEX = PRODUCT_COLUMN_ENTRIES.reduce(
+  (acc, { index, name }) => {
+    acc[index] = name;
+    return acc;
+  },
+  {} as Record<number, string>,
+);
+
+export const PRODUCT_COLUMN_INDEX = PRODUCT_COLUMN_ENTRIES.reduce(
+  (acc, { name, index }) => {
+    acc[name] = index;
     return acc;
   },
   {} as Record<string, number>,
 );
+
+export const FORM_DATA_LAST_COLUMN_INDEX = columnToIndex(FORM_DATA_LAST_COLUMN);

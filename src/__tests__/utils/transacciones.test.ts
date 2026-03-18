@@ -7,13 +7,15 @@ import {
   sortTransactionsDescending,
   type TransactionRecord,
 } from "@/utils/transacciones";
+import { FORM_DATA_LAST_COLUMN_INDEX } from "@/utils/productCatalog";
 
 const createHeaders = (): string[] => {
-  const headers = new Array(43).fill("");
+  const headers = new Array(FORM_DATA_LAST_COLUMN_INDEX + 1).fill("");
   headers[8] = "Chiltepin Molido 50 g";
   headers[9] = "Chiltepin Molido 20 g";
   headers[29] = "Medio Kilo Chiltepin Entero";
   headers[34] = "Michela Mix Picafresa";
+  headers[43] = "Chiltepin Pouch 30g";
   headers[41] = "photo_urls";
   return headers;
 };
@@ -64,7 +66,7 @@ describe("transacciones utils", () => {
 
   it("parses sheet row into transaction record", () => {
     const headers = createHeaders();
-    const row = new Array(43).fill("");
+    const row = new Array(FORM_DATA_LAST_COLUMN_INDEX + 1).fill("");
 
     row[0] = "Cliente Uno";
     row[1] = "24.1";
@@ -75,6 +77,7 @@ describe("transacciones utils", () => {
     row[7] = "ventas1productoselrey@gmail.com";
     row[8] = "2";
     row[29] = "1";
+    row[43] = "4";
     row[30] = "submission-1";
     row[31] = "eft";
     row[32] = "12/01/2025";
@@ -93,10 +96,11 @@ describe("transacciones utils", () => {
     expect(parsed.submissionId).toBe("submission-1");
     expect(parsed.periodWeekCode).toBe("P20S1");
     expect(parsed.monthYearCode).toBe("DEC_25");
-    expect(parsed.productCount).toBe(2);
-    expect(parsed.productUnits).toBe(3);
+    expect(parsed.productCount).toBe(3);
+    expect(parsed.productUnits).toBe(7);
     expect(parsed.products["Chiltepin Molido 50 g"]).toBe(2);
     expect(parsed.products["Medio Kilo Chiltepin Entero"]).toBe(1);
+    expect(parsed.products["Chiltepin Pouch 30g"]).toBe(4);
     expect(parsed.hasPhotos).toBe(true);
     expect(parsed.dateKey).toBe("2025-12-01");
     expect(parsed.saleIdVariants).toEqual(

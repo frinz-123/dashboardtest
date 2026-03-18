@@ -27,6 +27,11 @@ import {
   getWeekDates,
   isDateInPeriod,
 } from "@/utils/dateUtils";
+import {
+  FORM_DATA_LAST_COLUMN,
+  PRODUCT_COLUMN_INDICES,
+  PRODUCT_COLUMN_NAME_BY_INDEX,
+} from "@/utils/productCatalog";
 import { getSellerGoal } from "@/utils/sellerGoals";
 import AppHeader from "./AppHeader";
 
@@ -81,17 +86,13 @@ const parseSheetSales = (
     const products: Record<string, number> = {};
 
     if (options.includeProducts) {
-      for (let i = 8; i <= 29; i++) {
-        if (row[i] && row[i] !== "0") {
-          products[headers[i]] = Number.parseInt(row[i], 10);
+      PRODUCT_COLUMN_INDICES.forEach((index) => {
+        if (row[index] && row[index] !== "0") {
+          const name =
+            headers[index] || PRODUCT_COLUMN_NAME_BY_INDEX[index] || `Col-${index}`;
+          products[name] = Number.parseInt(row[index], 10);
         }
-      }
-
-      for (let i = 34; i <= 36; i++) {
-        if (row[i] && row[i] !== "0") {
-          products[headers[i]] = Number.parseInt(row[i], 10);
-        }
-      }
+      });
     }
 
     const parsedVenta = Number.parseFloat(row[33] ?? "0");
@@ -445,7 +446,7 @@ export default function Dashboard() {
 
       try {
         const fullSales = await fetchSalesFromSheets({
-          range: `${sheetName}!A:AK`,
+          range: `${sheetName}!A:${FORM_DATA_LAST_COLUMN}`,
           includeProducts: true,
           forceFresh: false,
           mode: "full",

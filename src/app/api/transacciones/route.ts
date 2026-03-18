@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { isMasterAccount } from "@/utils/auth";
 import { sheetsAuth } from "@/utils/googleAuth";
+import { FORM_DATA_LAST_COLUMN } from "@/utils/productCatalog";
 import {
   applyTransactionFilters,
   detectPhotoColumnIndex,
@@ -107,7 +108,7 @@ export async function GET(request: Request) {
     const sheets = google.sheets({ version: "v4", auth: sheetsAuth });
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
-      range: `${SHEET_NAME}!A:AQ`,
+      range: `${SHEET_NAME}!A:${FORM_DATA_LAST_COLUMN}`,
     });
 
     const rows = response.data.values || [];

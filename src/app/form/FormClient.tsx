@@ -39,6 +39,7 @@ import { useOrderSubmitMutation } from "@/hooks/useOrderSubmitMutation";
 import { useSubmissionQueue } from "@/hooks/useSubmissionQueue";
 import { getCurrentPeriodInfo } from "@/utils/dateUtils";
 import { getProductPrice as resolveProductPrice } from "@/utils/formPricing";
+import { PRODUCT_NAMES } from "@/utils/productCatalog";
 import {
   FORM_OVERRIDE_EMAILS,
   isFormAdminEmail,
@@ -78,36 +79,6 @@ const EMAIL_LABELS: Record<string, string> = {
   "bodegaelrey034@gmail.com": "Bodega",
   "ventas1elrey@gmail.com": "Ventas1",
 };
-
-// Static list defined once to avoid re-allocating on every render
-const PRODUCTS: string[] = [
-  "Chiltepin Molido 50 g",
-  "Chiltepin Molido 20 g",
-  "Chiltepin Entero 30 g",
-  "Salsa Chiltepin El rey 195 ml",
-  "Salsa Especial El Rey 195 ml",
-  "Salsa Reina El rey 195 ml",
-  "Salsa Habanera El Rey 195 ml",
-  "Paquete El Rey",
-  "Molinillo El Rey 30 g",
-  "Tira Entero",
-  "Tira Molido",
-  "Salsa chiltepin Litro",
-  "Salsa Especial Litro",
-  "Salsa Reina Litro",
-  "Salsa Habanera Litro",
-  "Michela Mix Tamarindo",
-  "Michela Mix Mango",
-  "Michela Mix Sandia",
-  "Michela Mix Fuego",
-  "Michela Mix Picafresa",
-  "El Rey Mix Original",
-  "El Rey Mix Especial",
-  "Medio Kilo Chiltepin Entero",
-  "Habanero Molido 50 g",
-  "Habanero Molido 20 g",
-  "Molinillo Habanero 20 g",
-];
 
 const MIN_MOVEMENT_THRESHOLD = 5; // Align with map for precise updates
 const MAX_LOCATION_ACCURACY = 100; // Match live submit validation
@@ -1061,8 +1032,6 @@ export default function FormPage() {
     }
   }, [currentLocation, isLocationSubmitBlocked, validationErrors.location]);
 
-  // Products list moved to top-level constant PRODUCTS
-
   const handleQuantityChange = (product: string, value: number) => {
     // Haptic feedback for quantity changes
     if (value > (quantities[product] || 0)) {
@@ -1685,7 +1654,7 @@ export default function FormPage() {
         </div>
 
         <div className="bg-white rounded-lg mb-3 p-3 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.06)] space-y-4">
-          {PRODUCTS.map((product) => (
+          {PRODUCT_NAMES.map((product) => (
             <div key={`${product}-${key}`}>
               <LabelNumbers
                 label={product}

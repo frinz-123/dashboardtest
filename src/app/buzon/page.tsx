@@ -3,11 +3,16 @@
 import { MessageSquare } from "lucide-react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import AppHeader from "@/components/AppHeader";
 import FeedLightbox from "@/components/inspector/FeedLightbox";
 import { triggerBuzonRefresh } from "@/hooks/useBuzonNotifications";
 import { EMAIL_TO_VENDOR_LABELS, isMasterAccount } from "@/utils/auth";
+import {
+  FORM_DATA_LAST_COLUMN,
+  PRODUCT_COLUMN_INDICES,
+  PRODUCT_COLUMN_NAME_BY_INDEX,
+} from "@/utils/productCatalog";
 
 const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY;
 const spreadsheetId = process.env.NEXT_PUBLIC_SPREADSHEET_ID;
@@ -78,7 +83,7 @@ const getSaleIdVariants = (sale: Sale): string[] => {
   return variants;
 };
 
-const getSaleId = (sale: Sale): string => {
+const _getSaleId = (sale: Sale): string => {
   return getSaleIdVariants(sale)[0];
 };
 
@@ -245,7 +250,7 @@ export default function BuzonPage() {
       setIsLoadingSales(true);
       try {
         const response = await fetch(
-          `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:AQ?key=${googleApiKey}`,
+          `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:${FORM_DATA_LAST_COLUMN}?key=${googleApiKey}`,
         );
         const data = await response.json();
         const headers: string[] = data.values?.[0] || [];
@@ -272,16 +277,15 @@ export default function BuzonPage() {
 
         const sales: Sale[] = rows.map((row: string[]) => {
           const products: Record<string, number> = {};
-          for (let i = 8; i <= 30; i++) {
-            if (row[i] && row[i] !== "0") {
-              products[headers[i]] = parseInt(row[i], 10);
+          PRODUCT_COLUMN_INDICES.forEach((index) => {
+            if (row[index] && row[index] !== "0") {
+              const name =
+                headers[index] ||
+                PRODUCT_COLUMN_NAME_BY_INDEX[index] ||
+                `Col-${index}`;
+              products[name] = parseInt(row[index], 10);
             }
-          }
-          for (let i = 34; i <= 36; i++) {
-            if (row[i] && row[i] !== "0") {
-              products[headers[i]] = parseInt(row[i], 10);
-            }
-          }
+          });
 
           let photoUrls: string[] = [];
           if (row[photoColumnIndex]) {

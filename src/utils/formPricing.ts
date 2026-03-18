@@ -11,6 +11,10 @@ export const TERRITORY_SELLER_EMAILS = {
   ],
 } as const;
 
+const TEMP_GLOBAL_PRODUCT_PRICES = {
+  "Chiltepin Pouch 30g": 50,
+} as const;
+
 const PRICE_OVERRIDES_BY_TERRITORY: Record<string, TerritoryPriceOverrides> = {
   tijuana: {
     EFT: {
@@ -748,6 +752,17 @@ const PRICES: ProductPrices = {
     "Molinillo Habanero 20 g": 70,
   },
 };
+
+Object.values(PRICE_OVERRIDES_BY_TERRITORY).forEach((territoryPrices) => {
+  Object.values(territoryPrices).forEach((priceMap) => {
+    if (!priceMap) return;
+    Object.assign(priceMap, TEMP_GLOBAL_PRODUCT_PRICES);
+  });
+});
+
+Object.values(PRICES).forEach((priceMap) => {
+  Object.assign(priceMap, TEMP_GLOBAL_PRODUCT_PRICES);
+});
 
 function normalizeText(value: string): string {
   if (!value) return "";

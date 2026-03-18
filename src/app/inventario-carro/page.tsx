@@ -87,6 +87,7 @@ const EFT_PRICES: Record<string, number> = {
   "Habanero Molido 50 g": 40,
   "Habanero Molido 20 g": 20,
   "Medio Kilo Chiltepin Entero": 500,
+  "Chiltepin Pouch 30g": 50,
 };
 
 const googleApiKey = process.env.NEXT_PUBLIC_GOOGLE_API_KEY;

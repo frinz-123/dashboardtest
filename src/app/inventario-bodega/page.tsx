@@ -40,6 +40,7 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { EMAIL_TO_VENDOR_LABELS, isInventarioCarroAdmin } from "@/utils/auth";
+import { getBoxBreakdown } from "@/utils/bodegaPrint";
 import {
   getAllPeriods,
   getCurrentPeriodInfo,
@@ -117,6 +118,8 @@ type HistoryBatch = {
   items: BodegaLedgerRow[];
 };
 
+type PrintDisplayMode = "pieces-and-boxes" | "pieces-only";
+
 const BODEGA_MOVEMENT_TYPES = [
   "InventarioInicial",
   "Produccion",
@@ -142,6 +145,17 @@ const MANUAL_MOVEMENT_ICON: Record<
   Retorno: Plus,
   Ajuste: Settings2,
 };
+
+const PRINT_DISPLAY_MODE_ITEMS: readonly SelectOption[] = [
+  {
+    label: "Piezas + Cajas",
+    value: "pieces-and-boxes",
+  },
+  {
+    label: "Solo piezas",
+    value: "pieces-only",
+  },
+];
 
 const createItem = (): FormItem => ({
   id: crypto.randomUUID(),
@@ -378,6 +392,8 @@ export default function InventarioBodegaPage() {
   const [isPrintDialogOpen, setIsPrintDialogOpen] = useState(false);
   const [batchToPrint, setBatchToPrint] = useState<HistoryBatch | null>(null);
   const [printHeader, setPrintHeader] = useState("");
+  const [printDisplayMode, setPrintDisplayMode] =
+    useState<PrintDisplayMode>("pieces-and-boxes");
   const [isPrintPending, setIsPrintPending] = useState(false);
   const [printContainer, setPrintContainer] = useState<HTMLDivElement | null>(
     null,
@@ -516,6 +532,7 @@ export default function InventarioBodegaPage() {
       setIsPrintPending(false);
       setBatchToPrint(null);
       setPrintHeader("");
+      setPrintDisplayMode("pieces-and-boxes");
     };
 
     window.addEventListener("afterprint", handleAfterPrint);
@@ -887,6 +904,7 @@ export default function InventarioBodegaPage() {
       if (!printContainer) return;
       setBatchToPrint(batch);
       setPrintHeader(getBatchReferenceLabel(batch.notes));
+      setPrintDisplayMode("pieces-and-boxes");
       setIsPrintPending(false);
       setIsPrintDialogOpen(true);
     },
@@ -899,6 +917,7 @@ export default function InventarioBodegaPage() {
       if (!open && !isPrintPending) {
         setBatchToPrint(null);
         setPrintHeader("");
+        setPrintDisplayMode("pieces-and-boxes");
       }
     },
     [isPrintPending],
@@ -912,6 +931,9 @@ export default function InventarioBodegaPage() {
   const resolvedPrintHeader = batchToPrint
     ? printHeader.trim() || getBatchReferenceLabel(batchToPrint.notes)
     : "";
+  const isBoxesColumnVisible = printDisplayMode === "pieces-and-boxes";
+  const resolvedPrintModeLabel =
+    printDisplayMode === "pieces-and-boxes" ? "Piezas + Cajas" : "Solo piezas";
   const printPortal =
     printContainer && batchToPrint
       ? createPortal(
@@ -970,6 +992,15 @@ export default function InventarioBodegaPage() {
                 {batchToPrint.productCount === 1 ? "" : "s"} &middot;{" "}
                 {batchToPrint.totalQuantity} unidades
               </p>
+              {isBoxesColumnVisible ? (
+                <p
+                  className="print-muted"
+                  style={{ fontSize: 10, margin: "2px 0 0" }}
+                >
+                  Cajas calculadas por producto; los sobrantes se muestran en
+                  piezas.
+                </p>
+              ) : null}
             </div>
             <table className="print-table" style={{ fontSize: 11 }}>
               <thead>
@@ -981,24 +1012,50 @@ export default function InventarioBodegaPage() {
                       fontVariantNumeric: "tabular-nums",
                     }}
                   >
-                    Cantidad
+                    Piezas
                   </th>
+                  {isBoxesColumnVisible ? (
+                    <th
+                      style={{
+                        textAlign: "left",
+                        width: "28%",
+                      }}
+                    >
+                      Cajas
+                    </th>
+                  ) : null}
                 </tr>
               </thead>
               <tbody>
-                {batchToPrint.items.map((item) => (
-                  <tr key={item.id} className="print-row">
-                    <td>{item.product}</td>
-                    <td
-                      style={{
-                        textAlign: "right",
-                        fontVariantNumeric: "tabular-nums",
-                      }}
-                    >
-                      {item.quantity}
-                    </td>
-                  </tr>
-                ))}
+                {batchToPrint.items.map((item) => {
+                  const boxBreakdown = getBoxBreakdown(
+                    item.product,
+                    item.quantity,
+                  );
+
+                  return (
+                    <tr key={item.id} className="print-row">
+                      <td>{item.product}</td>
+                      <td
+                        style={{
+                          textAlign: "right",
+                          fontVariantNumeric: "tabular-nums",
+                        }}
+                      >
+                        {item.quantity}
+                      </td>
+                      {isBoxesColumnVisible ? (
+                        <td
+                          style={{
+                            color: boxBreakdown ? "#111827" : "#94a3b8",
+                          }}
+                        >
+                          {boxBreakdown?.display ?? "N/A"}
+                        </td>
+                      ) : null}
+                    </tr>
+                  );
+                })}
               </tbody>
               <tfoot>
                 <tr
@@ -1017,6 +1074,7 @@ export default function InventarioBodegaPage() {
                   >
                     {batchToPrint.totalQuantity}
                   </td>
+                  {isBoxesColumnVisible ? <td /> : null}
                 </tr>
               </tfoot>
             </table>
@@ -1516,6 +1574,22 @@ export default function InventarioBodegaPage() {
                 </p>
               </div>
 
+              <InventorySelect
+                items={PRINT_DISPLAY_MODE_ITEMS}
+                value={printDisplayMode}
+                onValueChange={(value) =>
+                  setPrintDisplayMode(value as PrintDisplayMode)
+                }
+                label="Formato de impresión"
+                labelId="batch-print-display-mode-label"
+                placeholder="Selecciona un formato"
+                size="sm"
+              />
+              <p className="-mt-2 text-xs text-slate-500">
+                Usa cajas solo en la hoja impresa. El inventario sigue guardando
+                piezas como cantidad base.
+              </p>
+
               <div className="rounded-2xl border border-slate-200 bg-white p-4">
                 <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-slate-400">
                   Vista rápida
@@ -1526,6 +1600,9 @@ export default function InventarioBodegaPage() {
                 <p className="mt-1 text-xs text-slate-500">
                   {batchToPrint.direction} · {batchToPrint.movementType} ·{" "}
                   {batchToPrint.date}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Formato: {resolvedPrintModeLabel}
                 </p>
               </div>
 
