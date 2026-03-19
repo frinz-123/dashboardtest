@@ -31,6 +31,7 @@ export const EMAIL_TO_VENDOR_LABELS: Record<string, string> = {
   "ventas2productoselrey@gmail.com": "Roel",
   "ventas3productoselrey@gmail.com": "Lidia",
   "ventas4productoselrey@gmail.com": "Reyna",
+  "chiltepinelreyhmo@gmail.com": "Hermosillo",
   "ventasmztproductoselrey.com@gmail.com": "Mazatlan",
   "ventasmochisproductoselrey@gmail.com": "Mochis",
   "franzcharbell@gmail.com": "Franz",

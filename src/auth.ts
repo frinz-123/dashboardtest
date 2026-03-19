@@ -71,6 +71,7 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
         "alopezelrey@gmail.com",
         "promotoriaelrey@gmail.com",
         "ventas4productoselrey@gmail.com",
+        "chiltepinelreyhmo@gmail.com",
         "bodegaelrey034@gmail.com",
         "jesus.chiltepinelrey@gmail.com",
         process.env.OVERRIDE_EMAIL,

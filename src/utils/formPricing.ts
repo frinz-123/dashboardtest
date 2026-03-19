@@ -4,7 +4,7 @@ type ProductPrices = Record<string, ProductPriceMap>;
 type TerritoryPriceOverrides = Partial<Record<"EFT" | "CRED", ProductPriceMap>>;
 
 export const TERRITORY_SELLER_EMAILS = {
-  tijuana: ["ventas2productoselrey@gmail.com"],
+  tijuana: ["ventas2productoselrey@gmail.com", "chiltepinelreyhmo@gmail.com"],
   pacificTiraMolido: [
     "ventasmztproductoselrey.com@gmail.com",
     "ventasmochisproductoselrey@gmail.com",

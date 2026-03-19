@@ -156,6 +156,36 @@ const sellerGoals: SellerGoals = {
     36: 200000.01, //noviembre 2026
     37: 200000.01, //diciembre 2026
   },
+  "chiltepinelreyhmo@gmail.com": {
+    // Hermosillo
+    11: 200000.0,
+    12: 210000.0,
+    13: 215000.0,
+    14: 220000.0, //enero 2025
+    15: 200000.0, //febrero 2025
+    16: 190000.0, //marzo 2025
+    17: 195000.0, //abril 2025
+    18: 200000.0, //mayo 2025
+    19: 180000.0, //junio 2025
+    20: 185000.0, //julio 2025
+    21: 200000.01, //agosto 2025
+    22: 200000.01, //septiembre 2025
+    23: 200000.01, //octubre 2025
+    24: 200000.01, //noviembre 2025
+    25: 200000.01, //diciembre 2025
+    26: 210000.0, //enero 2026
+    27: 210000.0, //febrero 2026
+    28: 210000.01, //marzo 2026
+    29: 210000.01, //abril 2026
+    30: 200000.01, //mayo 2026
+    31: 200000.01, //junio 2026
+    32: 200000.01, //julio 2026
+    33: 200000.01, //agosto 2026
+    34: 200000.01, //septiembre 2026
+    35: 200000.01, //octubre 2026
+    36: 200000.01, //noviembre 2026
+    37: 200000.01, //diciembre 2026
+  },
   "ventasmztproductoselrey.com@gmail.com": {
     // Mazatlan
     11: 200000.0,

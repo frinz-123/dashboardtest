@@ -5,6 +5,7 @@ const EMAIL_TO_SELLER: Record<string, string> = {
   "ventas2productoselrey@gmail.com": "Roel",
   "ventas3productoselrey@gmail.com": "Lidia",
   "ventasmztproductoselrey.com@gmail.com": "Mazatlan",
+  "chiltepinelreyhmo@gmail.com": "Hermosillo",
   "ventasmochisproductoselrey@gmail.com": "Mochis",
   "franzcharbell@gmail.com": "Franz",
   "cesar.reyes.ochoa@gmail.com": "Cesar",

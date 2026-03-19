@@ -221,6 +221,7 @@ const emailLabels: Record<string, { label: string; role: Role }> = {
     label: "Mazatlan",
     role: "vendedor",
   },
+  "chiltepinelreyhmo@gmail.com": { label: "Hermosillo", role: "vendedor" },
   "ventasmochisproductoselrey@gmail.com": { label: "Mochis", role: "vendedor" },
   "franzcharbell@gmail.com": { label: "Franz", role: "Supervisor" },
   "cesar.reyes.ochoa@gmail.com": { label: "Cesar", role: "Supervisor" },

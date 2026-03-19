@@ -4,6 +4,7 @@ describe("formPricing", () => {
   it("assigns ventas2 to the Tijuana territory config", () => {
     expect(TERRITORY_SELLER_EMAILS.tijuana).toEqual([
       "ventas2productoselrey@gmail.com",
+      "chiltepinelreyhmo@gmail.com",
     ]);
   });
 
@@ -21,6 +22,18 @@ describe("formPricing", () => {
     });
 
     expect(price).toBe(65);
+  });
+
+  it("applies the same Tijuana prices for Hermosillo", () => {
+    const eftPrice = getProductPrice("EFT", "Chiltepin Molido 50 g", {
+      sellerEmail: "chiltepinelreyhmo@gmail.com",
+    });
+    const credPrice = getProductPrice("CRED", "Tira Entero", {
+      sellerEmail: "chiltepinelreyhmo@gmail.com",
+    });
+
+    expect(eftPrice).toBe(52);
+    expect(credPrice).toBe(65);
   });
 
   it("keeps base pricing for non-Tijuana sellers", () => {

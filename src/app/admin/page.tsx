@@ -75,6 +75,7 @@ export default function AdminPage() {
     "ventas1productoselrey@gmail.com": "Christian",
     "ventas2productoselrey@gmail.com": "Roel",
     "ventas3productoselrey@gmail.com": "Lidia",
+    "chiltepinelreyhmo@gmail.com": "Hermosillo",
     "promotoriaelrey@gmail.com": "Brenda",
   };
 

@@ -331,6 +331,7 @@ const EFECTIVO_GOALS: Record<string, number> = {
   Christian: 65000,
   Reyna: 55000,
   Mochis: 65000,
+  Hermosillo: 65000,
 };
 
 export default function InspectorPeriodosPage() {
