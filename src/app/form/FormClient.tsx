@@ -143,6 +143,7 @@ function getClientCode(clientName: string): string {
     chata: "chata",
     memin: "memin",
     querida: "queri",
+    "Tianguis del camaron": "CRED",
     merza: "merz",
     "Cedis Up": "CRED",
     "AND FINAL": "smart",
@@ -1153,11 +1154,11 @@ export default function FormPage() {
         isPhotoRequired && isAdmin && skipRequiredPhotos;
       const hasAdminOverrideIntent = Boolean(
         overrideEmail ||
-          overrideDate ||
-          overridePeriod ||
-          overrideMonthCode ||
-          skipRequiredPhotos ||
-          allowDuplicatePhotos,
+        overrideDate ||
+        overridePeriod ||
+        overrideMonthCode ||
+        skipRequiredPhotos ||
+        allowDuplicatePhotos,
       );
 
       console.log("🔐 ADMIN OVERRIDE RESOLUTION:", {
