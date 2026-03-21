@@ -26,6 +26,11 @@ import { PRODUCT_NAMES } from "@/utils/productCatalog";
 
 export const dynamic = "force-dynamic";
 
+const NO_STORE_HEADERS = {
+  "Cache-Control": "no-store, no-cache, max-age=0, must-revalidate",
+  Pragma: "no-cache",
+};
+
 const getSessionEmail = async () => {
   const session = await auth();
   return session?.user?.email?.toLowerCase().trim() || "";
@@ -178,12 +183,15 @@ export async function GET(req: Request) {
       );
     }
 
-    return NextResponse.json({ rows: filteredRows, hasHeader });
+    return NextResponse.json(
+      { rows: filteredRows, hasHeader },
+      { headers: NO_STORE_HEADERS },
+    );
   } catch (error) {
     console.error("Error fetching inventario carros:", error);
     return NextResponse.json(
       { error: "Failed to fetch inventario carros" },
-      { status: 500 },
+      { status: 500, headers: NO_STORE_HEADERS },
     );
   }
 }

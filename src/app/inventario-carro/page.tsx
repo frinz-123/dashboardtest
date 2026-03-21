@@ -50,6 +50,11 @@ import {
   getPeriodWeeks,
 } from "@/utils/dateUtils";
 import {
+  applyLinkedLedgerEdit,
+  type LinkedLedgerEditUpdate,
+  mergeLinkedLedgerFetchResult,
+} from "@/utils/inventarioCarroEdit";
+import {
   buildLiveSaldoTotals,
   buildResetAdjustments,
   createProductTotals,
@@ -856,27 +861,46 @@ export default function InventarioCarroPage() {
     return "Selecciona un vendedor";
   }, [selectedSeller]);
 
-  const fetchLedger = useCallback(async () => {
-    setIsLedgerLoading(true);
-    setError(null);
-    try {
-      const response = await fetch("/api/inventario-carros");
-      if (!response.ok) {
-        throw new Error("No se pudo cargar Inventario Carro");
+  const fetchLedger = useCallback(
+    async ({
+      fresh = false,
+      fallbackUpdate = null,
+    }: {
+      fresh?: boolean;
+      fallbackUpdate?: LinkedLedgerEditUpdate | null;
+    } = {}) => {
+      setIsLedgerLoading(true);
+      setError(null);
+      try {
+        const requestUrl = fresh
+          ? `/api/inventario-carros?_=${Date.now()}`
+          : "/api/inventario-carros";
+        const response = await fetch(
+          requestUrl,
+          fresh ? { cache: "no-store" } : undefined,
+        );
+        if (!response.ok) {
+          throw new Error("No se pudo cargar Inventario Carro");
+        }
+        const data = await response.json();
+        const rows = mergeLinkedLedgerFetchResult(
+          (data.rows || []) as LedgerRow[],
+          fallbackUpdate,
+        );
+        setLedgerRows(rows);
+        setWarnings(parseWarnings(data));
+        return rows as LedgerRow[];
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Error desconocido";
+        setError(message);
+        throw err instanceof Error ? err : new Error(message);
+      } finally {
+        setIsLedgerLoading(false);
       }
-      const data = await response.json();
-      const rows = data.rows || [];
-      setLedgerRows(rows);
-      setWarnings(parseWarnings(data));
-      return rows as LedgerRow[];
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Error desconocido";
-      setError(message);
-      throw err instanceof Error ? err : new Error(message);
-    } finally {
-      setIsLedgerLoading(false);
-    }
-  }, []);
+    },
+    [],
+  );
 
   const fetchSales = useCallback(async () => {
     if (!googleApiKey || !spreadsheetId) {
@@ -1159,6 +1183,32 @@ export default function InventarioCarroPage() {
         );
       }
       setWarnings(parseWarnings(responsePayload));
+      const linkedFallbackUpdate: LinkedLedgerEditUpdate | null =
+        editForm.linkStatus === "linked"
+          ? {
+              rowNumber: editForm.rowNumber,
+              date: editForm.date,
+              product: editForm.product,
+              quantity: Number(editForm.quantity),
+              notes: editForm.notes,
+              updatedAt: new Date().toISOString(),
+            }
+          : null;
+
+      if (linkedFallbackUpdate) {
+        setLedgerRows((prev) =>
+          applyLinkedLedgerEdit(prev, linkedFallbackUpdate),
+        );
+        setIsEditOpen(false);
+        setEditForm(null);
+        setNotice("Carga actualizada");
+        await fetchLedger({
+          fresh: true,
+          fallbackUpdate: linkedFallbackUpdate,
+        }).catch(() => {});
+        return;
+      }
+
       await fetchLedger();
       setIsEditOpen(false);
       setEditForm(null);
