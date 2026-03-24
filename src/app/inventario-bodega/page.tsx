@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Check,
   Minus,
   Package,
   PackagePlus,
@@ -391,6 +392,7 @@ export default function InventarioBodegaPage() {
   );
   const [rows, setRows] = useState<BodegaLedgerRow[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isRefreshed, setIsRefreshed] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -529,6 +531,12 @@ export default function InventarioBodegaPage() {
       setIsLoading(false);
     }
   }, []);
+
+  const handleRefresh = useCallback(async () => {
+    await fetchRows();
+    setIsRefreshed(true);
+    setTimeout(() => setIsRefreshed(false), 1500);
+  }, [fetchRows]);
 
   useEffect(() => {
     if (status !== "authenticated" || !isAdmin) return;
@@ -1158,7 +1166,7 @@ export default function InventarioBodegaPage() {
     <div className="min-h-screen bg-white">
       <AppHeader title="Inventario Bodega" icon={Warehouse} />
       <main className="px-4 py-5 max-w-6xl mx-auto space-y-4">
-        <section className="rounded-2xl bg-white p-5 shadow-[0_1px_3px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.03)]">
+        <section className="rounded-2xl bg-white p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <h2 className="text-lg font-semibold text-slate-900 [text-wrap:balance]">
@@ -1173,11 +1181,36 @@ export default function InventarioBodegaPage() {
               <m.div whileTap={{ scale: 0.96 }} transition={actionTapSpring}>
                 <button
                   type="button"
-                  onClick={fetchRows}
+                  onClick={handleRefresh}
                   className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200/80 text-sm font-medium text-slate-700 hover:bg-slate-50 active:bg-slate-100 transition-colors duration-150"
                 >
-                  <RefreshCcw className="h-4 w-4" />
-                  Actualizar
+                  <span className="relative flex h-4 w-4">
+                    <AnimatePresence mode="wait" initial={false}>
+                      {isRefreshed ? (
+                        <m.span
+                          key="check"
+                          className="absolute inset-0 flex items-center justify-center"
+                          initial={{ opacity: 0, scale: 0.25, filter: "blur(4px)" }}
+                          animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+                          exit={{ opacity: 0, scale: 0.25, filter: "blur(4px)" }}
+                          transition={{ type: "spring", duration: 0.3, bounce: 0 }}
+                        >
+                          <Check className="h-4 w-4 text-emerald-500" />
+                        </m.span>
+                      ) : (
+                        <m.span
+                          key="refresh"
+                          className="absolute inset-0 flex items-center justify-center"
+                          initial={{ opacity: 0, scale: 0.25, filter: "blur(4px)" }}
+                          animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+                          exit={{ opacity: 0, scale: 0.25, filter: "blur(4px)" }}
+                          transition={{ type: "spring", duration: 0.3, bounce: 0 }}
+                        >
+                          <RefreshCcw className={`h-4 w-4 transition-transform${isLoading ? " animate-spin" : ""}`} />
+                        </m.span>
+                      )}
+                    </AnimatePresence>
+                  </span>
                 </button>
               </m.div>
               <m.div whileTap={{ scale: 0.96 }} transition={actionTapSpring}>
@@ -1194,6 +1227,7 @@ export default function InventarioBodegaPage() {
                   Producción
                 </button>
               </m.div>
+              {/* Salida a Carro button — hidden temporarily
               <m.div whileTap={{ scale: 0.96 }} transition={actionTapSpring}>
                 <button
                   type="button"
@@ -1208,6 +1242,7 @@ export default function InventarioBodegaPage() {
                   Salida a Carro
                 </button>
               </m.div>
+              */}
               <m.div whileTap={{ scale: 0.96 }} transition={actionTapSpring}>
                 <button
                   type="button"
@@ -1253,13 +1288,13 @@ export default function InventarioBodegaPage() {
               </div>
             </div>
             <div className="space-y-3">
-              <div className="rounded-lg p-3">
+              <div className="rounded-lg py-3">
                 <p className="text-xs text-slate-500">Entradas semana</p>
                 <p className="text-2xl font-semibold text-slate-900">
                   {weekTotals.entradas}
                 </p>
               </div>
-              <div className="rounded-lg p-3">
+              <div className="rounded-lg py-3">
                 <p className="text-xs text-slate-500">Salidas semana</p>
                 <p className="text-2xl font-semibold text-slate-900">
                   {weekTotals.salidas}
@@ -1314,7 +1349,7 @@ export default function InventarioBodegaPage() {
             <h3 className="text-sm font-semibold text-slate-900 mb-3">
               Stock actual
             </h3>
-            <div className="overflow-x-auto rounded-xl border border-slate-100">
+            <div className="overflow-x-auto">
               <table className="min-w-full text-sm">
                 <thead className="text-xs text-slate-500">
                   <tr className="text-left border-b border-slate-200">
