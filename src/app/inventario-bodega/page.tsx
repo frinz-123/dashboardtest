@@ -2,6 +2,7 @@
 
 import {
   Check,
+  ChevronDown,
   Minus,
   Package,
   PackagePlus,
@@ -22,6 +23,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { createPortal } from "react-dom";
@@ -296,8 +298,150 @@ const InventorySelect = ({
   </div>
 );
 
-const getHistoryBatchKey = (row: BodegaLedgerRow) => {
-  if (!row.createdAt) return `single:${row.id}`;
+type ProductComboboxProps = {
+  value: string;
+  onChange: (value: string) => void;
+  options: string[];
+  placeholder?: string;
+};
+
+const ProductCombobox = ({
+  value,
+  onChange,
+  options,
+  placeholder = "Buscar producto...",
+}: ProductComboboxProps) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+
+  const filteredOptions = useMemo(() => {
+    if (!query.trim()) return options;
+    const lowerQuery = query.toLowerCase();
+    return options.filter((opt) => opt.toLowerCase().includes(lowerQuery));
+  }, [options, query]);
+
+  const handleSelect = useCallback(
+    (selectedValue: string) => {
+      onChange(selectedValue);
+      setQuery("");
+      setIsOpen(false);
+      setHighlightedIndex(0);
+    },
+    [onChange],
+  );
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (!isOpen) {
+      if (e.key === "ArrowDown" || e.key === "Enter") {
+        setIsOpen(true);
+        e.preventDefault();
+      }
+      return;
+    }
+    switch (e.key) {
+      case "ArrowDown":
+        e.preventDefault();
+        setHighlightedIndex((prev) =>
+          prev < filteredOptions.length - 1 ? prev + 1 : prev,
+        );
+        break;
+      case "ArrowUp":
+        e.preventDefault();
+        setHighlightedIndex((prev) => (prev > 0 ? prev - 1 : 0));
+        break;
+      case "Enter":
+        e.preventDefault();
+        if (filteredOptions[highlightedIndex]) {
+          handleSelect(filteredOptions[highlightedIndex]);
+        }
+        break;
+      case "Escape":
+        e.preventDefault();
+        setIsOpen(false);
+        setQuery("");
+        break;
+    }
+  };
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+        setQuery("");
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    if (isOpen && listRef.current) {
+      const el = listRef.current.children[highlightedIndex] as HTMLElement;
+      if (el) el.scrollIntoView({ block: "nearest" });
+    }
+  }, [highlightedIndex, isOpen]);
+
+  return (
+    <div ref={containerRef} className="relative w-full">
+      <div className="relative">
+        <input
+          ref={inputRef}
+          type="text"
+          value={query || (isOpen ? "" : value)}
+          onChange={(e) => { setQuery(e.target.value); setIsOpen(true); setHighlightedIndex(0); }}
+          onFocus={() => setIsOpen(true)}
+          onKeyDown={handleKeyDown}
+          placeholder={value || placeholder}
+          className={cn(
+            "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 pr-8 text-sm outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-400",
+            !value && !query && "text-slate-400",
+          )}
+          autoComplete="off"
+        />
+        <button
+          type="button"
+          tabIndex={-1}
+          onClick={() => { setIsOpen(!isOpen); inputRef.current?.focus(); }}
+          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400"
+        >
+          <ChevronDown className="h-4 w-4" />
+        </button>
+      </div>
+      {isOpen && (
+        <ul
+          ref={listRef}
+          className="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
+        >
+          {filteredOptions.length === 0 ? (
+            <li className="px-3 py-2 text-sm text-slate-500">Sin resultados</li>
+          ) : (
+            filteredOptions.map((option, index) => (
+              <li
+                key={option}
+                onMouseDown={(e) => { e.preventDefault(); handleSelect(option); }}
+                onMouseEnter={() => setHighlightedIndex(index)}
+                className={cn(
+                  "flex cursor-pointer items-center gap-2 px-3 py-2 text-sm",
+                  index === highlightedIndex && "bg-slate-100",
+                  value === option && "font-medium text-slate-900",
+                )}
+              >
+                <Check className={cn("h-4 w-4 shrink-0", value === option ? "opacity-100" : "opacity-0")} />
+                {option}
+              </li>
+            ))
+          )}
+        </ul>
+      )}
+    </div>
+  );
+};
+
+const getHistoryBatchKey = (row: BodegaLedgerRow) => {  if (!row.createdAt) return `single:${row.id}`;
 
   return [
     row.createdAt,
@@ -1765,22 +1909,22 @@ export default function InventarioBodegaPage() {
                         }}
                         className="flex flex-col gap-2 sm:flex-row sm:items-end"
                       >
-                        <InventorySelect
-                          items={productSelectItems}
-                          value={item.product}
-                          onValueChange={(value) =>
-                            updateListItem(
-                              productionItems,
-                              setProductionItems,
-                              item.id,
-                              "product",
-                              value,
-                            )
-                          }
-                          placeholder="Producto"
-                          size="sm"
-                          wrapperClassName="flex-1"
-                        />
+                        <div className="flex-1">
+                          <ProductCombobox
+                            options={productOptions}
+                            value={item.product}
+                            onChange={(value) =>
+                              updateListItem(
+                                productionItems,
+                                setProductionItems,
+                                item.id,
+                                "product",
+                                value,
+                              )
+                            }
+                            placeholder="Producto"
+                          />
+                        </div>
                         <div className="sm:w-36">
                           <QuantityStepper
                             value={item.quantity}
@@ -1927,22 +2071,22 @@ export default function InventarioBodegaPage() {
                         }}
                         className="flex flex-col gap-2 sm:flex-row sm:items-end"
                       >
-                        <InventorySelect
-                          items={productSelectItems}
-                          value={item.product}
-                          onValueChange={(value) =>
-                            updateListItem(
-                              cargaItems,
-                              setCargaItems,
-                              item.id,
-                              "product",
-                              value,
-                            )
-                          }
-                          placeholder="Producto"
-                          size="sm"
-                          wrapperClassName="flex-1"
-                        />
+                        <div className="flex-1">
+                          <ProductCombobox
+                            options={productOptions}
+                            value={item.product}
+                            onChange={(value) =>
+                              updateListItem(
+                                cargaItems,
+                                setCargaItems,
+                                item.id,
+                                "product",
+                                value,
+                              )
+                            }
+                            placeholder="Producto"
+                          />
+                        </div>
                         <div className="sm:w-36">
                           <QuantityStepper
                             value={item.quantity}
@@ -2026,7 +2170,7 @@ export default function InventarioBodegaPage() {
         </DialogContent>
       </Dialog>
       <Dialog open={isManualOpen} onOpenChange={setIsManualOpen}>
-        <DialogContent className="w-[92vw] max-w-2xl max-h-[90vh] overflow-y-auto overflow-x-hidden">
+        <DialogContent className="w-[92vw] max-w-2xl max-h-[90vh] overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable]">
           <DialogHeader>
             <DialogTitle>Registrar ajuste manual</DialogTitle>
           </DialogHeader>
@@ -2203,18 +2347,25 @@ export default function InventarioBodegaPage() {
                         className="flex flex-col gap-2 sm:flex-row sm:items-end"
                       >
                         <div className="flex-1 space-y-2">
-                          <InventorySelect
-                            items={manualProductSelectItems}
+                          <ProductCombobox
+                            options={[
+                              ...productOptions,
+                              "Manual / Personalizado",
+                            ]}
                             value={
                               item.isCustom
-                                ? CUSTOM_PRODUCT_VALUE
+                                ? "Manual / Personalizado"
                                 : item.product
                             }
-                            onValueChange={(value) =>
-                              updateManualItemProduct(item.id, value)
+                            onChange={(value) =>
+                              updateManualItemProduct(
+                                item.id,
+                                value === "Manual / Personalizado"
+                                  ? CUSTOM_PRODUCT_VALUE
+                                  : value,
+                              )
                             }
                             placeholder="Producto"
-                            size="sm"
                           />
                           {item.isCustom ? (
                             <input
