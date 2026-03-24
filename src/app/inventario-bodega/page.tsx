@@ -1282,7 +1282,7 @@ export default function InventarioBodegaPage() {
 
   const actionTapSpring = {
     type: "spring" as const,
-    duration: 0.5,
+    duration: 0.2,
     bounce: 0,
   };
   const dialogBodySpring = {
@@ -1326,7 +1326,7 @@ export default function InventarioBodegaPage() {
                 <button
                   type="button"
                   onClick={handleRefresh}
-                  className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200/80 text-sm font-medium text-slate-700 hover:bg-slate-50 active:bg-slate-100 transition-colors duration-150"
+                  className="inline-flex items-center justify-center gap-2 px-3 py-2 min-h-[40px] min-w-[40px] rounded-lg border border-slate-200/80 text-sm font-medium text-slate-700 hover:bg-slate-50 active:bg-slate-100 transition-colors duration-150"
                 >
                   <span className="relative flex h-4 w-4">
                     <AnimatePresence mode="wait" initial={false}>
@@ -1337,7 +1337,7 @@ export default function InventarioBodegaPage() {
                           initial={{ opacity: 0, scale: 0.25, filter: "blur(4px)" }}
                           animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
                           exit={{ opacity: 0, scale: 0.25, filter: "blur(4px)" }}
-                          transition={{ type: "spring", duration: 0.3, bounce: 0 }}
+                          transition={{ type: "spring", duration: 0.15, bounce: 0 }}
                         >
                           <Check className="h-4 w-4 text-emerald-500" />
                         </m.span>
@@ -1348,27 +1348,13 @@ export default function InventarioBodegaPage() {
                           initial={{ opacity: 0, scale: 0.25, filter: "blur(4px)" }}
                           animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
                           exit={{ opacity: 0, scale: 0.25, filter: "blur(4px)" }}
-                          transition={{ type: "spring", duration: 0.3, bounce: 0 }}
+                          transition={{ type: "spring", duration: 0.15, bounce: 0 }}
                         >
                           <RefreshCcw className={`h-4 w-4 transition-transform${isLoading ? " animate-spin" : ""}`} />
                         </m.span>
                       )}
                     </AnimatePresence>
                   </span>
-                </button>
-              </m.div>
-              <m.div whileTap={{ scale: 0.96 }} transition={actionTapSpring}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setNotice(null);
-                    setError(null);
-                    setIsProductionOpen(true);
-                  }}
-                  className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 text-white text-sm font-medium shadow-sm shadow-slate-900/20 hover:bg-slate-800 hover:shadow-md hover:shadow-slate-900/25 transition-all duration-150"
-                >
-                  <PackagePlus className="h-4 w-4" />
-                  Producción
                 </button>
               </m.div>
               {/* Salida a Carro button — hidden temporarily
@@ -1401,6 +1387,20 @@ export default function InventarioBodegaPage() {
                   Movimiento Manual
                 </button>
               </m.div>
+              <m.div whileTap={{ scale: 0.96 }} transition={actionTapSpring}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNotice(null);
+                    setError(null);
+                    setIsProductionOpen(true);
+                  }}
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-900 text-white text-sm font-medium shadow-sm shadow-slate-900/20 hover:bg-slate-800 hover:shadow-md hover:shadow-slate-900/25 transition-[color,background-color,box-shadow] duration-150"
+                >
+                  <PackagePlus className="h-4 w-4" />
+                  Producción
+                </button>
+              </m.div>
             </div>
           </div>
 
@@ -1431,16 +1431,16 @@ export default function InventarioBodegaPage() {
                 />
               </div>
             </div>
-            <div className="space-y-3">
+            <div className="flex gap-6">
               <div className="rounded-lg py-3">
                 <p className="text-xs text-slate-500">Entradas semana</p>
-                <p className="text-2xl font-semibold text-slate-900">
+                <p className="text-2xl font-semibold text-slate-900 tabular-nums">
                   {weekTotals.entradas}
                 </p>
               </div>
               <div className="rounded-lg py-3">
                 <p className="text-xs text-slate-500">Salidas semana</p>
-                <p className="text-2xl font-semibold text-slate-900">
+                <p className="text-2xl font-semibold text-slate-900 tabular-nums">
                   {weekTotals.salidas}
                 </p>
               </div>
@@ -1490,7 +1490,7 @@ export default function InventarioBodegaPage() {
 
         <section className="grid grid-cols-1 gap-4">
           <div className="rounded-2xl border border-slate-200 p-4 shadow-sm">
-            <h3 className="text-sm font-semibold text-slate-900 mb-3">
+            <h3 className="text-sm font-semibold text-slate-900 [text-wrap:balance] mb-3">
               Stock actual
             </h3>
             <div className="overflow-x-auto">
@@ -1510,7 +1510,7 @@ export default function InventarioBodegaPage() {
                       <td className="py-2 pr-3">{row.product}</td>
                       <td
                         className={cn(
-                          "py-2 font-medium",
+                          "py-2 font-medium tabular-nums",
                           row.stock < 0 ? "text-red-600" : "text-slate-800",
                         )}
                       >
@@ -1535,7 +1535,7 @@ export default function InventarioBodegaPage() {
 
           <div className="rounded-2xl border border-slate-200 p-4 shadow-sm">
             <div className="mb-3">
-              <h3 className="text-sm font-semibold text-slate-900">
+              <h3 className="text-sm font-semibold text-slate-900 [text-wrap:balance]">
                 Historial de movimientos
               </h3>
               <p className="text-xs text-slate-500">
@@ -1986,25 +1986,29 @@ export default function InventarioBodegaPage() {
                   />
                 </div>
                 <div className="flex justify-end gap-2">
-                  <button
+                  <m.button
                     type="button"
                     onClick={() => setIsProductionOpen(false)}
+                    whileTap={{ scale: 0.96 }}
+                    transition={actionTapSpring}
                     className="px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-700"
                   >
                     Cancelar
-                  </button>
-                  <button
+                  </m.button>
+                  <m.button
                     type="button"
                     onClick={async () => {
                       const ok = await handleProductionSubmit();
                       if (ok) setIsProductionOpen(false);
                     }}
                     disabled={isSaving}
+                    whileTap={{ scale: 0.96 }}
+                    transition={actionTapSpring}
                     className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-slate-900 text-white text-sm disabled:opacity-60"
                   >
                     <Save className="h-4 w-4" />
                     Guardar producción
-                  </button>
+                  </m.button>
                 </div>
               </m.div>
             ) : null}
@@ -2144,25 +2148,29 @@ export default function InventarioBodegaPage() {
                   />
                 </div>
                 <div className="flex justify-end gap-2">
-                  <button
+                  <m.button
                     type="button"
                     onClick={() => setIsCargaOpen(false)}
+                    whileTap={{ scale: 0.96 }}
+                    transition={actionTapSpring}
                     className="px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-700"
                   >
                     Cancelar
-                  </button>
-                  <button
+                  </m.button>
+                  <m.button
                     type="button"
                     onClick={async () => {
                       const ok = await handleCargaSubmit();
                       if (ok) setIsCargaOpen(false);
                     }}
                     disabled={isSaving}
+                    whileTap={{ scale: 0.96 }}
+                    transition={actionTapSpring}
                     className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-slate-900 text-white text-sm disabled:opacity-60"
                   >
                     <Save className="h-4 w-4" />
                     Registrar salida
-                  </button>
+                  </m.button>
                 </div>
               </m.div>
             ) : null}
@@ -2450,25 +2458,29 @@ export default function InventarioBodegaPage() {
                   className="flex justify-end gap-2"
                   transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
                 >
-                  <button
+                  <m.button
                     type="button"
                     onClick={() => setIsManualOpen(false)}
+                    whileTap={{ scale: 0.96 }}
+                    transition={actionTapSpring}
                     className="px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-700"
                   >
                     Cancelar
-                  </button>
-                  <button
+                  </m.button>
+                  <m.button
                     type="button"
                     onClick={async () => {
                       const ok = await handleManualSubmit();
                       if (ok) setIsManualOpen(false);
                     }}
                     disabled={isSaving}
+                    whileTap={{ scale: 0.96 }}
+                    transition={actionTapSpring}
                     className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-slate-900 text-white text-sm disabled:opacity-60"
                   >
                     <Save className="h-4 w-4" />
                     Guardar movimiento
-                  </button>
+                  </m.button>
                 </m.div>
               </m.div>
             ) : null}
@@ -2634,21 +2646,25 @@ export default function InventarioBodegaPage() {
                   </p>
                 ) : null}
                 <div className="flex justify-end gap-2">
-                  <button
+                  <m.button
                     type="button"
                     onClick={() => setIsEditOpen(false)}
+                    whileTap={{ scale: 0.96 }}
+                    transition={actionTapSpring}
                     className="px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-700"
                   >
                     Cancelar
-                  </button>
-                  <button
+                  </m.button>
+                  <m.button
                     type="button"
                     onClick={handleEditSubmit}
                     disabled={isSaving}
+                    whileTap={{ scale: 0.96 }}
+                    transition={actionTapSpring}
                     className="px-3 py-2 rounded-lg bg-slate-900 text-white text-sm disabled:opacity-60"
                   >
                     Guardar cambios
-                  </button>
+                  </m.button>
                 </div>
               </m.div>
             ) : null}
