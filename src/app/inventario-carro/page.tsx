@@ -811,6 +811,7 @@ export default function InventarioCarroPage() {
 
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
   const [addForm, setAddForm] = useState<AddLedgerFormState>({
     date: getDefaultDate(),
     movementType: "Carga",
@@ -1117,6 +1118,7 @@ export default function InventarioCarroPage() {
 
   const handleEditOpen = (row: LedgerRow) => {
     setNotice(null);
+    setEditError(null);
     setEditForm({
       rowNumber: row.rowNumber,
       id: row.id,
@@ -1214,7 +1216,9 @@ export default function InventarioCarroPage() {
       setEditForm(null);
       setNotice("Carga actualizada");
     } catch (err) {
-      setNotice(err instanceof Error ? err.message : "Error al actualizar");
+      const errMsg = err instanceof Error ? err.message : "Error al actualizar";
+      setNotice(errMsg);
+      setEditError(errMsg);
     } finally {
       setIsSaving(false);
     }
@@ -2888,6 +2892,11 @@ export default function InventarioCarroPage() {
                 <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
                   Esta carga está ligada a una salida de bodega. El tipo queda
                   bloqueado y la edición se sincroniza en ambos lados.
+                </p>
+              )}
+              {editError && (
+                <p className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                  {editError}
                 </p>
               )}
               <div className="flex justify-end gap-2">

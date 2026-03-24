@@ -34,7 +34,7 @@ jest.mock("next/server", () => ({
   },
 }));
 
-import { GET } from "@/app/api/inventario-carros/route";
+import { GET, PATCH } from "@/app/api/inventario-carros/route";
 
 type MockSheets = sheets_v4.Sheets;
 
@@ -98,6 +98,142 @@ const createMockSheets = () =>
     },
   }) as unknown as MockSheets;
 
+const createPatchMockSheets = () => {
+  const update = jest.fn().mockResolvedValue({});
+  const get = jest.fn(
+    async ({ range, fields }: { range?: string; fields?: string }) => {
+      if (fields === "sheets.properties.title") {
+        return {
+          data: {
+            sheets: [
+              { properties: { title: "InventarioCarros" } },
+              { properties: { title: "Bodega" } },
+            ],
+          },
+        };
+      }
+
+      if (range === "InventarioCarros!A1:O1") {
+        return {
+          data: {
+            values: [
+              [
+                "id",
+                "date",
+                "periodCode",
+                "weekCode",
+                "sellerEmail",
+                "product",
+                "quantity",
+                "movementType",
+                "notes",
+                "createdBy",
+                "createdAt",
+                "updatedAt",
+                "linkedEntryId",
+                "linkStatus",
+                "overrideReason",
+              ],
+            ],
+          },
+        };
+      }
+
+      if (range === "Bodega!A1:Q1") {
+        return {
+          data: {
+            values: [
+              [
+                "id",
+                "date",
+                "periodCode",
+                "weekCode",
+                "product",
+                "quantity",
+                "direction",
+                "movementType",
+                "sellerEmail",
+                "notes",
+                "linkedEntryId",
+                "linkStatus",
+                "overrideReason",
+                "createdBy",
+                "createdAt",
+                "updatedAt",
+                "isNonStock",
+              ],
+            ],
+          },
+        };
+      }
+
+      if (range === "Bodega!A:Q") {
+        return {
+          data: {
+            values: [
+              [
+                "id",
+                "date",
+                "periodCode",
+                "weekCode",
+                "product",
+                "quantity",
+                "direction",
+                "movementType",
+                "sellerEmail",
+                "notes",
+                "linkedEntryId",
+                "linkStatus",
+                "overrideReason",
+                "createdBy",
+                "createdAt",
+                "updatedAt",
+                "isNonStock",
+              ],
+              [
+                "bodega-1",
+                "2026-03-21",
+                "P1",
+                "P1S1",
+                "Producto",
+                "12",
+                "Salida",
+                "SalidaCarro",
+                "vendor@example.com",
+                "Notas antiguas",
+                "car-1",
+                "linked",
+                "",
+                "admin@example.com",
+                "2026-03-21T09:00:00.000Z",
+                "2026-03-21T10:00:00.000Z",
+                "false",
+              ],
+            ],
+          },
+        };
+      }
+
+      throw new Error(`Unexpected range: ${range}`);
+    },
+  );
+
+  return {
+    sheets: ({
+      spreadsheets: {
+        get,
+        batchUpdate: jest.fn(),
+        values: {
+          get,
+          update,
+          append: jest.fn(),
+        },
+      },
+    }) as unknown as MockSheets,
+    update,
+  };
+};
+
 describe("inventario-carros route", () => {
   beforeEach(() => {
     googleSheetsMock.mockReset();
@@ -128,5 +264,41 @@ describe("inventario-carros route", () => {
       linkStatus: "linked",
       linkedEntryId: "linked-1",
     });
+  });
+
+  it("updates the linked bodega counterpart across the full Q column range", async () => {
+    const { sheets, update } = createPatchMockSheets();
+    googleSheetsMock.mockReturnValue(sheets);
+
+    const response = await PATCH({
+      json: async () => ({
+        rowNumber: 5,
+        entry: {
+          id: "car-1",
+          date: "2026-03-24",
+          sellerEmail: "vendor@example.com",
+          product: "Producto Editado",
+          quantity: 7,
+          movementType: "Carga",
+          notes: "Notas nuevas",
+          createdBy: "admin@example.com",
+          createdAt: "2026-03-21T09:00:00.000Z",
+          linkedEntryId: "bodega-1",
+          linkStatus: "linked",
+          overrideReason: "",
+        },
+      }),
+    } as Request);
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({ success: true });
+
+    const bodegaUpdateCall = update.mock.calls.find(
+      ([request]) => request.range === "Bodega!A2:Q2",
+    );
+
+    expect(bodegaUpdateCall).toBeDefined();
+    expect(bodegaUpdateCall?.[0].requestBody.values[0]).toHaveLength(17);
   });
 });

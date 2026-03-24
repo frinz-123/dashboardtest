@@ -109,7 +109,7 @@ const syncBodegaCounterpart = async (
 
   await sheets.spreadsheets.values.update({
     spreadsheetId: SPREADSHEET_ID,
-    range: `${INVENTARIO_BODEGA_SHEET_NAME}!A${counterpart.rowNumber}:P${counterpart.rowNumber}`,
+    range: `${INVENTARIO_BODEGA_SHEET_NAME}!A${counterpart.rowNumber}:${BODEGA_LEDGER_LAST_COLUMN}${counterpart.rowNumber}`,
     valueInputOption: "RAW",
     requestBody: {
       values: [values],
@@ -128,7 +128,7 @@ const clearBodegaCounterpart = async (
 
   await sheets.spreadsheets.values.update({
     spreadsheetId: SPREADSHEET_ID,
-    range: `${INVENTARIO_BODEGA_SHEET_NAME}!A${counterpart.rowNumber}:P${counterpart.rowNumber}`,
+    range: `${INVENTARIO_BODEGA_SHEET_NAME}!A${counterpart.rowNumber}:${BODEGA_LEDGER_LAST_COLUMN}${counterpart.rowNumber}`,
     valueInputOption: "RAW",
     requestBody: {
       values: [clearRowValues(BODEGA_LEDGER_HEADER_ROW.length)],
@@ -347,8 +347,18 @@ export async function PATCH(req: Request) {
       },
     });
 
-    await syncBodegaCounterpart(sheets, normalizedEntry, authCheck.email);
-    const warnings = await getBodegaWarnings(sheets);
+    try {
+      await syncBodegaCounterpart(sheets, normalizedEntry, authCheck.email);
+    } catch (syncError) {
+      console.warn("Warning: could not sync bodega counterpart:", syncError);
+    }
+
+    let warnings: unknown[] = [];
+    try {
+      warnings = await getBodegaWarnings(sheets);
+    } catch (warnError) {
+      console.warn("Warning: could not fetch bodega warnings:", warnError);
+    }
 
     return NextResponse.json({ success: true, warnings });
   } catch (error) {
