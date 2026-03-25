@@ -2,7 +2,6 @@
 
 import { Calligraph } from "calligraph";
 import {
-  Bomb,
   Calendar,
   Check,
   ChevronDown,
@@ -14,7 +13,6 @@ import {
   PackagePlus,
   Pencil,
   Plus,
-  RefreshCcw,
   Settings2,
   Truck,
 } from "lucide-react";
@@ -24,6 +22,7 @@ import { useSession } from "next-auth/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import AppHeader from "@/components/AppHeader";
+import RefreshIcon from "@/components/RefreshIcon";
 import {
   Select,
   SelectItem,
@@ -1224,35 +1223,6 @@ export default function InventarioCarroPage() {
     }
   };
 
-  const handleSeed = async () => {
-    if (
-      !window.confirm("Esto cargara datos demo en InventarioCarros. Continuar?")
-    ) {
-      return;
-    }
-    setIsSaving(true);
-    setNotice(null);
-    setWarnings([]);
-    try {
-      const response = await fetch("/api/inventario-carros", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "seed" }),
-      });
-      const payload = await response.json();
-      if (!response.ok) {
-        throw new Error(payload?.error || "No se pudo cargar seed");
-      }
-      setWarnings(parseWarnings(payload));
-      await fetchLedger();
-      setNotice("Seed listo");
-    } catch (err) {
-      setNotice(err instanceof Error ? err.message : "Error al cargar seed");
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
   const _handleNukeLegacy = async () => {
     if (!selectedSeller) return;
 
@@ -1777,7 +1747,7 @@ export default function InventarioCarroPage() {
                 className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-slate-200 text-slate-700 transition-colors [@media(hover:hover)]:hover:bg-slate-100"
                 aria-label="Actualizar"
               >
-                <RefreshCcw className="h-4 w-4" />
+                <RefreshIcon size={20} />
               </button>
               <button
                 type="button"
@@ -1788,29 +1758,31 @@ export default function InventarioCarroPage() {
                   isLedgerLoading ||
                   isSalesLoading
                 }
-                className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-red-200 text-red-700 transition-colors [@media(hover:hover)]:hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex h-11 w-11 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition-colors [@media(hover:hover)]:hover:border-red-200 [@media(hover:hover)]:hover:bg-red-50 [@media(hover:hover)]:hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-50"
                 aria-label="Resetear saldo del vendedor"
                 title="Resetear saldo del vendedor"
               >
-                <Bomb className="h-4 w-4" />
+                <svg
+                  aria-hidden="true"
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="20"
+                  height="20"
+                  fill="currentColor"
+                  viewBox="0 0 256 256"
+                >
+                  <path d="M248,32h0a8,8,0,0,0-8,8,52.66,52.66,0,0,1-3.57,17.39C232.38,67.22,225.7,72,216,72c-11.06,0-18.85-9.76-29.49-24.65C176,32.66,164.12,16,144,16c-16.39,0-29,8.89-35.43,25a66.07,66.07,0,0,0-3.9,15H88A16,16,0,0,0,72,72v9.59A88,88,0,0,0,112,248h1.59A88,88,0,0,0,152,81.59V72a16,16,0,0,0-16-16H120.88a46.76,46.76,0,0,1,2.69-9.37C127.62,36.78,134.3,32,144,32c11.06,0,18.85,9.76,29.49,24.65C184,71.34,195.88,88,216,88c16.39,0,29-8.89,35.43-25A68.69,68.69,0,0,0,256,40,8,8,0,0,0,248,32ZM111.89,209.32A8,8,0,0,1,104,216a8.52,8.52,0,0,1-1.33-.11,57.5,57.5,0,0,1-46.57-46.57,8,8,0,1,1,15.78-2.64,41.29,41.29,0,0,0,33.43,33.43A8,8,0,0,1,111.89,209.32Z"></path>
+                </svg>
               </button>
-              <button
+              <m.button
                 type="button"
                 onClick={handleOpenAdd}
+                whileTap={{ scale: 0.96 }}
+                transition={{ type: "spring", duration: 0.3, bounce: 0 }}
                 className="inline-flex h-11 items-center gap-2 px-4 rounded-lg bg-slate-900 text-white text-sm transition-colors [@media(hover:hover)]:hover:bg-slate-800"
               >
                 <PackagePlus className="h-4 w-4" />
                 Agregar carga
-              </button>
-              {ledgerRows.length === 0 && (
-                <button
-                  type="button"
-                  onClick={handleSeed}
-                  className="inline-flex h-11 items-center gap-2 px-3 rounded-lg border border-slate-200 text-sm text-slate-700 transition-colors [@media(hover:hover)]:hover:bg-slate-100"
-                >
-                  Seed demo
-                </button>
-              )}
+              </m.button>
             </div>
           </div>
 

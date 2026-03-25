@@ -8,7 +8,6 @@ import {
   PackagePlus,
   Plus,
   Printer,
-  RefreshCcw,
   Save,
   Settings2,
   Trash2,
@@ -28,6 +27,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import AppHeader from "@/components/AppHeader";
+import RefreshIcon from "@/components/RefreshIcon";
 import {
   Select,
   SelectItem,
@@ -369,7 +369,10 @@ const ProductCombobox = ({
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(e.target as Node)
+      ) {
         setIsOpen(false);
         setQuery("");
       }
@@ -392,7 +395,11 @@ const ProductCombobox = ({
           ref={inputRef}
           type="text"
           value={query || (isOpen ? "" : value)}
-          onChange={(e) => { setQuery(e.target.value); setIsOpen(true); setHighlightedIndex(0); }}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setIsOpen(true);
+            setHighlightedIndex(0);
+          }}
           onFocus={() => setIsOpen(true)}
           onKeyDown={handleKeyDown}
           placeholder={value || placeholder}
@@ -405,7 +412,10 @@ const ProductCombobox = ({
         <button
           type="button"
           tabIndex={-1}
-          onClick={() => { setIsOpen(!isOpen); inputRef.current?.focus(); }}
+          onClick={() => {
+            setIsOpen(!isOpen);
+            inputRef.current?.focus();
+          }}
           className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400"
         >
           <ChevronDown className="h-4 w-4" />
@@ -422,7 +432,10 @@ const ProductCombobox = ({
             filteredOptions.map((option, index) => (
               <li
                 key={option}
-                onMouseDown={(e) => { e.preventDefault(); handleSelect(option); }}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  handleSelect(option);
+                }}
                 onMouseEnter={() => setHighlightedIndex(index)}
                 className={cn(
                   "flex cursor-pointer items-center gap-2 px-3 py-2 text-sm",
@@ -430,7 +443,12 @@ const ProductCombobox = ({
                   value === option && "font-medium text-slate-900",
                 )}
               >
-                <Check className={cn("h-4 w-4 shrink-0", value === option ? "opacity-100" : "opacity-0")} />
+                <Check
+                  className={cn(
+                    "h-4 w-4 shrink-0",
+                    value === option ? "opacity-100" : "opacity-0",
+                  )}
+                />
                 {option}
               </li>
             ))
@@ -441,7 +459,8 @@ const ProductCombobox = ({
   );
 };
 
-const getHistoryBatchKey = (row: BodegaLedgerRow) => {  if (!row.createdAt) return `single:${row.id}`;
+const getHistoryBatchKey = (row: BodegaLedgerRow) => {
+  if (!row.createdAt) return `single:${row.id}`;
 
   return [
     row.createdAt,
@@ -1326,18 +1345,34 @@ export default function InventarioBodegaPage() {
                 <button
                   type="button"
                   onClick={handleRefresh}
-                  className="inline-flex items-center justify-center gap-2 px-3 py-2 min-h-[40px] min-w-[40px] rounded-lg border border-slate-200/80 text-sm font-medium text-slate-700 hover:bg-slate-50 active:bg-slate-100 transition-colors duration-150"
+                  className="inline-flex items-center justify-center px-3 py-2 rounded-lg border border-slate-200/80 text-slate-700 hover:bg-slate-50 active:bg-slate-100 transition-colors duration-150"
                 >
-                  <span className="relative flex h-4 w-4">
+                  <span className="relative flex h-5 w-5">
                     <AnimatePresence mode="wait" initial={false}>
                       {isRefreshed ? (
                         <m.span
                           key="check"
                           className="absolute inset-0 flex items-center justify-center"
-                          initial={{ opacity: 0, scale: 0.25, filter: "blur(4px)" }}
-                          animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
-                          exit={{ opacity: 0, scale: 0.25, filter: "blur(4px)" }}
-                          transition={{ type: "spring", duration: 0.15, bounce: 0 }}
+                          initial={{
+                            opacity: 0,
+                            scale: 0.25,
+                            filter: "blur(4px)",
+                          }}
+                          animate={{
+                            opacity: 1,
+                            scale: 1,
+                            filter: "blur(0px)",
+                          }}
+                          exit={{
+                            opacity: 0,
+                            scale: 0.25,
+                            filter: "blur(4px)",
+                          }}
+                          transition={{
+                            type: "spring",
+                            duration: 0.15,
+                            bounce: 0,
+                          }}
                         >
                           <Check className="h-4 w-4 text-emerald-500" />
                         </m.span>
@@ -1345,12 +1380,31 @@ export default function InventarioBodegaPage() {
                         <m.span
                           key="refresh"
                           className="absolute inset-0 flex items-center justify-center"
-                          initial={{ opacity: 0, scale: 0.25, filter: "blur(4px)" }}
-                          animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
-                          exit={{ opacity: 0, scale: 0.25, filter: "blur(4px)" }}
-                          transition={{ type: "spring", duration: 0.15, bounce: 0 }}
+                          initial={{
+                            opacity: 0,
+                            scale: 0.25,
+                            filter: "blur(4px)",
+                          }}
+                          animate={{
+                            opacity: 1,
+                            scale: 1,
+                            filter: "blur(0px)",
+                          }}
+                          exit={{
+                            opacity: 0,
+                            scale: 0.25,
+                            filter: "blur(4px)",
+                          }}
+                          transition={{
+                            type: "spring",
+                            duration: 0.15,
+                            bounce: 0,
+                          }}
                         >
-                          <RefreshCcw className={`h-4 w-4 transition-transform${isLoading ? " animate-spin" : ""}`} />
+                          <RefreshIcon
+                            size={20}
+                            className={`transition-transform${isLoading ? " animate-spin" : ""}`}
+                          />
                         </m.span>
                       )}
                     </AnimatePresence>

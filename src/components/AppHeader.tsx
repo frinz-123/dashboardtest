@@ -2,6 +2,7 @@
 
 import type { LucideIcon } from "lucide-react";
 import { Menu } from "lucide-react";
+import { AnimatePresence, m } from "motion/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
@@ -38,6 +39,42 @@ const DEFAULT_NAV_ITEMS: NavItem[] = [
   { href: "/buzon", label: "Buzon" },
   { href: "/inspector-periodos", label: "Inspector Periodos" },
 ];
+
+// iOS-style ease for container entrance; standard cubic eases for items
+const EASE_IOS = [0.32, 0.72, 0, 1] as const;
+const EASE_OUT = [0, 0, 0.58, 1] as const;
+const EASE_IN = [0.42, 0, 1, 1] as const;
+
+const menuVariants = {
+  hidden: {
+    opacity: 0,
+    scale: 0.95,
+  },
+  show: {
+    opacity: 1,
+    scale: 1,
+    transition: {
+      duration: 0.15,
+      ease: EASE_IOS,
+      staggerChildren: 0.02,
+      delayChildren: 0.03,
+    },
+  },
+  exit: {
+    opacity: 0,
+    scale: 0.95,
+    transition: { duration: 0.1, ease: EASE_IN },
+  },
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 4 },
+  show: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.12, ease: EASE_OUT },
+  },
+};
 
 export default function AppHeader({
   title,
@@ -103,55 +140,78 @@ export default function AppHeader({
             </button>
 
             {isMenuOpen && (
-              <>
-                <button
-                  type="button"
-                  className="fixed inset-0 z-40 bg-transparent border-0 p-0 cursor-default"
-                  aria-label="Cerrar menu"
-                  onClick={() => setIsMenuOpen(false)}
-                />
-                <div className="absolute right-0 mt-2 w-52 rounded-xl bg-white shadow-lg shadow-slate-200/50 border border-slate-200/50 overflow-hidden header-menu-animate origin-top-right z-50">
+              <button
+                type="button"
+                className="fixed inset-0 z-40 bg-transparent border-0 p-0 cursor-default"
+                aria-label="Cerrar menu"
+                onClick={() => setIsMenuOpen(false)}
+              />
+            )}
+
+            <AnimatePresence>
+              {isMenuOpen && (
+                <m.div
+                  key="nav-menu"
+                  variants={menuVariants}
+                  initial="hidden"
+                  animate="show"
+                  exit="exit"
+                  style={{ transformOrigin: "top right" }}
+                  className="absolute right-0 mt-2 w-52 rounded-xl bg-white shadow-lg shadow-slate-200/50 border border-slate-200/50 overflow-hidden z-50"
+                >
                   <div className="py-2">
                     {visibleNavItems.map((item) => (
-                      <Link
-                        key={item.href}
-                        href={item.href}
-                        onClick={() => setIsMenuOpen(false)}
-                        onMouseEnter={
-                          item.href === "/form" ? prefetchFormRoute : undefined
-                        }
-                        onTouchStart={
-                          item.href === "/form" ? prefetchFormRoute : undefined
-                        }
-                        onFocus={
-                          item.href === "/form" ? prefetchFormRoute : undefined
-                        }
-                        className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
-                      >
-                        <span>{item.label}</span>
-                        {item.href === "/buzon" && showBuzonBadge ? (
-                          <span className="min-w-[1.25rem] h-5 px-1 rounded-full bg-red-500 text-white text-[10px] font-semibold flex items-center justify-center">
-                            {buzonBadge}
-                          </span>
-                        ) : null}
-                      </Link>
+                      <m.div key={item.href} variants={itemVariants}>
+                        <Link
+                          href={item.href}
+                          onClick={() => setIsMenuOpen(false)}
+                          onMouseEnter={
+                            item.href === "/form"
+                              ? prefetchFormRoute
+                              : undefined
+                          }
+                          onTouchStart={
+                            item.href === "/form"
+                              ? prefetchFormRoute
+                              : undefined
+                          }
+                          onFocus={
+                            item.href === "/form"
+                              ? prefetchFormRoute
+                              : undefined
+                          }
+                          className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                        >
+                          <span>{item.label}</span>
+                          {item.href === "/buzon" && showBuzonBadge ? (
+                            <span className="min-w-[1.25rem] h-5 px-1 rounded-full bg-red-500 text-white text-[10px] font-semibold flex items-center justify-center">
+                              {buzonBadge}
+                            </span>
+                          ) : null}
+                        </Link>
+                      </m.div>
                     ))}
                     {showSignOut && (
                       <>
-                        <div className="border-t border-slate-100 my-1" />
-                        <button
-                          type="button"
-                          onClick={() => signOut()}
-                          className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
-                        >
-                          Cerrar sesión
-                        </button>
+                        <m.div
+                          variants={itemVariants}
+                          className="border-t border-slate-100 my-1"
+                        />
+                        <m.div variants={itemVariants}>
+                          <button
+                            type="button"
+                            onClick={() => signOut()}
+                            className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                          >
+                            Cerrar sesión
+                          </button>
+                        </m.div>
                       </>
                     )}
                   </div>
-                </div>
-              </>
-            )}
+                </m.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
       </div>

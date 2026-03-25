@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 import ClientDataPrefetcher from "@/components/ClientDataPrefetcher";
@@ -10,7 +9,6 @@ import { MotionProvider } from "@/components/providers/MotionProvider";
 import QueryProvider from "@/components/providers/QueryProvider";
 import { ZoomPrevention } from "@/components/ZoomPrevention";
 
-const inter = Inter({ subsets: ["latin"] });
 const SHOULD_REGISTER_SW =
   process.env.NODE_ENV === "production" ||
   process.env.NEXT_PUBLIC_ENABLE_SW_DEV === "true";
@@ -36,8 +34,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={inter.className}>
+    <html lang="en">
       <head>
+        <link rel="preconnect" href="https://rsms.me/" />
+        <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
         {process.env.NODE_ENV === "development" && (
           <Script
             src="//unpkg.com/react-grab/dist/index.global.js"
