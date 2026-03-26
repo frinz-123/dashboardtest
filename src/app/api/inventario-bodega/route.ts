@@ -6,6 +6,7 @@ import { sheetsAuth } from "@/utils/googleAuth";
 import {
   BODEGA_LEDGER_HEADER_ROW,
   BODEGA_LEDGER_LAST_COLUMN,
+  type CarLedgerRow,
   type BodegaLedgerInput,
   CAR_LEDGER_HEADER_ROW,
   CAR_LEDGER_LAST_COLUMN,
@@ -14,8 +15,10 @@ import {
   ensureSheetExists,
   getNegativeStockWarnings,
   getSheetRows,
+  hasReciprocalLinkedEntry,
   INVENTARIO_BODEGA_SHEET_NAME,
   INVENTARIO_CARROS_SHEET_NAME,
+  InventoryLinkConflictError,
   type LinkStatus,
   parseBodegaLedgerRow,
   parseCarLedgerRow,
@@ -69,16 +72,39 @@ const getWarnings = async (sheets: ReturnType<typeof google.sheets>) => {
   return getNegativeStockWarnings(bodegaRows);
 };
 
+const STALE_ENTRY_ERROR =
+  "El movimiento cambió desde que se abrió. Recarga e intenta de nuevo.";
+
+const getLinkedCarCounterpart = async (
+  sheets: ReturnType<typeof google.sheets>,
+  sourceId: string,
+  linkedEntryId: string,
+) => {
+  const carRows = await getCarRows(sheets);
+  const counterpart = carRows.find((row) => row.id === linkedEntryId);
+
+  if (!counterpart) {
+    throw new InventoryLinkConflictError(
+      "El movimiento ligado en carro ya no existe. Recarga antes de continuar.",
+    );
+  }
+
+  if (!hasReciprocalLinkedEntry(counterpart, sourceId)) {
+    throw new InventoryLinkConflictError(
+      "El vínculo con el inventario de carro ya cambió. Recarga antes de continuar.",
+    );
+  }
+
+  return counterpart;
+};
+
 const syncCarCounterpart = async (
   sheets: ReturnType<typeof google.sheets>,
   entry: BodegaLedgerInput,
   actorEmail: string,
+  counterpart: CarLedgerRow,
 ) => {
   if (entry.linkStatus !== "linked" || !entry.linkedEntryId) return;
-
-  const carRows = await getCarRows(sheets);
-  const counterpart = carRows.find((row) => row.id === entry.linkedEntryId);
-  if (!counterpart) return;
 
   const now = new Date().toISOString();
   const values = toCarLedgerValues(
@@ -113,13 +139,8 @@ const syncCarCounterpart = async (
 
 const clearCarCounterpart = async (
   sheets: ReturnType<typeof google.sheets>,
-  linkedEntryId: string,
+  counterpart: CarLedgerRow,
 ) => {
-  if (!linkedEntryId) return;
-  const carRows = await getCarRows(sheets);
-  const counterpart = carRows.find((row) => row.id === linkedEntryId);
-  if (!counterpart) return;
-
   await sheets.spreadsheets.values.update({
     spreadsheetId: SPREADSHEET_ID,
     range: `${INVENTARIO_CARROS_SHEET_NAME}!A${counterpart.rowNumber}:O${counterpart.rowNumber}`,
@@ -306,6 +327,15 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: "Entry not found" }, { status: 404 });
     }
 
+    const submittedUpdatedAt = (entry.updatedAt || "").trim();
+    if (
+      submittedUpdatedAt &&
+      existing.updatedAt &&
+      submittedUpdatedAt !== existing.updatedAt
+    ) {
+      return NextResponse.json({ error: STALE_ENTRY_ERROR }, { status: 409 });
+    }
+
     const linkStatus = (entry.linkStatus || existing.linkStatus || "") as
       | LinkStatus
       | "";
@@ -333,6 +363,14 @@ export async function PATCH(req: Request) {
       isNonStock: entry.isNonStock ?? existing.isNonStock,
     };
 
+    const counterpart = isLinked
+      ? await getLinkedCarCounterpart(
+          sheets,
+          normalizedEntry.id || existing.id,
+          linkedEntryId,
+        )
+      : null;
+
     const values = toBodegaLedgerValues(normalizedEntry, authCheck.email, now);
     await sheets.spreadsheets.values.update({
       spreadsheetId: SPREADSHEET_ID,
@@ -341,11 +379,21 @@ export async function PATCH(req: Request) {
       requestBody: { values: [values] },
     });
 
-    await syncCarCounterpart(sheets, normalizedEntry, authCheck.email);
+    if (counterpart) {
+      await syncCarCounterpart(
+        sheets,
+        normalizedEntry,
+        authCheck.email,
+        counterpart,
+      );
+    }
     const warnings = await getWarnings(sheets);
 
     return NextResponse.json({ success: true, warnings });
   } catch (error) {
+    if (error instanceof InventoryLinkConflictError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     console.error("Error updating inventario bodega:", error);
     return NextResponse.json(
       {
@@ -402,6 +450,15 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: "Entry not found" }, { status: 404 });
     }
 
+    const counterpart =
+      targetRow.linkStatus === "linked" && targetRow.linkedEntryId
+        ? await getLinkedCarCounterpart(
+            sheets,
+            targetRow.id,
+            targetRow.linkedEntryId,
+          )
+        : null;
+
     await sheets.spreadsheets.values.update({
       spreadsheetId: SPREADSHEET_ID,
       range: `${INVENTARIO_BODEGA_SHEET_NAME}!A${targetRow.rowNumber}:Q${targetRow.rowNumber}`,
@@ -411,13 +468,16 @@ export async function DELETE(req: Request) {
       },
     });
 
-    if (targetRow.linkStatus === "linked" && targetRow.linkedEntryId) {
-      await clearCarCounterpart(sheets, targetRow.linkedEntryId);
+    if (counterpart) {
+      await clearCarCounterpart(sheets, counterpart);
     }
 
     const warnings = await getWarnings(sheets);
     return NextResponse.json({ success: true, warnings });
   } catch (error) {
+    if (error instanceof InventoryLinkConflictError) {
+      return NextResponse.json({ error: error.message }, { status: 409 });
+    }
     console.error("Error deleting inventario bodega row:", error);
     return NextResponse.json(
       {

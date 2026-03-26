@@ -368,25 +368,39 @@ export default function NavegarPage() {
   );
 
   // Utility: check if client is 'sin visitar'
-  const isSinVisitar = useCallback((name: string) => {
-    const fecha = getLastVisitDate(name);
-    if (!fecha || fecha === DEFAULT_VISIT_DATE) return true;
-    const [month, day, year] = fecha.split("/").map(Number);
-    if (!day || !month || !year) return false;
-    const lastDate = new Date(year, month - 1, day);
-    const now = new Date();
-    // Set both dates to midnight to ignore time portion
-    lastDate.setHours(0, 0, 0, 0);
-    now.setHours(0, 0, 0, 0);
-    const diffDays =
-      (now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24);
-    return diffDays > DAYS_WITHOUT_VISIT;
-  }, [getLastVisitDate]);
+  const isSinVisitar = useCallback(
+    (name: string) => {
+      const fecha = getLastVisitDate(name);
+      if (!fecha || fecha === DEFAULT_VISIT_DATE) return true;
+      const [month, day, year] = fecha.split("/").map(Number);
+      if (!day || !month || !year) return false;
+      const lastDate = new Date(year, month - 1, day);
+      const now = new Date();
+      // Set both dates to midnight to ignore time portion
+      lastDate.setHours(0, 0, 0, 0);
+      now.setHours(0, 0, 0, 0);
+      const diffDays =
+        (now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24);
+      return diffDays > DAYS_WITHOUT_VISIT;
+    },
+    [getLastVisitDate],
+  );
 
-  // Fetch all client names on load
+  // Refresh client locations when navigation becomes active again so
+  // drawing filters stay in sync with the latest sheet coordinates.
   useEffect(() => {
-    const fetchClientNames = async () => {
+    let isActive = true;
+
+    const fetchClientNames = async (showLoading: boolean) => {
+      if (showLoading) {
+        setIsLoading(true);
+      }
+
       try {
+        if (!spreadsheetId || !sheetName || !googleApiKey) {
+          throw new Error("Missing Sheets configuration");
+        }
+
         const response = await fetch(
           `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:C?key=${googleApiKey}`,
         );
@@ -412,19 +426,44 @@ export default function NavegarPage() {
           .filter(
             (name: string) => name && !name.includes("**ARCHIVADO NO USAR**"),
           );
+        if (!isActive) return;
         // Double-check deduplication and clean up the client names
         const cleanNames = Array.from(new Set(names.filter(Boolean)));
         setClientNames(cleanNames as string[]);
         setClientLocations(clients);
       } catch (_error) {
-        // TODO: handle error UI
-        setClientNames([]);
-        setClientLocations({});
+        if (!isActive) return;
+
+        if (showLoading) {
+          setClientNames([]);
+          setClientLocations({});
+        }
       } finally {
-        setIsLoading(false);
+        if (showLoading && isActive) {
+          setIsLoading(false);
+        }
       }
     };
-    fetchClientNames();
+
+    const refreshClientNames = () => {
+      void fetchClientNames(false);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        refreshClientNames();
+      }
+    };
+
+    void fetchClientNames(true);
+    window.addEventListener("focus", refreshClientNames);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      isActive = false;
+      window.removeEventListener("focus", refreshClientNames);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, []);
 
   // Update selectedClientCode from cached allClientCodes (avoids redundant API call)
@@ -692,7 +731,10 @@ export default function NavegarPage() {
         const lastVisit = client.lastVisitDate || null;
         const dibujoLabel = selectedDrawings
           .filter((drawing) =>
-            isPointInsideFeature([location.lng, location.lat], drawing.geometry),
+            isPointInsideFeature(
+              [location.lng, location.lat],
+              drawing.geometry,
+            ),
           )
           .map((drawing) => drawing.nombre)
           .join(", ");
@@ -1728,7 +1770,8 @@ export default function NavegarPage() {
                 <div className="mt-3 rounded-lg border border-gray-100 bg-gray-50 p-2">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-xs text-gray-500">
-                      Dibujos filtrados: {drawingFilterExportRows.length} cliente
+                      Dibujos filtrados: {drawingFilterExportRows.length}{" "}
+                      cliente
                       {drawingFilterExportRows.length !== 1 ? "s" : ""}
                     </span>
                     <div className="flex items-center gap-1.5">

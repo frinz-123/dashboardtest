@@ -135,6 +135,20 @@ export type BodegaLedgerInput = {
   isNonStock?: boolean;
 };
 
+type ReciprocalLinkedRow = {
+  id: string;
+  linkedEntryId: string;
+  linkStatus: LinkStatus | "";
+};
+
+export class InventoryLinkConflictError extends Error {}
+
+export const hasReciprocalLinkedEntry = <T extends ReciprocalLinkedRow>(
+  row: T | null | undefined,
+  sourceId: string,
+) =>
+  Boolean(row && row.linkStatus === "linked" && row.linkedEntryId === sourceId);
+
 export const normalizeEmail = (value: string | undefined) =>
   (value || "").toLowerCase().trim();
 

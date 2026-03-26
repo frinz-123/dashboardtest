@@ -16,7 +16,7 @@ import {
   Settings2,
   Truck,
 } from "lucide-react";
-import { AnimatePresence, m } from "motion/react";
+import { AnimatePresence, MotionConfig, m } from "motion/react";
 import { redirect } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -179,6 +179,7 @@ type LedgerFormState = {
   notes: string;
   createdBy?: string;
   createdAt?: string;
+  updatedAt?: string;
   linkedEntryId?: string;
   linkStatus?: "" | "linked" | "override";
   overrideReason?: string;
@@ -755,7 +756,7 @@ export default function InventarioCarroPage() {
   const { data: session, status } = useSession();
   const isAdmin = useMemo(
     () => isInventarioCarroAdmin(session?.user?.email),
-    [session],
+    [session?.user?.email],
   );
   const currentPeriodInfo = useMemo(() => getCurrentPeriodInfo(), []);
   const availablePeriods = useMemo(() => getAllPeriods().reverse(), []);
@@ -809,7 +810,9 @@ export default function InventarioCarroPage() {
   };
 
   const [isAddOpen, setIsAddOpen] = useState(false);
+  const [addSaveState, setAddSaveState] = useState<"idle" | "loading" | "success">("idle");
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const [editSaveState, setEditSaveState] = useState<"idle" | "loading" | "success">("idle");
   const [editError, setEditError] = useState<string | null>(null);
   const [addForm, setAddForm] = useState<AddLedgerFormState>({
     date: getDefaultDate(),
@@ -1044,6 +1047,7 @@ export default function InventarioCarroPage() {
       return;
     }
     setIsSaving(true);
+    setAddSaveState("loading");
     setNotice(null);
     setWarnings([]);
     try {
@@ -1094,6 +1098,11 @@ export default function InventarioCarroPage() {
       }
       setWarnings(parseWarnings(responsePayload));
       await fetchLedger();
+      setAddSaveState("success");
+      const successNotice = isCarga && addForm.linkToBodega
+        ? "Carga guardada y ligada con salida de bodega"
+        : "Carga guardada";
+      await new Promise((r) => setTimeout(r, 800));
       setIsAddOpen(false);
       setAddForm({
         date: getDefaultDate(),
@@ -1103,15 +1112,12 @@ export default function InventarioCarroPage() {
         overrideReason: "",
         items: [createEmptyItem()],
       });
-      setNotice(
-        isCarga && addForm.linkToBodega
-          ? "Carga guardada y ligada con salida de bodega"
-          : "Carga guardada",
-      );
+      setNotice(successNotice);
     } catch (err) {
       setNotice(err instanceof Error ? err.message : "Error al guardar");
     } finally {
       setIsSaving(false);
+      setAddSaveState("idle");
     }
   };
 
@@ -1129,6 +1135,7 @@ export default function InventarioCarroPage() {
       notes: row.notes,
       createdBy: row.createdBy,
       createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
       linkedEntryId: row.linkedEntryId,
       linkStatus: row.linkStatus,
       overrideReason: row.overrideReason,
@@ -1143,6 +1150,7 @@ export default function InventarioCarroPage() {
       return;
     }
     setIsSaving(true);
+    setEditSaveState("loading");
     setNotice(null);
     setWarnings([]);
     try {
@@ -1152,6 +1160,7 @@ export default function InventarioCarroPage() {
         );
         if (!shouldContinue) {
           setIsSaving(false);
+          setEditSaveState("idle");
           return;
         }
       }
@@ -1167,6 +1176,7 @@ export default function InventarioCarroPage() {
           notes: editForm.notes,
           createdBy: editForm.createdBy,
           createdAt: editForm.createdAt,
+          updatedAt: editForm.updatedAt,
           linkedEntryId: editForm.linkedEntryId,
           linkStatus: editForm.linkStatus,
           overrideReason: editForm.overrideReason,
@@ -1196,6 +1206,9 @@ export default function InventarioCarroPage() {
             }
           : null;
 
+      setEditSaveState("success");
+      await new Promise((r) => setTimeout(r, 800));
+
       if (linkedFallbackUpdate) {
         setLedgerRows((prev) =>
           applyLinkedLedgerEdit(prev, linkedFallbackUpdate),
@@ -1220,6 +1233,7 @@ export default function InventarioCarroPage() {
       setEditError(errMsg);
     } finally {
       setIsSaving(false);
+      setEditSaveState("idle");
     }
   };
 
@@ -2568,21 +2582,88 @@ export default function InventarioCarroPage() {
               className="flex justify-end gap-2"
               transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
             >
-              <button
+              <m.button
                 type="button"
                 onClick={() => setIsAddOpen(false)}
-                className="min-h-[44px] px-4 rounded-lg border border-slate-200 text-sm text-slate-700 transition-colors [@media(hover:hover)]:hover:bg-slate-50"
+                whileTap={{ scale: 0.98 }}
+                transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                className="min-h-[44px] px-4 rounded-lg border border-slate-200 text-sm text-slate-700 transition-colors duration-150 [@media(hover:hover)]:hover:bg-slate-50"
               >
                 Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={handleAddSubmit}
-                disabled={isSaving}
-                className="min-h-[44px] px-4 rounded-lg bg-slate-900 text-white text-sm transition-colors [@media(hover:hover)]:hover:bg-slate-800 disabled:opacity-60"
+              </m.button>
+              <MotionConfig
+                transition={{
+                  duration: 0.4,
+                  ease: [0.25, 1, 0.5, 1],
+                  width: {
+                    duration: 0.2,
+                    ease: [0.25, 1, 0.5, 1],
+                    delay: 0.01,
+                  },
+                }}
               >
-                Guardar
-              </button>
+                <m.button
+                  type="button"
+                  onClick={handleAddSubmit}
+                  disabled={addSaveState !== "idle"}
+                  whileTap={addSaveState === "idle" ? { scale: 0.97 } : undefined}
+                  data-state={addSaveState}
+                  className={cn(
+                    "min-h-[44px] overflow-hidden rounded-lg text-sm text-white",
+                    addSaveState === "success"
+                      ? "bg-emerald-600"
+                      : "bg-slate-900 [@media(hover:hover)]:hover:bg-slate-800",
+                    addSaveState === "loading" && "cursor-wait",
+                  )}
+                >
+                  <div className="flex items-center justify-center whitespace-nowrap px-4">
+                    <m.div
+                      initial={false}
+                      animate={{
+                        opacity: addSaveState === "success" ? 1 : 0,
+                        width: addSaveState === "success" ? 24 : 0,
+                        scale: addSaveState === "success" ? 1 : 0,
+                      }}
+                      className="flex shrink-0 items-center justify-center overflow-hidden"
+                    >
+                      <Check className="h-4 w-4" />
+                    </m.div>
+                    <m.div
+                      initial={false}
+                      animate={{
+                        opacity: addSaveState === "loading" ? 1 : 0,
+                        width: addSaveState === "loading" ? 24 : 0,
+                        scale: addSaveState === "loading" ? 1 : 0,
+                      }}
+                      className="flex shrink-0 items-center justify-center overflow-hidden"
+                    >
+                      <svg className="h-4 w-4 animate-spin" viewBox="0 0 18 18" fill="none">
+                        <circle cx="9" cy="9" r="7" stroke="currentColor" strokeOpacity="0.3" strokeWidth="2.5" />
+                        <path d="M16 9C16 5.13401 12.866 2 9 2" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+                      </svg>
+                    </m.div>
+                    {([  
+                      [true, "Guard"],
+                      [addSaveState === "idle", "ar"],
+                      [addSaveState === "loading", "ando\u2026"],
+                      [addSaveState === "success", "ado"],
+                      [addSaveState === "success", "!"],
+                    ] as const).map(([visible, text], i) => (
+                      <m.span
+                        key={`${i}-${text}`}
+                        initial={false}
+                        animate={{
+                          opacity: visible ? 1 : 0,
+                          width: visible ? "auto" : 0,
+                        }}
+                        style={{ display: "inline-flex", justifyContent: "flex-start", overflow: "hidden" }}
+                      >
+                        {text}
+                      </m.span>
+                    ))}
+                  </div>
+                </m.button>
+              </MotionConfig>
             </m.div>
           </div>
         </DialogContent>
@@ -2872,21 +2953,88 @@ export default function InventarioCarroPage() {
                 </p>
               )}
               <div className="flex justify-end gap-2">
-                <button
+                <m.button
                   type="button"
                   onClick={() => setIsEditOpen(false)}
+                  whileTap={{ scale: 0.98 }}
+                  transition={{ type: "spring", stiffness: 500, damping: 30 }}
                   className="min-h-[44px] px-4 rounded-lg border border-slate-200 text-sm text-slate-700 transition-colors [@media(hover:hover)]:hover:bg-slate-50"
                 >
                   Cancelar
-                </button>
-                <button
-                  type="button"
-                  onClick={handleEditSubmit}
-                  disabled={isSaving}
-                  className="min-h-[44px] px-4 rounded-lg bg-slate-900 text-white text-sm transition-colors [@media(hover:hover)]:hover:bg-slate-800 disabled:opacity-60"
+                </m.button>
+                <MotionConfig
+                  transition={{
+                    duration: 0.4,
+                    ease: [0.25, 1, 0.5, 1],
+                    width: {
+                      duration: 0.2,
+                      ease: [0.25, 1, 0.5, 1],
+                      delay: 0.01,
+                    },
+                  }}
                 >
-                  Guardar cambios
-                </button>
+                  <m.button
+                    type="button"
+                    onClick={handleEditSubmit}
+                    disabled={editSaveState !== "idle"}
+                    whileTap={editSaveState === "idle" ? { scale: 0.97 } : undefined}
+                    data-state={editSaveState}
+                    className={cn(
+                      "min-h-[44px] overflow-hidden rounded-lg text-sm text-white",
+                      editSaveState === "success"
+                        ? "bg-emerald-600"
+                        : "bg-slate-900 [@media(hover:hover)]:hover:bg-slate-800",
+                      editSaveState === "loading" && "cursor-wait",
+                    )}
+                  >
+                    <div className="flex items-center justify-center whitespace-nowrap px-4">
+                      <m.div
+                        initial={false}
+                        animate={{
+                          opacity: editSaveState === "success" ? 1 : 0,
+                          width: editSaveState === "success" ? 24 : 0,
+                          scale: editSaveState === "success" ? 1 : 0,
+                        }}
+                        className="flex shrink-0 items-center justify-center overflow-hidden"
+                      >
+                        <Check className="h-4 w-4" />
+                      </m.div>
+                      <m.div
+                        initial={false}
+                        animate={{
+                          opacity: editSaveState === "loading" ? 1 : 0,
+                          width: editSaveState === "loading" ? 24 : 0,
+                          scale: editSaveState === "loading" ? 1 : 0,
+                        }}
+                        className="flex shrink-0 items-center justify-center overflow-hidden"
+                      >
+                        <svg className="h-4 w-4 animate-spin" viewBox="0 0 18 18" fill="none">
+                          <circle cx="9" cy="9" r="7" stroke="currentColor" strokeOpacity="0.3" strokeWidth="2.5" />
+                          <path d="M16 9C16 5.13401 12.866 2 9 2" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+                        </svg>
+                      </m.div>
+                      {([
+                        [true, "Guard"],
+                        [editSaveState === "idle", "ar"],
+                        [editSaveState === "loading", "ando\u2026"],
+                        [editSaveState === "success", "ado"],
+                        [editSaveState === "success", "!"],
+                      ] as const).map(([visible, text], i) => (
+                        <m.span
+                          key={`${i}-${text}`}
+                          initial={false}
+                          animate={{
+                            opacity: visible ? 1 : 0,
+                            width: visible ? "auto" : 0,
+                          }}
+                          style={{ display: "inline-flex", justifyContent: "flex-start", overflow: "hidden" }}
+                        >
+                          {text}
+                        </m.span>
+                      ))}
+                    </div>
+                  </m.button>
+                </MotionConfig>
               </div>
             </div>
           )}

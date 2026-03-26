@@ -13,7 +13,7 @@ import {
   Trash2,
   Warehouse,
 } from "lucide-react";
-import { AnimatePresence, m } from "motion/react";
+import { AnimatePresence, MotionConfig, m } from "motion/react";
 import { redirect } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
@@ -107,6 +107,7 @@ type EditForm = {
   overrideReason: string;
   createdBy: string;
   createdAt: string;
+  updatedAt: string;
   isNonStock: boolean;
 };
 
@@ -562,8 +563,10 @@ export default function InventarioBodegaPage() {
   const [warnings, setWarnings] = useState<InventoryWarning[]>([]);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isProductionOpen, setIsProductionOpen] = useState(false);
+  const [productionSaveState, setProductionSaveState] = useState<"idle" | "loading" | "success">("idle");
   const [isCargaOpen, setIsCargaOpen] = useState(false);
   const [isManualOpen, setIsManualOpen] = useState(false);
+  const [manualSaveState, setManualSaveState] = useState<"idle" | "loading" | "success">("idle");
   const [editForm, setEditForm] = useState<EditForm | null>(null);
   const [expandedBatchId, setExpandedBatchId] = useState<string | null>(null);
   const [isPrintDialogOpen, setIsPrintDialogOpen] = useState(false);
@@ -818,6 +821,7 @@ export default function InventarioBodegaPage() {
     setError(null);
     setNotice(null);
     setIsSaving(true);
+    setProductionSaveState("loading");
     try {
       const normalized = buildEntries(productionItems);
       const response = await fetch("/api/inventario-bodega", {
@@ -843,12 +847,15 @@ export default function InventarioBodegaPage() {
       setProductionItems([createItem()]);
       setProductionNotes("");
       setNotice("Producción registrada");
+      setProductionSaveState("success");
+      await new Promise((r) => setTimeout(r, 800));
       return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al guardar");
       return false;
     } finally {
       setIsSaving(false);
+      setProductionSaveState("idle");
     }
   };
 
@@ -897,6 +904,7 @@ export default function InventarioBodegaPage() {
     setError(null);
     setNotice(null);
     setIsSaving(true);
+    setManualSaveState("loading");
     try {
       const normalized = buildEntries(manualItems);
 
@@ -924,6 +932,8 @@ export default function InventarioBodegaPage() {
       setManualItems([createItem()]);
       setManualNotes("");
       setNotice("Movimiento manual registrado");
+      setManualSaveState("success");
+      await new Promise((r) => setTimeout(r, 800));
       return true;
     } catch (err) {
       setError(
@@ -932,6 +942,7 @@ export default function InventarioBodegaPage() {
       return false;
     } finally {
       setIsSaving(false);
+      setManualSaveState("idle");
     }
   };
 
@@ -951,6 +962,7 @@ export default function InventarioBodegaPage() {
       overrideReason: row.overrideReason,
       createdBy: row.createdBy,
       createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
       isNonStock: row.isNonStock,
     });
     setIsEditOpen(true);
@@ -985,6 +997,7 @@ export default function InventarioBodegaPage() {
             overrideReason: editForm.overrideReason,
             createdBy: editForm.createdBy,
             createdAt: editForm.createdAt,
+            updatedAt: editForm.updatedAt,
             isNonStock: editForm.isNonStock,
           },
         }),
@@ -2043,26 +2056,88 @@ export default function InventarioBodegaPage() {
                   <m.button
                     type="button"
                     onClick={() => setIsProductionOpen(false)}
-                    whileTap={{ scale: 0.96 }}
-                    transition={actionTapSpring}
-                    className="px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-700"
+                    whileTap={{ scale: 0.98 }}
+                    transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                    className="min-h-[44px] px-4 rounded-lg border border-slate-200 text-sm text-slate-700 transition-colors [@media(hover:hover)]:hover:bg-slate-50"
                   >
                     Cancelar
                   </m.button>
-                  <m.button
-                    type="button"
-                    onClick={async () => {
-                      const ok = await handleProductionSubmit();
-                      if (ok) setIsProductionOpen(false);
+                  <MotionConfig
+                    transition={{
+                      duration: 0.4,
+                      ease: [0.25, 1, 0.5, 1],
+                      width: {
+                        duration: 0.2,
+                        ease: [0.25, 1, 0.5, 1],
+                        delay: 0.01,
+                      },
                     }}
-                    disabled={isSaving}
-                    whileTap={{ scale: 0.96 }}
-                    transition={actionTapSpring}
-                    className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-slate-900 text-white text-sm disabled:opacity-60"
                   >
-                    <Save className="h-4 w-4" />
-                    Guardar producción
-                  </m.button>
+                    <m.button
+                      type="button"
+                      onClick={async () => {
+                        const ok = await handleProductionSubmit();
+                        if (ok) setIsProductionOpen(false);
+                      }}
+                      disabled={productionSaveState !== "idle"}
+                      whileTap={productionSaveState === "idle" ? { scale: 0.97 } : undefined}
+                      data-state={productionSaveState}
+                      className={cn(
+                        "min-h-[44px] overflow-hidden rounded-lg text-sm text-white",
+                        productionSaveState === "success"
+                          ? "bg-emerald-600"
+                          : "bg-slate-900 [@media(hover:hover)]:hover:bg-slate-800",
+                        productionSaveState === "loading" && "cursor-wait",
+                      )}
+                    >
+                      <div className="flex items-center justify-center whitespace-nowrap px-4">
+                        <m.div
+                          initial={false}
+                          animate={{
+                            opacity: productionSaveState === "success" ? 1 : 0,
+                            width: productionSaveState === "success" ? 24 : 0,
+                            scale: productionSaveState === "success" ? 1 : 0,
+                          }}
+                          className="flex shrink-0 items-center justify-center overflow-hidden"
+                        >
+                          <Check className="h-4 w-4" />
+                        </m.div>
+                        <m.div
+                          initial={false}
+                          animate={{
+                            opacity: productionSaveState === "loading" ? 1 : 0,
+                            width: productionSaveState === "loading" ? 24 : 0,
+                            scale: productionSaveState === "loading" ? 1 : 0,
+                          }}
+                          className="flex shrink-0 items-center justify-center overflow-hidden"
+                        >
+                          <svg className="h-4 w-4 animate-spin" viewBox="0 0 18 18" fill="none">
+                            <circle cx="9" cy="9" r="7" stroke="currentColor" strokeOpacity="0.3" strokeWidth="2.5" />
+                            <path d="M16 9C16 5.13401 12.866 2 9 2" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+                          </svg>
+                        </m.div>
+                        {([
+                          [true, "Guard"],
+                          [productionSaveState === "idle", "ar"],
+                          [productionSaveState === "loading", "ando\u2026"],
+                          [productionSaveState === "success", "ado"],
+                          [productionSaveState === "success", "!"],
+                        ] as const).map(([visible, text], i) => (
+                          <m.span
+                            key={`${i}-${text}`}
+                            initial={false}
+                            animate={{
+                              opacity: visible ? 1 : 0,
+                              width: visible ? "auto" : 0,
+                            }}
+                            style={{ display: "inline-flex", justifyContent: "flex-start", overflow: "hidden" }}
+                          >
+                            {text}
+                          </m.span>
+                        ))}
+                      </div>
+                    </m.button>
+                  </MotionConfig>
                 </div>
               </m.div>
             ) : null}
@@ -2507,35 +2582,93 @@ export default function InventarioBodegaPage() {
                     placeholder="Notas"
                   />
                 </m.div>
-                <m.div
-                  layout
-                  className="flex justify-end gap-2"
-                  transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
-                >
+                <div className="flex justify-end gap-2">
                   <m.button
                     type="button"
                     onClick={() => setIsManualOpen(false)}
-                    whileTap={{ scale: 0.96 }}
-                    transition={actionTapSpring}
-                    className="px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-700"
+                    whileTap={{ scale: 0.98 }}
+                    transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                    className="min-h-[44px] px-4 rounded-lg border border-slate-200 text-sm text-slate-700 transition-colors [@media(hover:hover)]:hover:bg-slate-50"
                   >
                     Cancelar
                   </m.button>
-                  <m.button
-                    type="button"
-                    onClick={async () => {
-                      const ok = await handleManualSubmit();
-                      if (ok) setIsManualOpen(false);
+                  <MotionConfig
+                    transition={{
+                      duration: 0.4,
+                      ease: [0.25, 1, 0.5, 1],
+                      width: {
+                        duration: 0.2,
+                        ease: [0.25, 1, 0.5, 1],
+                        delay: 0.01,
+                      },
                     }}
-                    disabled={isSaving}
-                    whileTap={{ scale: 0.96 }}
-                    transition={actionTapSpring}
-                    className="inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-slate-900 text-white text-sm disabled:opacity-60"
                   >
-                    <Save className="h-4 w-4" />
-                    Guardar movimiento
-                  </m.button>
-                </m.div>
+                    <m.button
+                      type="button"
+                      onClick={async () => {
+                        const ok = await handleManualSubmit();
+                        if (ok) setIsManualOpen(false);
+                      }}
+                      disabled={manualSaveState !== "idle"}
+                      whileTap={manualSaveState === "idle" ? { scale: 0.97 } : undefined}
+                      data-state={manualSaveState}
+                      className={cn(
+                        "min-h-[44px] overflow-hidden rounded-lg text-sm text-white",
+                        manualSaveState === "success"
+                          ? "bg-emerald-600"
+                          : "bg-slate-900 [@media(hover:hover)]:hover:bg-slate-800",
+                        manualSaveState === "loading" && "cursor-wait",
+                      )}
+                    >
+                      <div className="flex items-center justify-center whitespace-nowrap px-4">
+                        <m.div
+                          initial={false}
+                          animate={{
+                            opacity: manualSaveState === "success" ? 1 : 0,
+                            width: manualSaveState === "success" ? 24 : 0,
+                            scale: manualSaveState === "success" ? 1 : 0,
+                          }}
+                          className="flex shrink-0 items-center justify-center overflow-hidden"
+                        >
+                          <Check className="h-4 w-4" />
+                        </m.div>
+                        <m.div
+                          initial={false}
+                          animate={{
+                            opacity: manualSaveState === "loading" ? 1 : 0,
+                            width: manualSaveState === "loading" ? 24 : 0,
+                            scale: manualSaveState === "loading" ? 1 : 0,
+                          }}
+                          className="flex shrink-0 items-center justify-center overflow-hidden"
+                        >
+                          <svg className="h-4 w-4 animate-spin" viewBox="0 0 18 18" fill="none">
+                            <circle cx="9" cy="9" r="7" stroke="currentColor" strokeOpacity="0.3" strokeWidth="2.5" />
+                            <path d="M16 9C16 5.13401 12.866 2 9 2" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+                          </svg>
+                        </m.div>
+                        {([
+                          [true, "Guard"],
+                          [manualSaveState === "idle", "ar"],
+                          [manualSaveState === "loading", "ando\u2026"],
+                          [manualSaveState === "success", "ado"],
+                          [manualSaveState === "success", "!"],
+                        ] as const).map(([visible, text], i) => (
+                          <m.span
+                            key={`${i}-${text}`}
+                            initial={false}
+                            animate={{
+                              opacity: visible ? 1 : 0,
+                              width: visible ? "auto" : 0,
+                            }}
+                            style={{ display: "inline-flex", justifyContent: "flex-start", overflow: "hidden" }}
+                          >
+                            {text}
+                          </m.span>
+                        ))}
+                      </div>
+                    </m.button>
+                  </MotionConfig>
+                </div>
               </m.div>
             ) : null}
           </AnimatePresence>

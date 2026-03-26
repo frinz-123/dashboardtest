@@ -14,15 +14,27 @@ export type PolygonFeature = {
 };
 
 const EPSILON = 1e-10;
+const MIN_LONGITUDE = -180;
+const MAX_LONGITUDE = 180;
+const MIN_LATITUDE = -90;
+const MAX_LATITUDE = 90;
 
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
+
+const isLongitude = (value: number) =>
+  value >= MIN_LONGITUDE && value <= MAX_LONGITUDE;
+
+const isLatitude = (value: number) =>
+  value >= MIN_LATITUDE && value <= MAX_LATITUDE;
 
 export const isLngLatTuple = (value: unknown): value is LngLatTuple =>
   Array.isArray(value) &&
   value.length >= 2 &&
   isFiniteNumber(value[0]) &&
-  isFiniteNumber(value[1]);
+  isFiniteNumber(value[1]) &&
+  isLongitude(value[0]) &&
+  isLatitude(value[1]);
 
 export const isPolygonCoordinates = (
   value: unknown,

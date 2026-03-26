@@ -214,12 +214,55 @@ const createPatchMockSheets = () => {
         };
       }
 
+      if (range === "InventarioCarros!A:O") {
+        return {
+          data: {
+            values: [
+              [
+                "id",
+                "date",
+                "periodCode",
+                "weekCode",
+                "sellerEmail",
+                "product",
+                "quantity",
+                "movementType",
+                "notes",
+                "createdBy",
+                "createdAt",
+                "updatedAt",
+                "linkedEntryId",
+                "linkStatus",
+                "overrideReason",
+              ],
+              [
+                "car-1",
+                "2026-03-21",
+                "P1",
+                "P1S1",
+                "vendor@example.com",
+                "Producto",
+                "12",
+                "Carga",
+                "Notas",
+                "admin@example.com",
+                "2026-03-21T09:00:00.000Z",
+                "2026-03-21T10:00:00.000Z",
+                "bodega-1",
+                "linked",
+                "",
+              ],
+            ],
+          },
+        };
+      }
+
       throw new Error(`Unexpected range: ${range}`);
     },
   );
 
   return {
-    sheets: ({
+    sheets: {
       spreadsheets: {
         get,
         batchUpdate: jest.fn(),
@@ -229,7 +272,7 @@ const createPatchMockSheets = () => {
           append: jest.fn(),
         },
       },
-    }) as unknown as MockSheets,
+    } as unknown as MockSheets,
     update,
   };
 };
@@ -272,7 +315,7 @@ describe("inventario-carros route", () => {
 
     const response = await PATCH({
       json: async () => ({
-        rowNumber: 5,
+        rowNumber: 2,
         entry: {
           id: "car-1",
           date: "2026-03-24",
@@ -283,6 +326,7 @@ describe("inventario-carros route", () => {
           notes: "Notas nuevas",
           createdBy: "admin@example.com",
           createdAt: "2026-03-21T09:00:00.000Z",
+          updatedAt: "2026-03-21T10:00:00.000Z",
           linkedEntryId: "bodega-1",
           linkStatus: "linked",
           overrideReason: "",
@@ -300,5 +344,227 @@ describe("inventario-carros route", () => {
 
     expect(bodegaUpdateCall).toBeDefined();
     expect(bodegaUpdateCall?.[0].requestBody.values[0]).toHaveLength(17);
+  });
+
+  it("rejects stale edits when updatedAt no longer matches", async () => {
+    const { sheets, update } = createPatchMockSheets();
+    googleSheetsMock.mockReturnValue(sheets);
+
+    const response = await PATCH({
+      json: async () => ({
+        rowNumber: 2,
+        entry: {
+          id: "car-1",
+          product: "Producto Editado",
+          quantity: 7,
+          updatedAt: "2026-03-20T10:00:00.000Z",
+        },
+      }),
+    } as Request);
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body).toMatchObject({
+      error:
+        "El movimiento cambió desde que se abrió. Recarga e intenta de nuevo.",
+    });
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("rejects linked edits when the reciprocal bodega link is broken", async () => {
+    const { update } = createPatchMockSheets();
+    const get = jest.fn(
+      async ({ range, fields }: { range?: string; fields?: string }) => {
+        if (fields === "sheets.properties.title") {
+          return {
+            data: {
+              sheets: [
+                { properties: { title: "InventarioCarros" } },
+                { properties: { title: "Bodega" } },
+              ],
+            },
+          };
+        }
+
+        if (range === "InventarioCarros!A1:O1") {
+          return {
+            data: {
+              values: [
+                [
+                  "id",
+                  "date",
+                  "periodCode",
+                  "weekCode",
+                  "sellerEmail",
+                  "product",
+                  "quantity",
+                  "movementType",
+                  "notes",
+                  "createdBy",
+                  "createdAt",
+                  "updatedAt",
+                  "linkedEntryId",
+                  "linkStatus",
+                  "overrideReason",
+                ],
+              ],
+            },
+          };
+        }
+
+        if (range === "Bodega!A1:Q1") {
+          return {
+            data: {
+              values: [
+                [
+                  "id",
+                  "date",
+                  "periodCode",
+                  "weekCode",
+                  "product",
+                  "quantity",
+                  "direction",
+                  "movementType",
+                  "sellerEmail",
+                  "notes",
+                  "linkedEntryId",
+                  "linkStatus",
+                  "overrideReason",
+                  "createdBy",
+                  "createdAt",
+                  "updatedAt",
+                  "isNonStock",
+                ],
+              ],
+            },
+          };
+        }
+
+        if (range === "InventarioCarros!A:O") {
+          return {
+            data: {
+              values: [
+                [
+                  "id",
+                  "date",
+                  "periodCode",
+                  "weekCode",
+                  "sellerEmail",
+                  "product",
+                  "quantity",
+                  "movementType",
+                  "notes",
+                  "createdBy",
+                  "createdAt",
+                  "updatedAt",
+                  "linkedEntryId",
+                  "linkStatus",
+                  "overrideReason",
+                ],
+                [
+                  "car-1",
+                  "2026-03-21",
+                  "P1",
+                  "P1S1",
+                  "vendor@example.com",
+                  "Producto",
+                  "12",
+                  "Carga",
+                  "Notas",
+                  "admin@example.com",
+                  "2026-03-21T09:00:00.000Z",
+                  "2026-03-21T10:00:00.000Z",
+                  "bodega-1",
+                  "linked",
+                  "",
+                ],
+              ],
+            },
+          };
+        }
+
+        if (range === "Bodega!A:Q") {
+          return {
+            data: {
+              values: [
+                [
+                  "id",
+                  "date",
+                  "periodCode",
+                  "weekCode",
+                  "product",
+                  "quantity",
+                  "direction",
+                  "movementType",
+                  "sellerEmail",
+                  "notes",
+                  "linkedEntryId",
+                  "linkStatus",
+                  "overrideReason",
+                  "createdBy",
+                  "createdAt",
+                  "updatedAt",
+                  "isNonStock",
+                ],
+                [
+                  "bodega-1",
+                  "2026-03-21",
+                  "P1",
+                  "P1S1",
+                  "Producto",
+                  "12",
+                  "Salida",
+                  "SalidaCarro",
+                  "vendor@example.com",
+                  "Notas antiguas",
+                  "another-car",
+                  "linked",
+                  "",
+                  "admin@example.com",
+                  "2026-03-21T09:00:00.000Z",
+                  "2026-03-21T10:00:00.000Z",
+                  "false",
+                ],
+              ],
+            },
+          };
+        }
+
+        throw new Error(`Unexpected range: ${range}`);
+      },
+    );
+
+    googleSheetsMock.mockReturnValue({
+      spreadsheets: {
+        get,
+        batchUpdate: jest.fn(),
+        values: {
+          get,
+          update,
+          append: jest.fn(),
+        },
+      },
+    } as unknown as MockSheets);
+
+    const response = await PATCH({
+      json: async () => ({
+        rowNumber: 2,
+        entry: {
+          id: "car-1",
+          product: "Producto Editado",
+          quantity: 7,
+          updatedAt: "2026-03-21T10:00:00.000Z",
+          linkedEntryId: "bodega-1",
+          linkStatus: "linked",
+        },
+      }),
+    } as Request);
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body).toMatchObject({
+      error: "El vínculo con bodega ya cambió. Recarga antes de continuar.",
+    });
+    expect(update).not.toHaveBeenCalled();
   });
 });
