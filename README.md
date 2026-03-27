@@ -11,6 +11,8 @@ Production auth depends on these server-side environment variables being present
 
 On Netlify, `URL` and `DEPLOY_PRIME_URL` are also detected for runtime diagnostics, but they do not replace the need to set the OAuth credentials and auth secret explicitly.
 
+This project also uses `netlify-plugin-inline-functions-env` so auth and server-only secrets are inlined into Netlify Functions at build time. This avoids Lambda runtime environment delivery issues with longer secrets like private keys.
+
 ## Getting Started
 
 First, run the development server:
