@@ -63,7 +63,8 @@ import {
   sumLedgerTotals,
   sumSalesTotals,
 } from "@/utils/inventarioCarroReset";
-import { PRODUCT_COLUMN_INDEX, PRODUCT_NAMES } from "@/utils/productCatalog";
+import { parseInventarioCarroSalesRows } from "@/utils/inventarioCarroSales";
+import { FORM_DATA_LAST_COLUMN, PRODUCT_NAMES } from "@/utils/productCatalog";
 
 const EFT_PRICES: Record<string, number> = {
   "Chiltepin Molido 50 g": 48,
@@ -90,6 +91,7 @@ const EFT_PRICES: Record<string, number> = {
   "El Rey Mix Especial": 60,
   "Habanero Molido 50 g": 40,
   "Habanero Molido 20 g": 20,
+  "Molinillo Habanero 20 g": 75,
   "Medio Kilo Chiltepin Entero": 500,
   "Chiltepin Pouch 30g": 50,
 };
@@ -810,9 +812,13 @@ export default function InventarioCarroPage() {
   };
 
   const [isAddOpen, setIsAddOpen] = useState(false);
-  const [addSaveState, setAddSaveState] = useState<"idle" | "loading" | "success">("idle");
+  const [addSaveState, setAddSaveState] = useState<
+    "idle" | "loading" | "success"
+  >("idle");
   const [isEditOpen, setIsEditOpen] = useState(false);
-  const [editSaveState, setEditSaveState] = useState<"idle" | "loading" | "success">("idle");
+  const [editSaveState, setEditSaveState] = useState<
+    "idle" | "loading" | "success"
+  >("idle");
   const [editError, setEditError] = useState<string | null>(null);
   const [addForm, setAddForm] = useState<AddLedgerFormState>({
     date: getDefaultDate(),
@@ -914,27 +920,11 @@ export default function InventarioCarroPage() {
     setIsSalesLoading(true);
     try {
       const response = await fetch(
-        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:AP?key=${googleApiKey}`,
+        `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:${FORM_DATA_LAST_COLUMN}?key=${googleApiKey}`,
       );
       const data = await response.json();
       const rows = data.values?.slice(1) || [];
-      const parsed: SalesRow[] = rows.map((row: string[]) => {
-        const products: Record<string, number> = {};
-        PRODUCT_NAMES.forEach((product) => {
-          const columnIndex = PRODUCT_COLUMN_INDEX[product];
-          const value = row?.[columnIndex];
-          const quantity = Number.parseInt(value || "0", 10) || 0;
-          if (quantity > 0) {
-            products[product] = quantity;
-          }
-        });
-        return {
-          sellerEmail: row?.[7] || "",
-          weekCode: row?.[37] || "",
-          date: row?.[32] || "",
-          products,
-        };
-      });
+      const parsed: SalesRow[] = parseInventarioCarroSalesRows(rows);
       setSalesRows(parsed);
       return parsed;
     } catch (err) {
@@ -1099,9 +1089,10 @@ export default function InventarioCarroPage() {
       setWarnings(parseWarnings(responsePayload));
       await fetchLedger();
       setAddSaveState("success");
-      const successNotice = isCarga && addForm.linkToBodega
-        ? "Carga guardada y ligada con salida de bodega"
-        : "Carga guardada";
+      const successNotice =
+        isCarga && addForm.linkToBodega
+          ? "Carga guardada y ligada con salida de bodega"
+          : "Carga guardada";
       await new Promise((r) => setTimeout(r, 800));
       setIsAddOpen(false);
       setAddForm({
@@ -2606,7 +2597,9 @@ export default function InventarioCarroPage() {
                   type="button"
                   onClick={handleAddSubmit}
                   disabled={addSaveState !== "idle"}
-                  whileTap={addSaveState === "idle" ? { scale: 0.97 } : undefined}
+                  whileTap={
+                    addSaveState === "idle" ? { scale: 0.97 } : undefined
+                  }
                   data-state={addSaveState}
                   className={cn(
                     "min-h-[44px] overflow-hidden rounded-lg text-sm text-white",
@@ -2637,18 +2630,37 @@ export default function InventarioCarroPage() {
                       }}
                       className="flex shrink-0 items-center justify-center overflow-hidden"
                     >
-                      <svg className="h-4 w-4 animate-spin" viewBox="0 0 18 18" fill="none">
-                        <circle cx="9" cy="9" r="7" stroke="currentColor" strokeOpacity="0.3" strokeWidth="2.5" />
-                        <path d="M16 9C16 5.13401 12.866 2 9 2" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+                      <svg
+                        aria-hidden="true"
+                        className="h-4 w-4 animate-spin"
+                        viewBox="0 0 18 18"
+                        fill="none"
+                      >
+                        <circle
+                          cx="9"
+                          cy="9"
+                          r="7"
+                          stroke="currentColor"
+                          strokeOpacity="0.3"
+                          strokeWidth="2.5"
+                        />
+                        <path
+                          d="M16 9C16 5.13401 12.866 2 9 2"
+                          stroke="currentColor"
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
+                        />
                       </svg>
                     </m.div>
-                    {([  
-                      [true, "Guard"],
-                      [addSaveState === "idle", "ar"],
-                      [addSaveState === "loading", "ando\u2026"],
-                      [addSaveState === "success", "ado"],
-                      [addSaveState === "success", "!"],
-                    ] as const).map(([visible, text], i) => (
+                    {(
+                      [
+                        [true, "Guard"],
+                        [addSaveState === "idle", "ar"],
+                        [addSaveState === "loading", "ando\u2026"],
+                        [addSaveState === "success", "ado"],
+                        [addSaveState === "success", "!"],
+                      ] as const
+                    ).map(([visible, text], i) => (
                       <m.span
                         key={`${i}-${text}`}
                         initial={false}
@@ -2656,7 +2668,11 @@ export default function InventarioCarroPage() {
                           opacity: visible ? 1 : 0,
                           width: visible ? "auto" : 0,
                         }}
-                        style={{ display: "inline-flex", justifyContent: "flex-start", overflow: "hidden" }}
+                        style={{
+                          display: "inline-flex",
+                          justifyContent: "flex-start",
+                          overflow: "hidden",
+                        }}
                       >
                         {text}
                       </m.span>
@@ -2977,7 +2993,9 @@ export default function InventarioCarroPage() {
                     type="button"
                     onClick={handleEditSubmit}
                     disabled={editSaveState !== "idle"}
-                    whileTap={editSaveState === "idle" ? { scale: 0.97 } : undefined}
+                    whileTap={
+                      editSaveState === "idle" ? { scale: 0.97 } : undefined
+                    }
                     data-state={editSaveState}
                     className={cn(
                       "min-h-[44px] overflow-hidden rounded-lg text-sm text-white",
@@ -3008,18 +3026,37 @@ export default function InventarioCarroPage() {
                         }}
                         className="flex shrink-0 items-center justify-center overflow-hidden"
                       >
-                        <svg className="h-4 w-4 animate-spin" viewBox="0 0 18 18" fill="none">
-                          <circle cx="9" cy="9" r="7" stroke="currentColor" strokeOpacity="0.3" strokeWidth="2.5" />
-                          <path d="M16 9C16 5.13401 12.866 2 9 2" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+                        <svg
+                          aria-hidden="true"
+                          className="h-4 w-4 animate-spin"
+                          viewBox="0 0 18 18"
+                          fill="none"
+                        >
+                          <circle
+                            cx="9"
+                            cy="9"
+                            r="7"
+                            stroke="currentColor"
+                            strokeOpacity="0.3"
+                            strokeWidth="2.5"
+                          />
+                          <path
+                            d="M16 9C16 5.13401 12.866 2 9 2"
+                            stroke="currentColor"
+                            strokeWidth="2.5"
+                            strokeLinecap="round"
+                          />
                         </svg>
                       </m.div>
-                      {([
-                        [true, "Guard"],
-                        [editSaveState === "idle", "ar"],
-                        [editSaveState === "loading", "ando\u2026"],
-                        [editSaveState === "success", "ado"],
-                        [editSaveState === "success", "!"],
-                      ] as const).map(([visible, text], i) => (
+                      {(
+                        [
+                          [true, "Guard"],
+                          [editSaveState === "idle", "ar"],
+                          [editSaveState === "loading", "ando\u2026"],
+                          [editSaveState === "success", "ado"],
+                          [editSaveState === "success", "!"],
+                        ] as const
+                      ).map(([visible, text], i) => (
                         <m.span
                           key={`${i}-${text}`}
                           initial={false}
@@ -3027,7 +3064,11 @@ export default function InventarioCarroPage() {
                             opacity: visible ? 1 : 0,
                             width: visible ? "auto" : 0,
                           }}
-                          style={{ display: "inline-flex", justifyContent: "flex-start", overflow: "hidden" }}
+                          style={{
+                            display: "inline-flex",
+                            justifyContent: "flex-start",
+                            overflow: "hidden",
+                          }}
                         >
                           {text}
                         </m.span>
