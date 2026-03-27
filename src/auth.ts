@@ -1,22 +1,79 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 
-const googleClientId =
-  process.env.GOOGLE_CLIENT_ID ?? process.env.AUTH_GOOGLE_ID;
-const googleClientSecret =
-  process.env.GOOGLE_CLIENT_SECRET ?? process.env.AUTH_GOOGLE_SECRET;
-const authSecret = process.env.AUTH_SECRET ?? process.env.NEXTAUTH_SECRET;
+const authUrlCandidates = [
+  { name: "AUTH_URL", value: process.env.AUTH_URL },
+  { name: "NEXTAUTH_URL", value: process.env.NEXTAUTH_URL },
+  { name: "URL", value: process.env.URL },
+  { name: "DEPLOY_PRIME_URL", value: process.env.DEPLOY_PRIME_URL },
+  { name: "DEPLOY_URL", value: process.env.DEPLOY_URL },
+] as const;
+
+const getFirstEnv = (...values: Array<string | undefined>) => {
+  return values.find((value) => value && value.trim().length > 0)?.trim();
+};
+
+const parseEnvEmailList = (value: string | undefined) => {
+  return (value ?? "")
+    .split(",")
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean);
+};
+
+const googleClientId = getFirstEnv(
+  process.env.GOOGLE_CLIENT_ID,
+  process.env.AUTH_GOOGLE_ID,
+);
+const googleClientSecret = getFirstEnv(
+  process.env.GOOGLE_CLIENT_SECRET,
+  process.env.AUTH_GOOGLE_SECRET,
+);
+const authSecret = getFirstEnv(
+  process.env.AUTH_SECRET,
+  process.env.NEXTAUTH_SECRET,
+);
+const authUrlEntry = authUrlCandidates.find(
+  ({ value }) => value && value.trim().length > 0,
+);
+const authUrl = authUrlEntry?.value?.trim();
+const authUrlSource = authUrlEntry?.name ?? null;
+const overrideEmails = parseEnvEmailList(process.env.OVERRIDE_EMAIL);
+
+let authUrlOrigin: string | null = null;
+
+if (authUrl) {
+  try {
+    authUrlOrigin = new URL(authUrl).origin;
+  } catch {
+    console.error("[auth] Invalid auth URL environment variable", {
+      authUrlSource,
+    });
+  }
+}
 
 const shouldTrustHost =
   process.env.AUTH_TRUST_HOST === "true" ||
   Boolean(
-    process.env.AUTH_URL ||
-      process.env.NEXTAUTH_URL ||
+    authUrlOrigin ||
       process.env.NETLIFY ||
       process.env.VERCEL ||
       process.env.CF_PAGES,
   ) ||
   process.env.NODE_ENV !== "production";
+
+const missingAuthConfig: string[] = [];
+
+if (!googleClientId) {
+  missingAuthConfig.push("GOOGLE_CLIENT_ID/AUTH_GOOGLE_ID");
+}
+
+if (!googleClientSecret) {
+  missingAuthConfig.push("GOOGLE_CLIENT_SECRET/AUTH_GOOGLE_SECRET");
+}
+
+if (!authSecret) {
+  missingAuthConfig.push("AUTH_SECRET/NEXTAUTH_SECRET");
+}
 
 if (!googleClientId || !googleClientSecret) {
   console.error("[auth] Missing Google OAuth environment variables", {
@@ -41,21 +98,42 @@ if (process.env.NODE_ENV === "production") {
   console.log("[auth] Runtime configuration snapshot", {
     hasAuthUrl: Boolean(process.env.AUTH_URL),
     hasNextAuthUrl: Boolean(process.env.NEXTAUTH_URL),
+    hasNetlifyUrl: Boolean(process.env.URL),
+    hasDeployPrimeUrl: Boolean(process.env.DEPLOY_PRIME_URL),
+    hasDeployUrl: Boolean(process.env.DEPLOY_URL),
     hasAuthTrustHost: Boolean(process.env.AUTH_TRUST_HOST),
     hasNetlifyFlag: Boolean(process.env.NETLIFY),
+    authUrlSource,
+    authUrlOrigin,
+    hasGoogleClientId: Boolean(googleClientId),
+    hasGoogleClientSecret: Boolean(googleClientSecret),
+    hasAuthSecret: Boolean(authSecret),
     trustHost: shouldTrustHost,
+    missingAuthConfig,
   });
 }
 
+if (process.env.NODE_ENV === "production" && missingAuthConfig.length > 0) {
+  throw new Error(
+    `[auth] Invalid production auth configuration. Missing: ${missingAuthConfig.join(", ")}`,
+  );
+}
+
+const providers =
+  googleClientId && googleClientSecret
+    ? [
+        Google({
+          clientId: googleClientId,
+          clientSecret: googleClientSecret,
+        }),
+      ]
+    : [];
+
 export const { auth, handlers, signIn, signOut } = NextAuth({
-  providers: [
-    Google({
-      clientId: googleClientId ?? "",
-      clientSecret: googleClientSecret ?? "",
-    }),
-  ],
+  providers,
   pages: {
     signIn: "/auth/signin",
+    error: "/auth/error",
   },
   callbacks: {
     async signIn({ user }) {
@@ -74,14 +152,22 @@ export const { auth, handlers, signIn, signOut } = NextAuth({
         "chiltepinelreyhmo@gmail.com",
         "bodegaelrey034@gmail.com",
         "jesus.chiltepinelrey@gmail.com",
-        process.env.OVERRIDE_EMAIL,
-      ].filter(Boolean);
+        ...overrideEmails,
+      ];
 
       return allowedEmails.includes(user.email?.toLowerCase() || "");
     },
     async redirect({ url, baseUrl }) {
       if (url.startsWith("/")) return `${baseUrl}${url}`;
-      if (new URL(url).origin === baseUrl) return url;
+
+      try {
+        if (new URL(url).origin === new URL(baseUrl).origin) {
+          return url;
+        }
+      } catch {
+        return baseUrl;
+      }
+
       return baseUrl;
     },
     async session({ session }) {

@@ -1,7 +1,25 @@
+import { auth } from "@/auth";
+import { isMasterAccount } from "@/utils/auth";
 import { google } from "googleapis";
 
 export async function GET() {
   try {
+    const session = await auth();
+
+    if (!session?.user?.email) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    if (!isMasterAccount(session.user.email)) {
+      return new Response(JSON.stringify({ error: "Forbidden" }), {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
     console.log("Starting token request..."); // Debug log
     console.log(
       "Client email:",

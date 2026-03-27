@@ -1,5 +1,16 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Production auth configuration
+
+Production auth depends on these server-side environment variables being present in the deploy target:
+
+- `GOOGLE_CLIENT_ID` or `AUTH_GOOGLE_ID`
+- `GOOGLE_CLIENT_SECRET` or `AUTH_GOOGLE_SECRET`
+- `AUTH_SECRET` or `NEXTAUTH_SECRET`
+- `AUTH_URL` or `NEXTAUTH_URL` for the canonical production URL
+
+On Netlify, `URL` and `DEPLOY_PRIME_URL` are also detected for runtime diagnostics, but they do not replace the need to set the OAuth credentials and auth secret explicitly.
+
 ## Getting Started
 
 First, run the development server:
