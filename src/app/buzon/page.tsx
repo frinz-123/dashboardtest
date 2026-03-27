@@ -1,10 +1,21 @@
 "use client";
 
-import { MessageSquare } from "lucide-react";
+import {
+  Clock,
+  DollarSign,
+  Eye,
+  EyeOff,
+  ImageOff,
+  MessageCircle,
+  MessageSquare,
+  User,
+} from "lucide-react";
+import { AnimatePresence, m } from "motion/react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { useEffect, useMemo, useState } from "react";
 import AppHeader from "@/components/AppHeader";
+import { Badge } from "@/components/badge";
 import FeedLightbox from "@/components/inspector/FeedLightbox";
 import { triggerBuzonRefresh } from "@/hooks/useBuzonNotifications";
 import { EMAIL_TO_VENDOR_LABELS, isMasterAccount } from "@/utils/auth";
@@ -19,6 +30,91 @@ const spreadsheetId = process.env.NEXT_PUBLIC_SPREADSHEET_ID;
 const sheetName = process.env.NEXT_PUBLIC_SHEET_NAME;
 
 const ITEMS_PER_PAGE = 15;
+
+const BADGE_COLORS = [
+  { bg: "bg-blue-50", text: "text-blue-700", border: "border-blue-200/60" },
+  {
+    bg: "bg-violet-50",
+    text: "text-violet-700",
+    border: "border-violet-200/60",
+  },
+  { bg: "bg-rose-50", text: "text-rose-700", border: "border-rose-200/60" },
+  { bg: "bg-amber-50", text: "text-amber-700", border: "border-amber-200/60" },
+  { bg: "bg-teal-50", text: "text-teal-700", border: "border-teal-200/60" },
+  {
+    bg: "bg-orange-50",
+    text: "text-orange-700",
+    border: "border-orange-200/60",
+  },
+  { bg: "bg-cyan-50", text: "text-cyan-700", border: "border-cyan-200/60" },
+  { bg: "bg-pink-50", text: "text-pink-700", border: "border-pink-200/60" },
+] as const;
+
+const getVendorColor = (name: string) => {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = (hash << 5) - hash + name.charCodeAt(i);
+    hash |= 0;
+  }
+  return BADGE_COLORS[Math.abs(hash) % BADGE_COLORS.length];
+};
+
+const cardVariants = {
+  hidden: { opacity: 0, y: 12, filter: "blur(4px)" },
+  visible: {
+    opacity: 1,
+    y: 0,
+    filter: "blur(0px)",
+    transition: { type: "spring" as const, duration: 0.4, bounce: 0 },
+  },
+};
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: { staggerChildren: 0.06, delayChildren: 0.05 },
+  },
+};
+
+function SkeletonCard() {
+  return (
+    <div className="bg-white border border-slate-100 rounded-xl p-4 flex gap-4">
+      <div className="flex-1 min-w-0">
+        <div className="skeleton-shimmer h-4 w-3/5 rounded-md mb-2.5" />
+        <div className="skeleton-shimmer h-3 w-4/5 rounded-md mb-3" />
+        <div className="flex gap-2 mb-3">
+          <div className="skeleton-shimmer h-5 w-16 rounded-full" />
+          <div className="skeleton-shimmer h-5 w-20 rounded-full" />
+        </div>
+        <div className="skeleton-shimmer h-3 w-2/3 rounded-md" />
+      </div>
+      <div className="skeleton-shimmer h-[72px] w-[72px] rounded-lg shrink-0" />
+    </div>
+  );
+}
+
+function BuzonSkeleton() {
+  return (
+    <div className="space-y-3">
+      {[0, 1, 2, 3, 4].map((i) => (
+        <m.div
+          key={i}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{
+            type: "spring",
+            duration: 0.35,
+            bounce: 0,
+            delay: i * 0.06,
+          }}
+        >
+          <SkeletonCard />
+        </m.div>
+      ))}
+    </div>
+  );
+}
 
 type Sale = {
   clientName: string;
@@ -419,8 +515,11 @@ export default function BuzonPage() {
 
   if (status === "loading") {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
-        <div className="text-gray-500">Cargando...</div>
+      <div className="min-h-screen bg-white font-sans">
+        <AppHeader title="Buzon" icon={MessageSquare} subtitle="Cargando..." />
+        <main className="px-4 py-4 max-w-2xl mx-auto">
+          <BuzonSkeleton />
+        </main>
       </div>
     );
   }
@@ -456,100 +555,204 @@ export default function BuzonPage() {
       />
 
       <main className="px-4 py-4 max-w-2xl mx-auto">
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-4">
           <div>
-            <h2 className="text-sm font-semibold text-slate-900">
+            <h2
+              className="text-sm font-semibold text-slate-900"
+              style={{ textWrap: "balance" }}
+            >
               Comentarios recientes
             </h2>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-slate-500 mt-0.5">
               {isAdmin
                 ? "Viendo comentarios de todos los vendedores"
                 : "Viendo comentarios sobre tus ventas"}
             </p>
           </div>
-          <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-2 py-1 rounded-full">
-            {entries.length}
-          </span>
+          {!isLoading && (
+            <m.span
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ type: "spring", duration: 0.3, bounce: 0 }}
+              className="text-xs font-semibold text-slate-600 bg-slate-100 px-2.5 py-1 rounded-full"
+              style={{ fontVariantNumeric: "tabular-nums" }}
+            >
+              {entries.length}
+            </m.span>
+          )}
         </div>
 
-        {isLoading ? (
-          <div className="bg-white border border-slate-200/70 rounded-xl p-6 text-center text-sm text-slate-500">
-            Cargando comentarios...
-          </div>
-        ) : entries.length === 0 ? (
-          <div className="bg-white border border-slate-200/70 rounded-xl p-6 text-center text-sm text-slate-500">
-            No hay comentarios para mostrar.
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {visibleEntries.map((entry) => {
-              const reviewerName = getVendorLabel(entry.review.reviewedBy);
-              const sellerName = getVendorLabel(entry.sale.email);
-              const saleDate = formatSaleDate(entry.sale);
-              const seenBySet = parseSeenBy(entry.review.seenBy);
-              const isSeen = sessionEmail
-                ? seenBySet.has(sessionEmail.toLowerCase())
-                : false;
-              return (
-                <button
-                  key={`${entry.review.saleId}-${entry.review.reviewedAt}`}
-                  type="button"
-                  onClick={() => setSelectedEntry(entry)}
-                  className="w-full text-left bg-white border border-slate-200/70 rounded-xl p-4 shadow-sm hover:shadow-md hover:border-slate-300 transition"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">
-                        {entry.sale.clientName}
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        Comentario de {reviewerName}
-                        {entry.review.reviewedAt
-                          ? ` · ${formatReviewDate(entry.review.reviewedAt)}`
-                          : ""}
-                      </p>
+        <AnimatePresence mode="wait" initial={false}>
+          {isLoading ? (
+            <m.div
+              key="skeleton"
+              exit={{ opacity: 0, filter: "blur(4px)" }}
+              transition={{ duration: 0.2 }}
+            >
+              <BuzonSkeleton />
+            </m.div>
+          ) : entries.length === 0 ? (
+            <m.div
+              key="empty"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ type: "spring", duration: 0.4, bounce: 0 }}
+              className="bg-white border border-slate-200/70 rounded-xl p-8 text-center"
+            >
+              <MessageSquare
+                className="mx-auto mb-2 text-slate-300"
+                size={28}
+              />
+              <p className="text-sm text-slate-500">
+                No hay comentarios para mostrar.
+              </p>
+            </m.div>
+          ) : (
+            <m.div
+              key="entries"
+              variants={containerVariants}
+              initial="hidden"
+              animate="visible"
+              className="space-y-3"
+            >
+              {visibleEntries.map((entry) => {
+                const reviewerName = getVendorLabel(entry.review.reviewedBy);
+                const sellerName = getVendorLabel(entry.sale.email);
+                const saleDate = formatSaleDate(entry.sale);
+                const seenBySet = parseSeenBy(entry.review.seenBy);
+                const isSeen = sessionEmail
+                  ? seenBySet.has(sessionEmail.toLowerCase())
+                  : false;
+                const reviewerColor = getVendorColor(reviewerName);
+                const sellerColor = getVendorColor(sellerName);
+                const firstPhoto = entry.sale.photoUrls?.[0];
+                const thumbnailUrl = firstPhoto
+                  ? getDisplayableImageUrl(firstPhoto)
+                  : null;
+
+                return (
+                  <m.button
+                    key={`${entry.review.saleId}-${entry.review.reviewedAt}`}
+                    variants={cardVariants}
+                    whileTap={{ scale: 0.98 }}
+                    type="button"
+                    onClick={() => setSelectedEntry(entry)}
+                    className="w-full text-left bg-white border border-slate-200/70 rounded-xl p-4 hover:border-slate-300 transition-[border-color,box-shadow] duration-150 ease-out"
+                    style={{
+                      boxShadow:
+                        "0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.02)",
+                    }}
+                  >
+                    <div className="flex gap-3.5">
+                      {/* Content */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2 mb-1">
+                          <p
+                            className="text-sm font-semibold text-slate-900 truncate"
+                            style={{ textWrap: "balance" }}
+                          >
+                            {entry.sale.clientName}
+                          </p>
+                          <span
+                            className={`shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                              isSeen
+                                ? "bg-emerald-50 text-emerald-700"
+                                : "bg-amber-50 text-amber-700"
+                            }`}
+                          >
+                            {isSeen ? <Eye size={10} /> : <EyeOff size={10} />}
+                            {isSeen ? "Visto" : "Nuevo"}
+                          </span>
+                        </div>
+
+                        <p className="text-[13px] text-slate-600 line-clamp-2 mb-2.5 leading-relaxed">
+                          {entry.review.note}
+                        </p>
+
+                        {/* Badges row */}
+                        <div className="flex flex-wrap items-center gap-1.5 mb-2">
+                          <Badge
+                            variant="outline"
+                            className={`${reviewerColor.bg} ${reviewerColor.text} ${reviewerColor.border} text-[10px] px-1.5 py-0 h-[18px] gap-0.5`}
+                          >
+                            <MessageCircle size={9} />
+                            {reviewerName}
+                          </Badge>
+                          {isAdmin && (
+                            <Badge
+                              variant="outline"
+                              className={`${sellerColor.bg} ${sellerColor.text} ${sellerColor.border} text-[10px] px-1.5 py-0 h-[18px] gap-0.5`}
+                            >
+                              <User size={9} />
+                              {sellerName}
+                            </Badge>
+                          )}
+                        </div>
+
+                        {/* Meta row */}
+                        <div className="flex items-center gap-3 text-[11px] text-slate-400">
+                          <span className="inline-flex items-center gap-1">
+                            <Clock size={10} />
+                            {saleDate}
+                          </span>
+                          <span
+                            className="inline-flex items-center gap-1"
+                            style={{ fontVariantNumeric: "tabular-nums" }}
+                          >
+                            <DollarSign size={10} />
+                            {formatCurrency(entry.sale.venta)}
+                          </span>
+                          {entry.review.reviewedAt && (
+                            <span className="text-slate-300 hidden sm:inline">
+                              {formatReviewDate(entry.review.reviewedAt)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Thumbnail */}
+                      <div className="shrink-0">
+                        {thumbnailUrl ? (
+                          <img
+                            src={thumbnailUrl}
+                            alt=""
+                            className="h-[72px] w-[72px] rounded-lg object-cover"
+                            style={{
+                              outline: "1px solid rgba(0,0,0,0.06)",
+                              outlineOffset: "-1px",
+                            }}
+                            loading="lazy"
+                          />
+                        ) : (
+                          <div className="h-[72px] w-[72px] rounded-lg bg-slate-50 border border-slate-100 flex items-center justify-center">
+                            <ImageOff size={20} className="text-slate-300" />
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <span className="block text-xs font-semibold text-slate-600">
-                        {formatCurrency(entry.sale.venta)}
-                      </span>
-                      <span
-                        className={`mt-1 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                          isSeen
-                            ? "bg-emerald-50 text-emerald-700"
-                            : "bg-amber-50 text-amber-700"
-                        }`}
-                      >
-                        {isSeen ? "Visto" : "Nuevo"}
-                      </span>
-                    </div>
-                  </div>
-                  <p className="mt-2 text-sm text-slate-700">
-                    {entry.review.note}
-                  </p>
-                  <p className="mt-2 text-xs text-slate-500">
-                    {isAdmin
-                      ? `Vendedor: ${sellerName} · Venta ${saleDate}`
-                      : `Venta ${saleDate}`}
-                  </p>
-                </button>
-              );
-            })}
-            {hasMoreEntries && (
-              <div className="flex justify-center pt-2">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setVisibleCount((prev) => prev + ITEMS_PER_PAGE)
-                  }
-                  className="px-5 py-2.5 text-xs font-semibold rounded-full border border-slate-200 text-slate-700 hover:bg-slate-50 transition"
+                  </m.button>
+                );
+              })}
+
+              {hasMoreEntries && (
+                <m.div
+                  variants={cardVariants}
+                  className="flex justify-center pt-2"
                 >
-                  Cargar mas ({entries.length - visibleCount} restantes)
-                </button>
-              </div>
-            )}
-          </div>
-        )}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setVisibleCount((prev) => prev + ITEMS_PER_PAGE)
+                    }
+                    className="px-5 py-2.5 text-xs font-semibold rounded-full border border-slate-200 text-slate-700 hover:bg-slate-50 active:scale-[0.98] transition-[background-color,transform] duration-150 ease-out"
+                  >
+                    Cargar mas ({entries.length - visibleCount} restantes)
+                  </button>
+                </m.div>
+              )}
+            </m.div>
+          )}
+        </AnimatePresence>
       </main>
 
       {selectedEntry && (
