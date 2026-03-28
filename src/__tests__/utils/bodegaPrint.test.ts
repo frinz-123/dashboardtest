@@ -5,6 +5,16 @@ describe("bodegaPrint", () => {
     expect(BOX_UNITS_BY_PRODUCT["Chiltepin Pouch 30g"]).toBe(12);
   });
 
+  it("uses 12 units per box for molinillo habanero 20 g", () => {
+    expect(BOX_UNITS_BY_PRODUCT["Molinillo Habanero 20 g"]).toBe(12);
+    expect(getBoxBreakdown("Molinillo Habanero 20 g", 18)).toEqual({
+      unitsPerBox: 12,
+      fullBoxes: 1,
+      remainderPieces: 6,
+      display: "1 caja + 6 pzas",
+    });
+  });
+
   it("formats exact box conversions", () => {
     expect(getBoxBreakdown("Chiltepin Molido 50 g", 24)).toEqual({
       unitsPerBox: 12,

@@ -21,7 +21,7 @@ export const BOX_UNITS_BY_PRODUCT: Readonly<Record<string, number>> = {
   "Michela Mix Picafresa": 24,
   "Habanero Molido 50 g": 12,
   "Habanero Molido 20 g": 24,
-  "Molinillo Habanero 20 g": 24,
+  "Molinillo Habanero 20 g": 12,
   "Chiltepin Pouch 30g": 12,
 };
 
