@@ -16,7 +16,6 @@
     "babel-plugin-react-compiler": "^1.0.0",
     "jest": "^30.1.3",
     "jest-environment-jsdom": "^30.1.2",
-    "netlify-plugin-inline-functions-env": "^1.0.9",
     "postcss": "^8.4.47",
     "react-grab": "^0.1.28",
     "tailwindcss": "^3.4.13",
@@ -31,6 +30,7 @@
     "lint": "biome lint .",
     "start": "next start",
     "build": "next build",
+    "postbuild": "node scripts/inline-next-server-env.mjs",
     "export": "next export",
     "test:watch": "jest --watch",
     "test:ci": "jest --ci --coverage --watchAll=false"

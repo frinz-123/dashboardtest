@@ -9,40 +9,6 @@
   # Extend timeout for API routes that handle file uploads
   external_node_modules = ["googleapis"]
 
-[[plugins]]
-  package = "netlify-plugin-inline-functions-env"
-
-  [plugins.inputs]
-    buildEvent = "onBuild"
-    include = [
-      "AUTH_SECRET",
-      "NEXTAUTH_SECRET",
-      "AUTH_URL",
-      "NEXTAUTH_URL",
-      "AUTH_TRUST_HOST",
-      "GOOGLE_CLIENT_ID",
-      "AUTH_GOOGLE_ID",
-      "GOOGLE_CLIENT_SECRET",
-      "AUTH_GOOGLE_SECRET",
-      "OVERRIDE_EMAIL",
-      "GOOGLE_SERVICE_ACCOUNT_CLIENT_EMAIL",
-      "GOOGLE_SERVICE_ACCOUNT_CLIENT_ID",
-      "GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY",
-      "GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY_ID",
-      "GOOGLE_SERVICE_ACCOUNT_PROJECT_ID",
-      "GOOGLE_SERVICE_ACCOUNT_TYPE",
-      "GOOGLE_DRIVE_FOLDER_ID",
-      "GOOGLE_DRIVE_REDIRECT_URI",
-      "GOOGLE_DRIVE_REFRESH_TOKEN",
-      "R2_ACCESS_KEY_ID",
-      "R2_ACCOUNT_ID",
-      "R2_BUCKET",
-      "R2_PUBLIC_BASE_URL",
-      "R2_SECRET_ACCESS_KEY",
-      "VAPID_PRIVATE_KEY",
-      "VAPID_SUBJECT",
-    ]
-
 [[headers]]
   for = "/manifest.json"
   [headers.values]
