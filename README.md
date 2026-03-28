@@ -11,7 +11,7 @@ Production auth depends on these server-side environment variables being present
 
 On Netlify, `URL` and `DEPLOY_PRIME_URL` are also detected for runtime diagnostics, but they do not replace the need to set the OAuth credentials and auth secret explicitly.
 
-This project also runs a `postbuild` step that inlines selected server-only environment variables into `.next/server` after `next build`. This avoids Netlify Functions runtime environment delivery issues with longer secrets like private keys while keeping the values on the server bundle only.
+This project uses `next.config.mjs` to inline auth-critical environment variables at build time for the server auth bundle. Keep that list limited to server-only auth keys, because Next.js will substitute those values into compiled JavaScript anywhere they are referenced.
 
 ## Getting Started
 

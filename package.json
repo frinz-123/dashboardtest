@@ -30,7 +30,6 @@
     "lint": "biome lint .",
     "start": "next start",
     "build": "next build",
-    "postbuild": "node scripts/inline-next-server-env.mjs",
     "export": "next export",
     "test:watch": "jest --watch",
     "test:ci": "jest --ci --coverage --watchAll=false"
