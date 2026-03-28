@@ -1,43 +1,37 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
+import {
+  getFirstServerEnv,
+  parseServerEmailList,
+  serverEnv,
+} from "@/server/serverEnv";
 
 const authUrlCandidates = [
-  { name: "AUTH_URL", value: process.env.AUTH_URL },
-  { name: "NEXTAUTH_URL", value: process.env.NEXTAUTH_URL },
+  { name: "AUTH_URL", value: serverEnv.AUTH_URL },
+  { name: "NEXTAUTH_URL", value: serverEnv.NEXTAUTH_URL },
   { name: "URL", value: process.env.URL },
   { name: "DEPLOY_PRIME_URL", value: process.env.DEPLOY_PRIME_URL },
   { name: "DEPLOY_URL", value: process.env.DEPLOY_URL },
 ] as const;
 
-const getFirstEnv = (...values: Array<string | undefined>) => {
-  return values.find((value) => value && value.trim().length > 0)?.trim();
-};
-
-const parseEnvEmailList = (value: string | undefined) => {
-  return (value ?? "")
-    .split(",")
-    .map((email) => email.trim().toLowerCase())
-    .filter(Boolean);
-};
-
-const googleClientId = getFirstEnv(
-  process.env.GOOGLE_CLIENT_ID,
-  process.env.AUTH_GOOGLE_ID,
+const googleClientId = getFirstServerEnv(
+  "GOOGLE_CLIENT_ID",
+  "AUTH_GOOGLE_ID",
 );
-const googleClientSecret = getFirstEnv(
-  process.env.GOOGLE_CLIENT_SECRET,
-  process.env.AUTH_GOOGLE_SECRET,
+const googleClientSecret = getFirstServerEnv(
+  "GOOGLE_CLIENT_SECRET",
+  "AUTH_GOOGLE_SECRET",
 );
-const authSecret = getFirstEnv(
-  process.env.AUTH_SECRET,
-  process.env.NEXTAUTH_SECRET,
+const authSecret = getFirstServerEnv(
+  "AUTH_SECRET",
+  "NEXTAUTH_SECRET",
 );
 const authUrlEntry = authUrlCandidates.find(
   ({ value }) => value && value.trim().length > 0,
 );
 const authUrl = authUrlEntry?.value?.trim();
 const authUrlSource = authUrlEntry?.name ?? null;
-const overrideEmails = parseEnvEmailList(process.env.OVERRIDE_EMAIL);
+const overrideEmails = parseServerEmailList(serverEnv.OVERRIDE_EMAIL);
 
 let authUrlOrigin: string | null = null;
 
@@ -96,12 +90,12 @@ if (!authSecret) {
 
 if (process.env.NODE_ENV === "production") {
   console.log("[auth] Runtime configuration snapshot", {
-    hasAuthUrl: Boolean(process.env.AUTH_URL),
-    hasNextAuthUrl: Boolean(process.env.NEXTAUTH_URL),
+    hasAuthUrl: Boolean(serverEnv.AUTH_URL),
+    hasNextAuthUrl: Boolean(serverEnv.NEXTAUTH_URL),
     hasNetlifyUrl: Boolean(process.env.URL),
     hasDeployPrimeUrl: Boolean(process.env.DEPLOY_PRIME_URL),
     hasDeployUrl: Boolean(process.env.DEPLOY_URL),
-    hasAuthTrustHost: Boolean(process.env.AUTH_TRUST_HOST),
+    hasAuthTrustHost: Boolean(serverEnv.AUTH_TRUST_HOST),
     hasNetlifyFlag: Boolean(process.env.NETLIFY),
     authUrlSource,
     authUrlOrigin,

@@ -1,5 +1,6 @@
 import { google } from "googleapis";
 import { type NextRequest, NextResponse } from "next/server";
+import { createGoogleSheetsAuth } from "@/server/serverEnv";
 
 type RescheduleRequest = {
   clientName: string;
@@ -7,6 +8,8 @@ type RescheduleRequest = {
   newDay: string;
   visitType: "Pedidos" | "Entrega" | "Normal";
 };
+
+const sheetsAuth = createGoogleSheetsAuth();
 
 export async function POST(request: NextRequest) {
   try {
@@ -28,21 +31,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Initialize Google Sheets using the same auth as the main API
-      const auth = new google.auth.GoogleAuth({
-        credentials: {
-          client_email: process.env.GOOGLE_SERVICE_ACCOUNT_CLIENT_EMAIL,
-          private_key: process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY?.replace(
-            /\n/g,
-            "\n",
-          ),
-          project_id: process.env.GOOGLE_SERVICE_ACCOUNT_PROJECT_ID,
-          client_id: process.env.GOOGLE_SERVICE_ACCOUNT_CLIENT_ID,
-        },
-        scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-      });
-
-      const sheets = google.sheets({ version: "v4", auth });
+      const sheets = google.sheets({ version: "v4", auth: sheetsAuth });
       const spreadsheetId = "1a0jZVdKFNWTHDsM-68LT5_OLPMGejAKs9wfCxYqqe_g";
 
       // ✅ FIXED: Use email directly to match client data vendor field
@@ -109,21 +98,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Initialize Google Sheets
-      const auth = new google.auth.GoogleAuth({
-        credentials: {
-          client_email: process.env.GOOGLE_SERVICE_ACCOUNT_CLIENT_EMAIL,
-          private_key: process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY?.replace(
-            /\n/g,
-            "\n",
-          ),
-          project_id: process.env.GOOGLE_SERVICE_ACCOUNT_PROJECT_ID,
-          client_id: process.env.GOOGLE_SERVICE_ACCOUNT_CLIENT_ID,
-        },
-        scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-      });
-
-      const sheets = google.sheets({ version: "v4", auth });
+      const sheets = google.sheets({ version: "v4", auth: sheetsAuth });
       const spreadsheetId = "1a0jZVdKFNWTHDsM-68LT5_OLPMGejAKs9wfCxYqqe_g";
 
       console.log(

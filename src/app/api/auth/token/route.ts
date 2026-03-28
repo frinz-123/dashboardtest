@@ -1,6 +1,9 @@
 import { auth } from "@/auth";
+import {
+  createGoogleSheetsAuth,
+  googleServiceAccountCredentials,
+} from "@/server/serverEnv";
 import { isMasterAccount } from "@/utils/auth";
-import { google } from "googleapis";
 
 export async function GET() {
   try {
@@ -21,24 +24,13 @@ export async function GET() {
     }
 
     console.log("Starting token request..."); // Debug log
-    console.log(
-      "Client email:",
-      process.env.GOOGLE_SERVICE_ACCOUNT_CLIENT_EMAIL,
-    ); // Debug log (redacted in production)
-
-    const auth = new google.auth.GoogleAuth({
-      credentials: {
-        client_email: process.env.GOOGLE_SERVICE_ACCOUNT_CLIENT_EMAIL,
-        private_key: process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY?.replace(
-          /\\n/g,
-          "\n",
-        ),
-        project_id: process.env.GOOGLE_SERVICE_ACCOUNT_PROJECT_ID,
-      },
-      scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+    console.log("Service account configured:", {
+      hasClientEmail: Boolean(googleServiceAccountCredentials.client_email),
     });
 
-    const client = await auth.getClient();
+    const googleSheetsAuth = createGoogleSheetsAuth();
+
+    const client = await googleSheetsAuth.getClient();
     const token = await client.getAccessToken();
 
     console.log("Token obtained successfully"); // Debug log

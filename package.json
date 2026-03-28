@@ -22,16 +22,21 @@
     "typescript": "^5"
   },
   "scripts": {
+    "generate:server-env": "node scripts/generate-server-env.mjs",
     "test": "jest",
     "test:coverage": "jest --coverage",
+    "predev": "npm run generate:server-env",
     "dev": "next dev",
     "check": "biome check .",
     "format": "biome format --write .",
     "lint": "biome lint .",
     "start": "next start",
+    "prebuild": "npm run generate:server-env",
     "build": "next build",
     "export": "next export",
+    "pretest": "npm run generate:server-env",
     "test:watch": "jest --watch",
+    "pretest:ci": "npm run generate:server-env",
     "test:ci": "jest --ci --coverage --watchAll=false"
   },
   "name": "dashboard-el-rey",

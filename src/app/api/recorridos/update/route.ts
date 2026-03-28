@@ -1,5 +1,6 @@
 import { google } from "googleapis";
 import { NextResponse } from "next/server";
+import { createGoogleSheetsAuth } from "@/server/serverEnv";
 import {
   EMAIL_TO_VENDOR_LABELS,
   getVendorEmailFromLabel,
@@ -11,18 +12,7 @@ import {
 // Force dynamic rendering for this API route
 export const dynamic = "force-dynamic";
 
-const auth = new google.auth.GoogleAuth({
-  credentials: {
-    client_email: process.env.GOOGLE_SERVICE_ACCOUNT_CLIENT_EMAIL,
-    private_key: process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY?.replace(
-      /\n/g,
-      "\n",
-    ),
-    project_id: process.env.GOOGLE_SERVICE_ACCOUNT_PROJECT_ID,
-    client_id: process.env.GOOGLE_SERVICE_ACCOUNT_CLIENT_ID,
-  },
-  scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-});
+const auth = createGoogleSheetsAuth();
 
 const spreadsheetId = "1a0jZVdKFNWTHDsM-68LT5_OLPMGejAKs9wfCxYqqe_g";
 

@@ -1,5 +1,6 @@
 import { google } from "googleapis";
 import { type NextRequest, NextResponse } from "next/server";
+import { createGoogleSheetsAuth } from "@/server/serverEnv";
 
 // Force dynamic rendering for this API route
 export const dynamic = "force-dynamic";
@@ -14,18 +15,7 @@ const _SHEET_IDS = {
   reprogramadas: "477915293", // Rescheduled visits tracking
 };
 
-const auth = new google.auth.GoogleAuth({
-  credentials: {
-    client_email: process.env.GOOGLE_SERVICE_ACCOUNT_CLIENT_EMAIL,
-    private_key: process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY?.replace(
-      /\n/g,
-      "\n",
-    ),
-    project_id: process.env.GOOGLE_SERVICE_ACCOUNT_PROJECT_ID,
-    client_id: process.env.GOOGLE_SERVICE_ACCOUNT_CLIENT_ID,
-  },
-  scopes: ["https://www.googleapis.com/auth/spreadsheets"],
-});
+const auth = createGoogleSheetsAuth();
 
 export async function GET(request: NextRequest) {
   try {

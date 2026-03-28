@@ -6,17 +6,18 @@ import {
 } from "@aws-sdk/client-s3";
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
+import { getMissingServerEnv, serverEnv } from "@/server/serverEnv";
 import { isFormAdminEmail, parseBooleanLike } from "@/utils/formSubmission";
 
 // Force Node.js runtime (not Edge) for stream and crypto compatibility
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const r2AccountId = process.env.R2_ACCOUNT_ID;
-const r2AccessKeyId = process.env.R2_ACCESS_KEY_ID;
-const r2SecretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
-const r2BucketName = process.env.R2_BUCKET;
-const r2PublicBaseUrl = process.env.R2_PUBLIC_BASE_URL;
+const r2AccountId = serverEnv.R2_ACCOUNT_ID;
+const r2AccessKeyId = serverEnv.R2_ACCESS_KEY_ID;
+const r2SecretAccessKey = serverEnv.R2_SECRET_ACCESS_KEY;
+const r2BucketName = serverEnv.R2_BUCKET;
+const r2PublicBaseUrl = serverEnv.R2_PUBLIC_BASE_URL;
 
 const r2Client =
   r2AccountId && r2AccessKeyId && r2SecretAccessKey
@@ -39,13 +40,13 @@ const getPublicUrl = (key: string): string => {
 };
 
 export async function POST(req: Request) {
-  const missingEnv = [
-    !r2AccountId && "R2_ACCOUNT_ID",
-    !r2AccessKeyId && "R2_ACCESS_KEY_ID",
-    !r2SecretAccessKey && "R2_SECRET_ACCESS_KEY",
-    !r2BucketName && "R2_BUCKET",
-    !r2PublicBaseUrl && "R2_PUBLIC_BASE_URL",
-  ].filter(Boolean) as string[];
+  const missingEnv = getMissingServerEnv(
+    "R2_ACCOUNT_ID",
+    "R2_ACCESS_KEY_ID",
+    "R2_SECRET_ACCESS_KEY",
+    "R2_BUCKET",
+    "R2_PUBLIC_BASE_URL",
+  );
 
   if (missingEnv.length > 0 || !r2Client || !r2BucketName || !r2PublicBaseUrl) {
     console.error("R2 env not configured", { missingEnv });
