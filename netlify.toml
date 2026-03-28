@@ -13,6 +13,7 @@
   package = "netlify-plugin-inline-functions-env"
 
   [plugins.inputs]
+    buildEvent = "onBuild"
     include = [
       "AUTH_SECRET",
       "NEXTAUTH_SECRET",
