@@ -37,3 +37,7 @@ next-env.d.ts
 
 # generated server-only config
 src/generated/serverEnv.ts
+src/generated/authEnv.ts
+
+# Local Netlify folder
+.netlify

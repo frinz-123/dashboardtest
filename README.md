@@ -13,6 +13,19 @@ On Netlify, `URL` and `DEPLOY_PRIME_URL` are also detected for runtime diagnosti
 
 This project uses `next.config.mjs` to inline auth-critical environment variables at build time for the server auth bundle. Keep that list limited to server-only auth keys, because Next.js will substitute those values into compiled JavaScript anywhere they are referenced.
 
+## Netlify local deploys on Windows
+
+Local Netlify CLI deploys from Windows can generate a broken `___netlify-server-handler.mjs` with imports like `\var\task\...`, which crash once the function runs on Linux.
+
+If you are building and deploying locally from Windows, run:
+
+```bash
+npm run netlify:build-local
+npx netlify deploy
+```
+
+`npm run netlify:build-local` runs `netlify build` and then repairs the generated server handler zip before deploy. Netlify's remote Linux builds are not affected.
+
 ## Getting Started
 
 First, run the development server:

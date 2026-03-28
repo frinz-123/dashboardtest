@@ -11,6 +11,11 @@
       "sourceType": "github",
       "computedHash": "41c2416e08bc9ec3c696585d31bd1243481a7a81615b810b1b8a32aded9360b5"
     },
+    "netlify-deploy": {
+      "source": "openai/skills",
+      "sourceType": "github",
+      "computedHash": "d92c426e39620e737f9415bb7b059e46abc57fb39217692aff878e4085e00206"
+    },
     "userinterface-wiki": {
       "source": "raphaelsalaja/userinterface-wiki",
       "sourceType": "github",

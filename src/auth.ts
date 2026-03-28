@@ -1,28 +1,28 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 import {
-  getFirstServerEnv,
-  parseServerEmailList,
-  serverEnv,
-} from "@/server/serverEnv";
+  authEnv,
+  getFirstAuthEnv,
+  parseAuthEmailList,
+} from "@/server/authEnv";
 
 const authUrlCandidates = [
-  { name: "AUTH_URL", value: serverEnv.AUTH_URL },
-  { name: "NEXTAUTH_URL", value: serverEnv.NEXTAUTH_URL },
+  { name: "AUTH_URL", value: authEnv.AUTH_URL },
+  { name: "NEXTAUTH_URL", value: authEnv.NEXTAUTH_URL },
   { name: "URL", value: process.env.URL },
   { name: "DEPLOY_PRIME_URL", value: process.env.DEPLOY_PRIME_URL },
   { name: "DEPLOY_URL", value: process.env.DEPLOY_URL },
 ] as const;
 
-const googleClientId = getFirstServerEnv(
+const googleClientId = getFirstAuthEnv(
   "GOOGLE_CLIENT_ID",
   "AUTH_GOOGLE_ID",
 );
-const googleClientSecret = getFirstServerEnv(
+const googleClientSecret = getFirstAuthEnv(
   "GOOGLE_CLIENT_SECRET",
   "AUTH_GOOGLE_SECRET",
 );
-const authSecret = getFirstServerEnv(
+const authSecret = getFirstAuthEnv(
   "AUTH_SECRET",
   "NEXTAUTH_SECRET",
 );
@@ -31,7 +31,7 @@ const authUrlEntry = authUrlCandidates.find(
 );
 const authUrl = authUrlEntry?.value?.trim();
 const authUrlSource = authUrlEntry?.name ?? null;
-const overrideEmails = parseServerEmailList(serverEnv.OVERRIDE_EMAIL);
+const overrideEmails = parseAuthEmailList(authEnv.OVERRIDE_EMAIL);
 
 let authUrlOrigin: string | null = null;
 
@@ -90,12 +90,12 @@ if (!authSecret) {
 
 if (process.env.NODE_ENV === "production") {
   console.log("[auth] Runtime configuration snapshot", {
-    hasAuthUrl: Boolean(serverEnv.AUTH_URL),
-    hasNextAuthUrl: Boolean(serverEnv.NEXTAUTH_URL),
+    hasAuthUrl: Boolean(authEnv.AUTH_URL),
+    hasNextAuthUrl: Boolean(authEnv.NEXTAUTH_URL),
     hasNetlifyUrl: Boolean(process.env.URL),
     hasDeployPrimeUrl: Boolean(process.env.DEPLOY_PRIME_URL),
     hasDeployUrl: Boolean(process.env.DEPLOY_URL),
-    hasAuthTrustHost: Boolean(serverEnv.AUTH_TRUST_HOST),
+    hasAuthTrustHost: Boolean(authEnv.AUTH_TRUST_HOST),
     hasNetlifyFlag: Boolean(process.env.NETLIFY),
     authUrlSource,
     authUrlOrigin,

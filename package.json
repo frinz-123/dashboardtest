@@ -23,6 +23,8 @@
   },
   "scripts": {
     "generate:server-env": "node scripts/generate-server-env.mjs",
+    "netlify:fix-windows-handler": "node scripts/fix-netlify-windows-handler.mjs",
+    "netlify:build-local": "npx netlify build && npm run netlify:fix-windows-handler",
     "test": "jest",
     "test:coverage": "jest --coverage",
     "predev": "npm run generate:server-env",

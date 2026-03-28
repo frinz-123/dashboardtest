@@ -2,7 +2,7 @@ import { auth } from "@/auth";
 import {
   createGoogleSheetsAuth,
   googleServiceAccountCredentials,
-} from "@/server/serverEnv";
+} from "@/server/googleServerAuth";
 import { isMasterAccount } from "@/utils/auth";
 
 export async function GET() {

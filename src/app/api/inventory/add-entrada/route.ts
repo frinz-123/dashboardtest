@@ -1,6 +1,7 @@
 import { google } from "googleapis";
 import { NextResponse } from "next/server";
-import { createGoogleSheetsAuth, serverEnv } from "@/server/serverEnv";
+import { createGoogleSheetsAuth } from "@/server/googleServerAuth";
+import { serverEnv } from "@/server/serverEnv";
 
 export async function POST(req: Request) {
   try {

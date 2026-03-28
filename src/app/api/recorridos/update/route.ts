@@ -1,6 +1,6 @@
 import { google } from "googleapis";
 import { NextResponse } from "next/server";
-import { createGoogleSheetsAuth } from "@/server/serverEnv";
+import { createGoogleSheetsAuth } from "@/server/googleServerAuth";
 import {
   EMAIL_TO_VENDOR_LABELS,
   getVendorEmailFromLabel,

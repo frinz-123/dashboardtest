@@ -1,4 +1,4 @@
-import { createDriveAuth, createGoogleSheetsAuth } from "@/server/serverEnv";
+import { createDriveAuth, createGoogleSheetsAuth } from "@/server/googleServerAuth";
 
 export const sheetsAuth = createGoogleSheetsAuth();
 

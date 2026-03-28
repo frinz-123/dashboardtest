@@ -1,6 +1,6 @@
 import { google } from "googleapis";
 import { type NextRequest, NextResponse } from "next/server";
-import { createGoogleSheetsAuth } from "@/server/serverEnv";
+import { createGoogleSheetsAuth } from "@/server/googleServerAuth";
 
 // Force dynamic rendering for this API route
 export const dynamic = "force-dynamic";
